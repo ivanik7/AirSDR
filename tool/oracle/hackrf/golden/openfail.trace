@@ -1,0 +1,7 @@
+RESULT init=0
+CTRL 80 08 0000 0000 len=1 to=1000 ret=1 data=00
+SET_CONFIGURATION 1
+CLAIM_INTERFACE 0
+CTRL c0 3d 0000 0000 len=4 to=100 ret=-9 data=
+RESULT open=-1000
+INFO open_error=Pipe error
