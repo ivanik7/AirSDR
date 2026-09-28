@@ -130,8 +130,11 @@ class UsbSdrPlugin :
 
     override fun onDetachedFromActivityForConfigChanges() = detachActivity()
 
-    override fun onReattachedToActivityForConfigChanges(binding: ActivityPluginBinding) =
-        onAttachedToActivity(binding)
+    override fun onReattachedToActivityForConfigChanges(binding: ActivityPluginBinding) {
+        // Same launch intent as before the config change: don't re-emit "attached".
+        activityBinding = binding
+        binding.addOnNewIntentListener(this)
+    }
 
     override fun onDetachedFromActivity() = detachActivity()
 
