@@ -10,6 +10,9 @@
 //  * changes: attach/detach events.
 //  * preferredDevice: the device that launched the app via USB_DEVICE_ATTACHED, or the last
 //    attached supported device → the controller auto-selects it.
+//  * autoConnect: every supported device (same VID:PID registry as device_filter.xml and
+//    registerDeviceSources: [isSupportedUsbSdr]) is connected and started by the controller
+//    without manual selection / Start.
 //
 // Replaces SDR++ core/backends/android/backend.cpp getDeviceFD() + the per-module
 // VID:PID tables (docs/01 §3.4).
@@ -34,9 +37,9 @@ const String usbDeviceIdPrefix = 'usb:';
 
 class UsbDeviceProvider extends DeviceProvider {
   UsbDeviceProvider({AndroidUsb? usb, bool? enabled, bool? abiSupported})
-      : _usb = usb ?? AndroidUsb.instance,
-        enabled = enabled ?? Platform.isAndroid,
-        abiSupported = abiSupported ?? usbfsAbiSupported;
+    : _usb = usb ?? AndroidUsb.instance,
+      enabled = enabled ?? Platform.isAndroid,
+      abiSupported = abiSupported ?? usbfsAbiSupported;
 
   final AndroidUsb _usb;
 
@@ -62,7 +65,12 @@ class UsbDeviceProvider extends DeviceProvider {
     return SdrDeviceInfo(
       id: idOf(d),
       name: usbSdrDisplayName(
-          vid: d.vendorId, pid: d.productId, manufacturer: d.manufacturer, product: d.product, serial: d.serial),
+        vid: d.vendorId,
+        pid: d.productId,
+        manufacturer: d.manufacturer,
+        product: d.product,
+        serial: d.serial,
+      ),
       sampleRates: usbSdrSampleRates(kind),
       gain: usbSdrGainRange(kind),
       hasAgc: usbSdrHasAgc(kind),
@@ -87,7 +95,8 @@ class UsbDeviceProvider extends DeviceProvider {
       ..clear()
       ..addEntries(<MapEntry<String, AndroidUsbDevice>>[
         for (final d in devs)
-          if (isSupportedUsbSdr(d.vendorId, d.productId)) MapEntry<String, AndroidUsbDevice>(idOf(d), d),
+          if (isSupportedUsbSdr(d.vendorId, d.productId))
+            MapEntry<String, AndroidUsbDevice>(idOf(d), d),
       ]);
     return <SdrDeviceInfo>[for (final d in _known.values) infoOf(d)];
   }
@@ -96,20 +105,30 @@ class UsbDeviceProvider extends DeviceProvider {
   bool owns(SdrDeviceInfo device) => device.id.startsWith(usbDeviceIdPrefix);
 
   @override
+  bool get autoConnect => enabled;
+
+  @override
   Future<SourceSelection> open(SdrDeviceInfo device) async {
     if (!abiSupported) {
-      throw UsbException(UsbError.notSupported,
-          'USB SDR access needs a 64-bit (arm64-v8a) build; this process is 32-bit');
+      throw UsbException(
+        UsbError.notSupported,
+        'USB SDR access needs a 64-bit (arm64-v8a) build; this process is 32-bit',
+      );
     }
     final d = _known[device.id];
-    if (d == null) throw UsbException(UsbError.notFound, '${device.name} is not connected');
+    if (d == null) {
+      throw UsbException(UsbError.notFound, '${device.name} is not connected');
+    }
     final r = await _usb.open(d.deviceName);
     _opened.add(d.deviceName);
     // listDevices may hide the serial until permission is granted: re-read it now.
     AndroidUsbDevice dev = d;
     if (d.serial == null) {
       try {
-        dev = (await _usb.listDevices()).firstWhere((e) => e.deviceName == d.deviceName, orElse: () => d);
+        dev = (await _usb.listDevices()).firstWhere(
+          (e) => e.deviceName == d.deviceName,
+          orElse: () => d,
+        );
       } catch (_) {}
     }
     return SourceSelection(usbSourceId, <String, Object?>{
@@ -145,20 +164,20 @@ class UsbDeviceProvider extends DeviceProvider {
   }
 
   void _listenEvents() {
-    _eventSub ??= _usb.events.listen(
-      (e) {
-        final supported = isSupportedUsbSdr(e.device.vendorId, e.device.productId);
-        if (!supported) return;
-        if (e.type == AndroidUsbEventType.attached) {
-          _pendingPreferred = idOf(e.device);
-        } else {
-          _opened.remove(e.device.deviceName);
-          if (_pendingPreferred == idOf(e.device)) _pendingPreferred = null;
-        }
-        _changes?.add(null);
-      },
-      onError: (Object _) {},
-    );
+    _eventSub ??= _usb.events.listen((e) {
+      final supported = isSupportedUsbSdr(
+        e.device.vendorId,
+        e.device.productId,
+      );
+      if (!supported) return;
+      if (e.type == AndroidUsbEventType.attached) {
+        _pendingPreferred = idOf(e.device);
+      } else {
+        _opened.remove(e.device.deviceName);
+        if (_pendingPreferred == idOf(e.device)) _pendingPreferred = null;
+      }
+      _changes?.add(null);
+    }, onError: (Object _) {});
   }
 
   @override
@@ -170,7 +189,9 @@ class UsbDeviceProvider extends DeviceProvider {
       _initialChecked = true;
       try {
         final d = await _usb.initialDevice();
-        if (d != null && isSupportedUsbSdr(d.vendorId, d.productId)) id = idOf(d);
+        if (d != null && isSupportedUsbSdr(d.vendorId, d.productId)) {
+          id = idOf(d);
+        }
       } catch (_) {}
     }
     final d = id == null ? null : _known[id];

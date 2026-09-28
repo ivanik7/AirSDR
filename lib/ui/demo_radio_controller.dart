@@ -15,7 +15,8 @@ import 'dart:typed_data';
 import 'radio_controller.dart';
 
 class DemoRadioController extends RadioController {
-  DemoRadioController({this.fftRate = 25, int seed = 1}) : _rng = math.Random(seed) {
+  DemoRadioController({this.fftRate = 25, int seed = 1})
+    : _rng = math.Random(seed) {
     _device = _devices.first;
     _sampleRate = _device!.sampleRates[_device!.sampleRates.length ~/ 2];
     _gain = (_device!.gain.min + _device!.gain.max) / 2;
@@ -30,7 +31,16 @@ class DemoRadioController extends RadioController {
     SdrDeviceInfo(
       id: 'demo:rtl',
       name: 'Demo RTL-SDR (synthetic)',
-      sampleRates: <double>[250000, 1024000, 1536000, 1800000, 2048000, 2400000, 2560000, 3200000],
+      sampleRates: <double>[
+        250000,
+        1024000,
+        1536000,
+        1800000,
+        2048000,
+        2400000,
+        2560000,
+        3200000,
+      ],
       gain: GainRange(min: 0, max: 49.6, step: 0.1),
       minFrequency: 24000000,
       maxFrequency: 1766000000,
@@ -59,6 +69,7 @@ class DemoRadioController extends RadioController {
   late double _gain;
   bool _agc = false;
   double _volume = 0.5;
+  bool _muted = true; // like the real controller: every session starts muted
   bool _squelchEnabled = false;
   double _squelchLevel = -50;
 
@@ -111,7 +122,10 @@ class DemoRadioController extends RadioController {
     }
     _lastError = null;
     _running = true;
-    _timer = Timer.periodic(Duration(microseconds: 1000000 ~/ fftRate), (_) => _emitRow());
+    _timer = Timer.periodic(
+      Duration(microseconds: 1000000 ~/ fftRate),
+      (_) => _emitRow(),
+    );
     notifyListeners();
   }
 
@@ -173,7 +187,9 @@ class DemoRadioController extends RadioController {
 
   @override
   void setGain(double value) {
-    final g = _device == null ? value : value.clamp(_device!.gain.min, _device!.gain.max).toDouble();
+    final g = _device == null
+        ? value
+        : value.clamp(_device!.gain.min, _device!.gain.max).toDouble();
     if (g == _gain) return;
     _gain = g;
     notifyListeners();
@@ -201,6 +217,16 @@ class DemoRadioController extends RadioController {
 
   @override
   bool get squelchEnabled => _squelchEnabled;
+
+  @override
+  bool get muted => _muted;
+
+  @override
+  void setMuted(bool muted) {
+    if (muted == _muted) return;
+    _muted = muted;
+    notifyListeners();
+  }
 
   @override
   void setSquelchEnabled(bool enabled) {
@@ -236,26 +262,36 @@ class DemoRadioController extends RadioController {
   // ---- Synthetic signal model ---------------------------------------------
 
   /// Carriers at absolute frequencies: (freq Hz, peak dB, half-width Hz).
-  static const List<(double, double, double)> _carriers = <(double, double, double)>[
-    (99300000, -62, 45000), // broadcast FM
-    (99700000, -70, 45000),
-    (100100000, -55, 50000),
-    (100450000, -72, 3000), // narrow FM
-    (100525000, -65, 150), // CW-like
-    (100800000, -66, 45000),
-    (145500000, -60, 4000),
-    (433920000, -55, 6000),
-  ];
+  static const List<(double, double, double)> _carriers =
+      <(double, double, double)>[
+        (99300000, -62, 45000), // broadcast FM
+        (99700000, -70, 45000),
+        (100100000, -55, 50000),
+        (100450000, -72, 3000), // narrow FM
+        (100525000, -65, 150), // CW-like
+        (100800000, -66, 45000),
+        (145500000, -60, 4000),
+        (433920000, -55, 6000),
+      ];
 
   /// Deterministic synthetic row for LO [center] covering `[low, high)`.
   /// Exposed for tests.
-  Float32List synthRow(double center, double low, double high, int width, double t) {
+  Float32List synthRow(
+    double center,
+    double low,
+    double high,
+    int width,
+    double t,
+  ) {
     final out = Float32List(width);
     final hzPerPx = (high - low) / width;
     // Moving signal: sweeps ±40 % of the band around the LO, period 20 s.
-    final sweepF = center + math.sin(t * 2 * math.pi / 20.0) * _sampleRate * 0.4;
+    final sweepF =
+        center + math.sin(t * 2 * math.pi / 20.0) * _sampleRate * 0.4;
     // Gain shifts everything a bit (feels alive when dragging the slider).
-    final gainDb = (_device == null) ? 0.0 : (_gain - _device!.gain.max / 2) * 0.3;
+    final gainDb = (_device == null)
+        ? 0.0
+        : (_gain - _device!.gain.max / 2) * 0.3;
     for (var i = 0; i < width; i++) {
       final f0 = low + i * hzPerPx;
       final f1 = f0 + hzPerPx;
