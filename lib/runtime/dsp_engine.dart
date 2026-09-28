@@ -52,9 +52,12 @@ class DspEngine {
     final dir = options.configDir;
     coreConfig = ConfigManager();
     radioConfig = ConfigManager();
+    // RadioModuleFactory.init() calls radioConfig.setPath(configPath), so the
+    // radio config path must be passed to the factory (setting it here alone
+    // was overwritten with null → mode/bandwidth/squelch never persisted).
+    final radioConfigPath = dir == null ? null : '$dir${Platform.pathSeparator}radio_config.json';
     if (dir != null) {
       coreConfig.setPath('$dir${Platform.pathSeparator}config.json');
-      radioConfig.setPath('$dir${Platform.pathSeparator}radio_config.json');
     }
     coreConfig.load(<String, dynamic>{
       'frequency': 100000000.0,
@@ -82,7 +85,7 @@ class DspEngine {
     core.sigpath.sinkManager.registerSinkProvider('Audio', AudioOutputSink.provider(audio));
 
     // Radio module
-    radioFactory = RadioModuleFactory(core, config: radioConfig);
+    radioFactory = RadioModuleFactory(core, config: radioConfig, configPath: radioConfigPath);
     core.moduleManager.loadModule(radioFactory);
     radioConfig.enableAutoSave();
     core.moduleManager.createInstance('Radio', 'radio');

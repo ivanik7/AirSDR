@@ -6,6 +6,16 @@ import '../radio_controller.dart';
 import 'centered_receiver.dart';
 import 'theme.dart';
 
+/// Human-readable reason for a rejected add/edit (never an empty string).
+String favoriteErrorText(ArgumentError e) => switch (e.name) {
+  'name' => 'введите название (1–60 символов)',
+  'frequencyHz' when e.message == 'Already saved' =>
+    'эта частота уже есть в списке',
+  'frequencyHz' => 'частота вне диапазона устройства',
+  'category' => 'неизвестная категория',
+  _ => '${e.message ?? e.invalidValue ?? 'неверные данные'}',
+};
+
 class PresetsScreen extends StatefulWidget {
   const PresetsScreen({
     super.key,
@@ -26,6 +36,8 @@ class _PresetsScreenState extends State<PresetsScreen> {
   String category = 'Все';
   String? message;
   Future<void> edit([Favorite? existing]) async {
+    // A new attempt supersedes the previous error.
+    setState(() => message = null);
     var name = existing?.name ?? '';
     var mode = existing?.mode ?? widget.controller.mode;
     var band = existing?.category ?? 'FM';
@@ -39,7 +51,7 @@ class _PresetsScreenState extends State<PresetsScreen> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  'Частота ${(widget.controller.tunedFrequency / 1000000).toStringAsFixed(3)} MHz',
+                  'Частота ${((existing?.frequencyHz ?? widget.controller.tunedFrequency) / 1000000).toStringAsFixed(3)} MHz',
                   style: plex(mono: true),
                 ),
                 TextFormField(
@@ -112,8 +124,7 @@ class _PresetsScreenState extends State<PresetsScreen> {
       } on ArgumentError catch (e) {
         if (mounted) {
           setState(
-            () => message =
-                'Не удалось сохранить: ${e.message ?? e.invalidValue}',
+            () => message = 'Не удалось сохранить: ${favoriteErrorText(e)}',
           );
         }
       }
@@ -123,6 +134,7 @@ class _PresetsScreenState extends State<PresetsScreen> {
   void apply(Favorite f) {
     try {
       widget.receiver.apply(f.frequencyHz, f.mode);
+      setState(() => message = null);
       widget.onApplied();
     } on ArgumentError {
       setState(() => message = 'Частота вне диапазона выбранного устройства');
@@ -188,7 +200,10 @@ class _PresetsScreenState extends State<PresetsScreen> {
                       key: ValueKey('category-$b'),
                       label: Text(b, style: plex(size: 12)),
                       selected: category == b,
-                      onSelected: (_) => setState(() => category = b),
+                      onSelected: (_) => setState(() {
+                        category = b;
+                        message = null;
+                      }),
                     ),
                   ),
               ],
@@ -214,7 +229,10 @@ class _PresetsScreenState extends State<PresetsScreen> {
                         tooltip: f.enabled
                             ? 'Убрать из избранного'
                             : 'Добавить в избранное',
-                        onPressed: () => widget.favorites.toggle(f.id),
+                        onPressed: () {
+                          setState(() => message = null);
+                          widget.favorites.toggle(f.id);
+                        },
                         icon: Icon(
                           f.enabled ? Icons.bookmark : Icons.bookmark_border,
                           color: f.enabled

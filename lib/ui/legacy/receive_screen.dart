@@ -120,17 +120,26 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
               ),
             ],
           ),
+          // Status: never wider than the screen (cover display is ~344 dp).
           Row(
+            key: const ValueKey('legacyStatus'),
             children: [
               Text(
                 '${r.mode.label} · BW ${(r.bandwidth / 1000).toStringAsFixed(1)}k',
+                maxLines: 1,
                 style: plex(mono: true, size: 12, color: LegacyColors.accent),
               ),
-              const Spacer(),
-              Text(
-                r.running ? statsLine(r) : 'Нет сигнала · приём остановлен',
-                overflow: TextOverflow.ellipsis,
-                style: plex(mono: true, size: 10, color: LegacyColors.muted),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  r.running ? compactStatsLine(r) : 'приём остановлен',
+                  key: const ValueKey('legacyStats'),
+                  maxLines: 1,
+                  softWrap: false,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.right,
+                  style: plex(mono: true, size: 10, color: LegacyColors.muted),
+                ),
               ),
             ],
           ),
@@ -227,7 +236,7 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
             height: 44,
             child: Row(
               children: [
-                _square('◀', const ValueKey('nudgeLeft'), () {
+                _square(Icons.chevron_left, const ValueKey('nudgeLeft'), () {
                   f.nudge(-1);
                   setState(() {});
                 }),
@@ -266,7 +275,7 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
                   ),
                 ),
                 const SizedBox(width: 9),
-                _square('▶', const ValueKey('nudgeRight'), () {
+                _square(Icons.chevron_right, const ValueKey('nudgeRight'), () {
                   f.nudge(1);
                   setState(() {});
                 }),
@@ -374,7 +383,8 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
       );
     },
   );
-  Widget _square(String label, Key key, VoidCallback onTap) => SizedBox(
+  // Icons, not ◀/▶ glyphs: Android renders those as colour emoji tiles.
+  Widget _square(IconData icon, Key key, VoidCallback onTap) => SizedBox(
     width: 44,
     height: 44,
     child: Material(
@@ -383,10 +393,21 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
       child: InkWell(
         key: key,
         onTap: onTap,
-        child: Center(child: Text(label, style: plex(mono: true, size: 14))),
+        child: Center(child: Icon(icon, size: 22, color: LegacyColors.primary)),
       ),
     ),
   );
+}
+
+/// Short receive-screen stats: "2.40 MS/s · USB drops 99 · audio drops 0".
+/// The full list lives in Settings; this line is always ellipsized.
+String compactStatsLine(RadioController radio) {
+  final st = radio.stats;
+  return [
+    '${(radio.sampleRate / 1e6).toStringAsFixed(2)} MS/s',
+    if (st['droppedBuffers'] is num) 'USB drops ${st['droppedBuffers']}',
+    if (st['audioDropped'] is num) 'audio drops ${st['audioDropped']}',
+  ].join(' · ');
 }
 
 class _RulerPainter extends CustomPainter {
