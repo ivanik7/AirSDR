@@ -28,8 +28,9 @@ class SourceContext {
 
   final SourceCore core;
 
-  /// Reports an asynchronous source error (device unplugged…) to the UI.
-  final void Function(String message) reportError;
+  /// Reports an asynchronous source error (device unplugged…) to the UI. [fatal] = the source
+  /// has stopped itself (the engine flips to not running).
+  final void Function(String message, {bool fatal}) reportError;
 
   final Map<String, Object?>? Function(String key)? configLoad;
   final void Function(String key, Map<String, Object?> config)? configSave;
@@ -47,6 +48,11 @@ class SourceControls {
   bool setSampleRate(SourceHandler h, double sampleRate) => false;
   bool setGain(SourceHandler h, double gain) => false;
   bool setAgc(SourceHandler h, bool enabled) => false;
+
+  /// Current gain/AGC in the UI's units, or null if unknown (reported in the DSP state so the
+  /// UI adopts per-device persisted settings).
+  double? gainOf(SourceHandler h) => null;
+  bool? agcOf(SourceHandler h) => null;
 }
 
 /// Maps generic controls onto setting ids by convention: a `sampleRate` ChoiceSetting whose
@@ -87,7 +93,11 @@ class GenericSourceControls extends SourceControls {
 /// A created source plus its metadata.
 class SourceInstance {
   SourceInstance(this.handler,
-      {this.controls = const SourceControls(), this.centerFrequencyLocked = false, this.fixedCenterFrequency, this.dispose});
+      {this.controls = const SourceControls(),
+      this.centerFrequencyLocked = false,
+      this.fixedCenterFrequency,
+      this.dispose,
+      this.stats});
 
   final SourceHandler handler;
   final SourceControls controls;
@@ -99,6 +109,9 @@ class SourceInstance {
 
   /// Releases resources (close file / device) when another source is selected.
   final void Function()? dispose;
+
+  /// Extra source statistics merged into the DSP `stats` event (e.g. `droppedBuffers`).
+  final Map<String, Object?> Function()? stats;
 }
 
 typedef SourceFactory = SourceInstance Function(Map<Object?, Object?> params, SourceContext ctx);

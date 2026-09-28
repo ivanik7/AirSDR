@@ -16,6 +16,7 @@ import 'frequency_select.dart';
 import 'hrfreq.dart';
 import 'radio_controller.dart';
 import 'sdr_ui_state.dart';
+import 'source_settings.dart';
 import 'spectrum_waterfall.dart';
 import 'tuner.dart';
 
@@ -31,17 +32,22 @@ class MainScreen extends StatefulWidget {
 
 class _MainScreenState extends State<MainScreen> {
   late SdrUiState _ui;
+  final GlobalKey<ScaffoldMessengerState> _messenger = GlobalKey<ScaffoldMessengerState>();
+  String? _shownError;
 
   @override
   void initState() {
     super.initState();
     _ui = SdrUiState(widget.controller);
+    widget.controller.addListener(_onController);
   }
 
   @override
   void didUpdateWidget(MainScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.controller != widget.controller) {
+      oldWidget.controller.removeListener(_onController);
+      widget.controller.addListener(_onController);
       _ui.dispose();
       _ui = SdrUiState(widget.controller);
     }
@@ -49,12 +55,37 @@ class _MainScreenState extends State<MainScreen> {
 
   @override
   void dispose() {
+    widget.controller.removeListener(_onController);
     _ui.dispose();
     super.dispose();
   }
 
+  /// Error snackbar: shown once per new [RadioController.lastError].
+  void _onController() {
+    final err = widget.controller.lastError;
+    if (err == _shownError) return;
+    _shownError = err;
+    if (err == null) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final m = _messenger.currentState;
+      if (m == null || !mounted) return;
+      m.hideCurrentSnackBar();
+      m.showSnackBar(SnackBar(
+        key: const ValueKey<String>('errorSnack'),
+        content: Text(err),
+        backgroundColor: Colors.red.shade900,
+        duration: const Duration(seconds: 6),
+        action: SnackBarAction(label: 'OK', textColor: Colors.white, onPressed: widget.controller.clearError),
+      ));
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
+    return ScaffoldMessenger(key: _messenger, child: _scaffold(context));
+  }
+
+  Widget _scaffold(BuildContext context) {
     return Scaffold(
       body: SafeArea(
         child: ListenableBuilder(
@@ -152,6 +183,12 @@ class _TopBar extends StatelessWidget {
             tooltip: 'Rescan devices',
             icon: const Icon(Icons.refresh),
             onPressed: r.running ? null : r.refreshDevices,
+          ),
+          IconButton(
+            key: const ValueKey<String>('sourceSettings'),
+            tooltip: 'Device settings',
+            icon: const Icon(Icons.tune),
+            onPressed: () => showSourceSettingsSheet(context, r),
           ),
           PopupMenuButton<String>(
             tooltip: 'Display',
@@ -483,6 +520,7 @@ class _Display extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final err = ui.radio.lastError;
+    final small = Theme.of(context).textTheme.labelSmall;
     return Stack(
       fit: StackFit.expand,
       children: [
@@ -491,10 +529,27 @@ class _Display extends StatelessWidget {
           Positioned(
             left: 8,
             top: 8,
-            child: Material(
-              color: Colors.red.shade900,
-              borderRadius: BorderRadius.circular(4),
-              child: Padding(padding: const EdgeInsets.all(6), child: Text(err)),
+            right: 8,
+            child: Align(
+              alignment: Alignment.topLeft,
+              child: Material(
+                color: Colors.red.shade900.withValues(alpha: 0.85),
+                borderRadius: BorderRadius.circular(4),
+                child: InkWell(
+                  onTap: ui.radio.clearError,
+                  child: Padding(padding: const EdgeInsets.all(6), child: Text(err, style: small)),
+                ),
+              ),
+            ),
+          ),
+        if (ui.radio.running)
+          Positioned(
+            left: 4,
+            bottom: 2,
+            child: IgnorePointer(
+              child: Text(statsLine(ui.radio),
+                  key: const ValueKey<String>('statusLine'),
+                  style: small?.copyWith(color: Colors.white70, shadows: const [Shadow(blurRadius: 2)])),
             ),
           ),
       ],

@@ -21,6 +21,10 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 
+import '../sdrpp/signal_path/source_handler.dart' show SourceSetting;
+
+export '../sdrpp/signal_path/source_handler.dart' show SourceSetting, ChoiceSetting, SliderSetting, BoolSetting;
+
 /// Demodulator modes. [id] is the SDR++ radio mode id
 /// (decoder_modules/radio/src/radio_interface.h: NFM=0, WFM=1, AM=2, DSB=3,
 /// USB=4, CW=5, LSB=6, RAW=7).
@@ -307,4 +311,24 @@ abstract class RadioController extends ChangeNotifier {
   /// doZoom — see lib/ui/waterfall_math.dart `zoomWindow`/`doZoom`, reusable by
   /// the DSP isolate). Must NOT call [notifyListeners] synchronously.
   void setFftView({required double viewOffset, required double viewBandwidth});
+
+  // ---- Optional extras (default: not supported) -----------------------------
+
+  /// Device-specific settings of the selected source (SDR++ source menu), declarative.
+  List<SourceSetting> get sourceSettings => const <SourceSetting>[];
+
+  /// SourceHandler.applySetting on the selected source.
+  void setSourceSetting(String id, Object value) {}
+
+  /// Options of the current demodulator (e.g. WFM `stereo`), key → value.
+  Map<String, Object?> get demodOptions => const <String, Object?>{};
+
+  /// Demodulator.setOption (e.g. `setDemodOption('stereo', true)`).
+  void setDemodOption(String key, Object value) {}
+
+  /// Runtime statistics for a status line (sample rate, dropped buffers, audio output…).
+  Map<String, Object?> get stats => const <String, Object?>{};
+
+  /// Clears [lastError] (after the UI has shown it).
+  void clearError() {}
 }

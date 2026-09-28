@@ -3,7 +3,7 @@
          installs on emulators / devices without host mode (lib/usb/, UsbSdrPlugin.kt). -->
     <uses-feature android:name="android.hardware.usb.host" android:required="false" />
     <application
-        android:label="sdr_flutter"
+        android:label="SDR Flutter"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

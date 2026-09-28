@@ -1,0 +1,130 @@
+// Source settings sheet + error snackbar + status line (lib/ui/source_settings.dart, main_screen.dart)
+// on a DemoRadioController extended with source settings; and the same extras on the real
+// SdrRadioController (synth source in the DSP isolate).
+//
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:sdr_flutter/main.dart';
+import 'package:sdr_flutter/runtime/sdr_radio_controller.dart';
+import 'package:sdr_flutter/ui/demo_radio_controller.dart';
+import 'package:sdr_flutter/ui/radio_controller.dart';
+import 'package:sdr_flutter/ui/source_settings.dart';
+
+class _SettingsDemo extends DemoRadioController {
+  final applied = <(String, Object)>[];
+  final demod = <String, Object?>{'stereo': false, 'lowPass': true};
+  String? error;
+
+  @override
+  List<SourceSetting> get sourceSettings => const <SourceSetting>[
+        ChoiceSetting('sampleRate', 'Sample Rate', <String>['1.024MHz', '2.4MHz'], 1),
+        SliderSetting('gain', 'Gain 29.7 dB', min: 0, max: 28, step: 1, value: 14),
+        SliderSetting('ppm', 'PPM Correction', min: -1000000, max: 1000000, step: 1, value: 0),
+        BoolSetting('biasT', 'Bias T', false),
+      ];
+
+  @override
+  void setSourceSetting(String id, Object value) => applied.add((id, value));
+
+  @override
+  Map<String, Object?> get demodOptions => demod;
+
+  @override
+  void setDemodOption(String key, Object value) {
+    demod[key] = value;
+    notifyListeners();
+  }
+
+  @override
+  Map<String, Object?> get stats =>
+      const <String, Object?>{'droppedBuffers': 3, 'audioDropped': 0, 'audioOutput': 'mp_audio_stream'};
+
+  @override
+  String? get lastError => error;
+
+  void fail(String e) {
+    error = e;
+    notifyListeners();
+  }
+
+  @override
+  void clearError() {
+    error = null;
+    notifyListeners();
+  }
+}
+
+void main() {
+  testWidgets('settings sheet renders SourceSettings, applies them; snackbar; status line', (tester) async {
+    tester.view.physicalSize = const Size(420, 900);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    final c = _SettingsDemo();
+    await tester.pumpWidget(SdrApp(controller: c));
+    await tester.pump();
+
+    await tester.tap(find.byKey(const ValueKey<String>('sourceSettings')));
+    await tester.pumpAndSettle();
+    expect(find.text('Sample Rate'), findsOneWidget);
+    expect(find.text('Gain 29.7 dB'), findsOneWidget);
+    expect(find.text('PPM Correction'), findsOneWidget);
+    expect(find.text('Bias T'), findsOneWidget);
+    expect(find.text('Stereo'), findsOneWidget);
+    expect(find.textContaining('USB drops 3'), findsOneWidget);
+    expect(find.textContaining('out mp_audio_stream'), findsOneWidget);
+
+    await tester.tap(find.text('Bias T'));
+    await tester.pump();
+    expect(c.applied.last, ('biasT', true));
+
+    await tester.tap(find.byKey(const ValueKey<String>('demod:stereo')));
+    await tester.pump();
+    expect(c.demod['stereo'], isTrue);
+
+    await tester.enterText(find.byType(TextFormField), '52');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pump();
+    expect(c.applied.last, ('ppm', 52));
+
+    // Close the sheet; errors show as a snackbar.
+    Navigator.of(tester.element(find.text('Bias T'))).pop();
+    await tester.pumpAndSettle();
+    c.fail('RTL-SDR device disconnected');
+    await tester.pump();
+    for (int i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 100)); // slide-in
+    }
+    expect(find.byKey(const ValueKey<String>('errorSnack')), findsOneWidget);
+    await tester.tap(find.text('OK'));
+    await tester.pump();
+    expect(c.lastError, isNull);
+
+    // Status line while running.
+    await tester.tap(find.byKey(const ValueKey<String>('playStop')));
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(find.byKey(const ValueKey<String>('statusLine')), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey<String>('playStop')));
+    await tester.pumpAndSettle(const Duration(seconds: 7));
+  });
+
+  test('SdrRadioController exposes source settings, demod options and stats (synth)', () async {
+    final c = createRadioController(audio: 'null');
+    await c.ready;
+    expect(c.selectedDevice, SynthDeviceProvider.device);
+    await c.selectDevice(c.devices.first);
+    await c.start();
+    expect(c.running, isTrue, reason: c.lastError);
+    await Future<void>.delayed(const Duration(milliseconds: 700));
+    expect(c.sourceSettings.map((s) => s.id), contains('sampleRate'));
+    expect(c.demodOptions['stereo'], isA<bool>()); // WFM default mode
+    c.setDemodOption('stereo', true);
+    await Future<void>.delayed(const Duration(milliseconds: 200));
+    expect(c.demodOptions['stereo'], isTrue);
+    expect(c.stats['audioOutput'], 'null');
+    expect(statsLine(c), contains('out null'));
+    await c.stop();
+    c.dispose();
+  });
+}

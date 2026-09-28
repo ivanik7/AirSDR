@@ -150,7 +150,10 @@ class DspEngine {
 
   SourceContext _ctx() => SourceContext(
         core: core,
-        reportError: (m) => _error(m),
+        reportError: (m, {bool fatal = false}) {
+          _error(m, fatal: fatal);
+          if (fatal) scheduleMicrotask(_sourceStopped);
+        },
         configLoad: (k) {
           final v = coreConfig.conf['sources'];
           if (v is Map && v[k] is Map) return Map<String, Object?>.from(v[k] as Map);
@@ -162,6 +165,18 @@ class DspEngine {
           coreConfig.release(true);
         },
       );
+
+  /// The running source stopped itself (device lost): mirror stop() without calling into it.
+  void _sourceStopped() {
+    if (!_running) return;
+    _running = false;
+    _fftWanted = false;
+    _statsTimer?.cancel();
+    _statsTimer = null;
+    core.iqFrontEnd.flushInputBuffer();
+    _sendStats();
+    _sendState();
+  }
 
   void _error(String message, {bool fatal = false}) {
     emit(<String, Object?>{DspMsg.evt: DspEvt.error, 'message': message, 'fatal': fatal});
@@ -195,8 +210,10 @@ class DspEngine {
           _sendState();
         case DspCmd.setGain:
           _withSource((s) => s.controls.setGain(s.handler, (m['value'] as num).toDouble()));
+          _sendState();
         case DspCmd.setAgc:
           _withSource((s) => s.controls.setAgc(s.handler, m['enabled'] as bool));
+          _sendState();
         case DspCmd.sourceSetting:
           _withSource((s) {
             s.handler.applySetting(m['id'] as String, m['value']!);
@@ -415,6 +432,7 @@ class DspEngine {
         'audioWritten': audio.framesWritten,
         'audioDropped': audio.framesDropped,
         'audioOutput': audio.name,
+        ...?_source?.stats?.call(),
       };
 
   void _sendStats() {
@@ -442,6 +460,8 @@ class DspEngine {
       'fftRate': core.iqFrontEnd.fftRate,
       'demodOptions': <String, Object?>{for (final o in radio.selectedDemod?.options ?? const <DemodOption>[]) o.key: o.value},
       'sourceSettings': src == null ? const <Object?>[] : src.handler.settings.map(settingToMap).toList(),
+      'gain': src?.controls.gainOf(src.handler),
+      'agc': src?.controls.agcOf(src.handler),
     };
   }
 

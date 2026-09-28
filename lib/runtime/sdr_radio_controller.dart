@@ -49,6 +49,10 @@ abstract class DeviceProvider {
 
   /// Fires when the device list may have changed (USB attach/detach). Optional.
   Stream<void> get changes => const Stream<void>.empty();
+
+  /// A device that should be selected automatically after the next [listDevices] (USB: the
+  /// dongle that launched the app via USB_DEVICE_ATTACHED, or one just plugged in). Optional.
+  Future<SdrDeviceInfo?> preferredDevice() async => null;
 }
 
 /// The synthetic generator (demo band around 100 MHz, see SynthSource.defaultCarriers).
@@ -139,6 +143,10 @@ class SdrRadioController extends RadioController {
   double _sampleRate = 2400000;
   double _gain = 0;
   bool _agc = false;
+
+  /// The user moved the generic gain/AGC controls since the device was selected. Until then the
+  /// source's own (persisted per-device) gain is kept and reported back through the state.
+  bool _gainTouched = false;
   double _volume = 1.0;
   bool _squelchEnabled = false;
   double _squelchLevel = -50;
@@ -146,6 +154,9 @@ class SdrRadioController extends RadioController {
 
   int _outstanding = 0;
   bool _gotState = false;
+
+  List<SourceSetting> _sourceSettings = const <SourceSetting>[];
+  Map<String, Object?> _demodOptions = const <String, Object?>{};
 
   /// Latest stats / state from the DSP isolate (diagnostics, tests).
   Map<Object?, Object?> lastStats = const <Object?, Object?>{};
@@ -184,9 +195,16 @@ class SdrRadioController extends RadioController {
         if (_outstanding == 0) _applyState(m);
       case DspEvt.stats:
         lastStats = m;
+        _notify();
       case DspEvt.error:
         _lastError = m['message'] as String?;
-        if (m['fatal'] == true) _running = false;
+        if (m['fatal'] == true) {
+          // The source stopped itself (device lost): release it so the next start reopens it.
+          _running = false;
+          final d = _openedDevice;
+          _openedDevice = null;
+          if (d != null) _providerOf(d)?.close(d);
+        }
         _notify();
     }
   }
@@ -206,7 +224,32 @@ class SdrRadioController extends RadioController {
     _bandwidth = (m['bandwidth'] as num).toDouble();
     _squelchEnabled = m['squelchEnabled'] == true;
     _squelchLevel = (m['squelchLevel'] as num).toDouble();
+    final gain = m['gain'];
+    if (gain is num) _gain = gain.toDouble();
+    final agc = m['agc'];
+    if (agc is bool) _agc = agc;
+    final ss = m['sourceSettings'];
+    if (ss is List) {
+      _sourceSettings = List<SourceSetting>.unmodifiable(
+          ss.whereType<Map<Object?, Object?>>().map(settingFromMap).whereType<SourceSetting>());
+    }
+    final dopt = m['demodOptions'];
+    if (dopt is Map) _demodOptions = Map<String, Object?>.unmodifiable(dopt.cast<String, Object?>());
     _notify();
+  }
+
+  /// Inverse of DspEngine.settingToMap.
+  static SourceSetting? settingFromMap(Map<Object?, Object?> m) {
+    final id = m['id'] as String? ?? '';
+    final label = m['label'] as String? ?? id;
+    double d(Object? v) => (v as num?)?.toDouble() ?? 0;
+    return switch (m['type']) {
+      'choice' => ChoiceSetting(id, label, (m['options'] as List? ?? const <Object?>[]).map((e) => '$e').toList(),
+          (m['selected'] as num?)?.toInt() ?? 0),
+      'slider' => SliderSetting(id, label, min: d(m['min']), max: d(m['max']), step: d(m['step']), value: d(m['value'])),
+      'bool' => BoolSetting(id, label, m['value'] == true),
+      _ => null,
+    };
   }
 
   /// Sends a command with ack; state echoes are ignored while commands are in flight, and a
@@ -250,10 +293,13 @@ class SdrRadioController extends RadioController {
     if (_running || device == _device) return;
     _device = device;
     if (!device.sampleRates.contains(_sampleRate) && device.sampleRates.isNotEmpty) {
-      _sampleRate = device.sampleRates[device.sampleRates.length ~/ 2];
+      // Nearest supported rate (keeps the DSP load similar across devices).
+      _sampleRate = device.sampleRates
+          .reduce((a, b) => (a - _sampleRate).abs() <= (b - _sampleRate).abs() ? a : b);
     }
     _gain = _gain.clamp(device.gain.min, device.gain.max).toDouble();
     if (!device.hasAgc) _agc = false;
+    _gainTouched = false;
     _notify();
     try {
       await _openDevice(device);
@@ -261,6 +307,18 @@ class SdrRadioController extends RadioController {
       _lastError = 'Cannot open ${device.name}: $e';
       _notify();
     }
+  }
+
+  /// Selects and opens [device] (permission was granted by the USB_DEVICE_ATTACHED launch), so
+  /// its settings are available before the first start.
+  Future<void> _selectPreferred(SdrDeviceInfo device) async {
+    if (device != _device) return selectDevice(device);
+    try {
+      await _openDevice(device);
+    } catch (e) {
+      _lastError = 'Cannot open ${device.name}: $e';
+    }
+    _notify();
   }
 
   Future<void> _openDevice(SdrDeviceInfo device) async {
@@ -273,12 +331,17 @@ class SdrRadioController extends RadioController {
     final p = _providerOf(device);
     if (p == null) throw StateError('No provider for ${device.id}');
     final sel = await p.open(device);
-    await _cmd(<String, Object?>{DspMsg.cmd: DspCmd.selectSource, 'id': sel.sourceId, 'params': sel.params});
+    try {
+      await _cmd(<String, Object?>{DspMsg.cmd: DspCmd.selectSource, 'id': sel.sourceId, 'params': sel.params});
+    } catch (_) {
+      await p.close(device); // don't leak the USB connection when the source can't be created
+      rethrow;
+    }
     _openedDevice = device;
     if (device.sampleRates.length > 1) {
       await _cmd(<String, Object?>{DspMsg.cmd: DspCmd.setSampleRate, 'hz': _sampleRate});
     }
-    if (device.gain.max > device.gain.min) {
+    if (device.gain.max > device.gain.min && _gainTouched) {
       await _cmd(<String, Object?>{DspMsg.cmd: DspCmd.setGain, 'value': _gain});
       if (device.hasAgc) await _cmd(<String, Object?>{DspMsg.cmd: DspCmd.setAgc, 'enabled': _agc});
     }
@@ -298,11 +361,27 @@ class SdrRadioController extends RadioController {
     if (_device != null && !_devices.contains(_device)) {
       // Device gone (detach).
       if (_running) await stop();
+      final gone = _openedDevice;
       _device = null;
       _openedDevice = null;
+      if (gone != null) await _providerOf(gone)?.close(gone);
     }
     _device ??= _devices.firstOrNull;
     _notify();
+    // Auto-select a device the provider asks for (USB_DEVICE_ATTACHED launch / hot-plug).
+    if (!_running) {
+      for (final p in providers) {
+        SdrDeviceInfo? pref;
+        try {
+          pref = await p.preferredDevice();
+        } catch (_) {}
+        if (pref != null && _devices.contains(pref)) {
+          // Not awaited: refreshDevices also runs inside _init, before [ready] completes.
+          unawaited(_selectPreferred(_devices.firstWhere((d) => d == pref)));
+          break;
+        }
+      }
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -420,6 +499,7 @@ class SdrRadioController extends RadioController {
   @override
   void setGain(double value) {
     _gain = value;
+    _gainTouched = true;
     if (_openedDevice != null) _fire(<String, Object?>{DspMsg.cmd: DspCmd.setGain, 'value': value});
     _notify();
   }
@@ -430,6 +510,7 @@ class SdrRadioController extends RadioController {
   @override
   void setAgc(bool enabled) {
     _agc = enabled;
+    _gainTouched = true;
     if (_openedDevice != null) _fire(<String, Object?>{DspMsg.cmd: DspCmd.setAgc, 'enabled': enabled});
     _notify();
   }
@@ -474,6 +555,43 @@ class SdrRadioController extends RadioController {
 
   @override
   Stream<FftRow> get fftRows => _rows.stream;
+
+  // ---------------------------------------------------------------------------
+  // Source settings / demod options / stats
+  // ---------------------------------------------------------------------------
+
+  @override
+  List<SourceSetting> get sourceSettings => _sourceSettings;
+
+  @override
+  void setSourceSetting(String id, Object value) {
+    if (_openedDevice == null) return;
+    _fire(<String, Object?>{DspMsg.cmd: DspCmd.sourceSetting, 'id': id, 'value': value});
+  }
+
+  @override
+  Map<String, Object?> get demodOptions => _demodOptions;
+
+  @override
+  void setDemodOption(String key, Object value) {
+    _demodOptions = Map<String, Object?>.unmodifiable(<String, Object?>{..._demodOptions, key: value});
+    _fire(<String, Object?>{DspMsg.cmd: DspCmd.demodOption, 'key': key, 'value': value});
+    _notify();
+  }
+
+  @override
+  Map<String, Object?> get stats => <String, Object?>{
+        for (final e in lastStats.entries)
+          if (e.key != DspMsg.evt) '${e.key}': e.value,
+        'sampleRate': _sampleRate,
+      };
+
+  @override
+  void clearError() {
+    if (_lastError == null) return;
+    _lastError = null;
+    _notify();
+  }
 
   @override
   void setFftWidth(int pixels) {
