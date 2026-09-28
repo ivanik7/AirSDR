@@ -71,7 +71,8 @@ class UsbBlock {
   /// Slot index inside the stream's buffer pool (pass back to [BulkInStream.release]).
   final int slot;
 
-  /// Native address of the buffer (Pointer<Uint8>.fromAddress(address)).
+  /// Native address of the buffer (`Pointer<Uint8>.fromAddress(address)`).
+  /// Valid only until [BulkInStream.release] or [BulkInStream.cancel]; `release()` after `cancel()` is a no-op.
   final int address;
 
   /// Number of valid bytes.
