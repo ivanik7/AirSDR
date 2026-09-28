@@ -1,0 +1,30 @@
+CTRL 80 08 0000 0000 len=1 to=1000 ret=1 data=01
+CLAIM_INTERFACE 0
+CTRL c0 3d 0000 0000 len=4 to=100 ret=4 data=00800000
+CTRL 40 06 0000 0000 len=8 to=100 ret=8 data=002d310101000000
+CTRL 40 07 e1c0 00e4 len=0 to=100 ret=0 data=
+CTRL 40 07 2d00 0131 len=0 to=100 ret=0 data=
+CTRL 40 10 0000 0000 len=8 to=100 ret=8 data=6400000000000000
+CTRL 40 17 0001 0000 len=0 to=100 ret=0 data=
+CTRL 40 11 0001 0000 len=0 to=100 ret=0 data=
+CTRL c0 13 0000 0028 len=1 to=100 ret=1 data=01
+CTRL c0 14 0000 003e len=1 to=100 ret=1 data=00
+CTRL 40 01 0001 0000 len=0 to=100 ret=0 data=
+SUBMIT ep=81 len=262144
+SUBMIT ep=81 len=262144
+SUBMIT ep=81 len=262144
+SUBMIT ep=81 len=262144
+CTRL 40 10 0000 0000 len=8 to=100 ret=8 data=6009000000000000
+CTRL 40 07 8d80 005b len=0 to=100 ret=0 data=
+CTRL c0 13 0000 0018 len=1 to=100 ret=1 data=01
+CTRL c0 14 0000 001e len=1 to=100 ret=1 data=01
+CTRL 40 17 0000 0000 len=0 to=100 ret=0 data=
+CTRL 40 11 0000 0000 len=0 to=100 ret=0 data=
+CTRL 40 10 0000 0000 len=8 to=100 ret=8 data=9100000020a10700
+CTRL 40 01 0000 0000 len=0 to=100 ret=0 data=
+CANCEL ep=81
+CANCEL ep=81
+CANCEL ep=81
+CANCEL ep=81
+RELEASE_INTERFACE 0
+CLOSE

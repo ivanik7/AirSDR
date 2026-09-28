@@ -41,6 +41,7 @@ static uint8_t i2c_ptr[256];
 static uint8_t i2c_regs[256][256];
 static uint8_t eeprom[256];
 static unsigned r82xx_reads;
+static unsigned tuner_reads;
 
 void fake_usb_trace(const char *fmt, ...)
 {
@@ -71,6 +72,7 @@ void fake_usb_setup(FILE *out, const struct fake_model *m)
 	memset(i2c_ptr, 0, sizeof(i2c_ptr));
 	memset(i2c_regs, 0, sizeof(i2c_regs));
 	r82xx_reads = 0;
+	tuner_reads = 0;
 	for (i = 0; i < 256; i++)
 		eeprom[i] = (uint8_t)(i * 7 + 3);
 
@@ -158,8 +160,21 @@ static int model_i2c(int in, uint8_t addr, unsigned char *data, uint16_t len)
 		return len;
 	}
 
-	for (i = 0; i < len; i++)
-		data[i] = i2c_regs[addr][(uint8_t)(i2c_ptr[addr] + i)];
+	for (i = 0; i < len; i++) {
+		uint8_t reg = (uint8_t)(i2c_ptr[addr] + i);
+		data[i] = i2c_regs[addr][reg];
+		/* E4000: PLL lock bit in SYNTH1 (except every 5th read) */
+		if (model.tuner == FAKE_TUNER_E4000 && addr == 0xc8 && reg == 0x07)
+			data[i] = (data[i] & 0xfe) |
+				  (model.pll_lock && (tuner_reads++ % 5 != 4));
+		/* FC0012/FC0013: VCO control voltage readback cycles through the
+		 * "too high" / "too low" / "ok" cases of the VCO selection */
+		if ((model.tuner == FAKE_TUNER_FC0012 || model.tuner == FAKE_TUNER_FC0013) &&
+		    addr == 0xc6 && reg == 0x0e) {
+			static const uint8_t vco[3] = { 0x3d, 0x01, 0x20 };
+			data[i] = 0x80 | vco[tuner_reads++ % 3];
+		}
+	}
 	return len;
 }
 
