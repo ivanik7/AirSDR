@@ -24,6 +24,7 @@ class _LegacyAppShellState extends State<LegacyAppShell> {
   late SdrUiState spectrum;
   late FavoritesRepository favorites;
   bool ownFavorites = false;
+  bool radioReady = false;
   int tab = 0;
   @override
   void initState() {
@@ -32,6 +33,7 @@ class _LegacyAppShellState extends State<LegacyAppShell> {
   }
 
   void _init() {
+    radioReady = widget.controller is! SdrRadioController;
     receiver = CenteredReceiver(widget.controller);
     spectrum = SdrUiState(widget.controller);
     favorites = widget.favorites ?? FavoritesRepository();
@@ -41,6 +43,7 @@ class _LegacyAppShellState extends State<LegacyAppShell> {
     if (widget.controller case final SdrRadioController real) {
       real.ready.then((_) {
         if (mounted && identical(widget.controller, real)) {
+          radioReady = true;
           receiver.resetOffset();
         }
       });
@@ -52,6 +55,10 @@ class _LegacyAppShellState extends State<LegacyAppShell> {
   }
 
   void _radioChanged() {
+    if (radioReady && widget.controller.vfoOffset != 0) {
+      receiver.resetOffset();
+      return;
+    }
     if (!widget.controller.running) spectrum.waterfall.clear();
   }
 

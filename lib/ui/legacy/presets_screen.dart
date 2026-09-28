@@ -243,6 +243,7 @@ class _PresetsScreenState extends State<PresetsScreen> {
                         ),
                       ),
                       PopupMenuButton<String>(
+                        key: ValueKey('favoriteMenu-${f.id}'),
                         tooltip: 'Редактировать пресет',
                         onSelected: (action) {
                           if (action == 'edit') edit(f);
