@@ -63,7 +63,7 @@ Float32List runChunked(Processor p, Float32List input, int count, List<int> chun
     int c = chunks[ci++ % chunks.length];
     if (c > count - pos) c = count - pos;
     final inBuf = Float32List.sublistView(input, pos * ist, (pos + c) * ist);
-    final outBuf = Float32List(((c * outFactor).ceil() + 16) * ost + 16);
+    final outBuf = Float32List(((c * math.max(1.0, outFactor)).ceil() + 16) * math.max<int>(ist, ost) + 16);
     final n = p.process(c, Float32List.fromList(inBuf), outBuf);
     res.addAll(Float32List.sublistView(outBuf, 0, n * ost));
     pos += c;
