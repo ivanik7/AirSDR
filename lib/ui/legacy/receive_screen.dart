@@ -212,6 +212,7 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
                               child: CustomPaint(
                                 painter: SpectrumPainter(
                                   state: widget.spectrum,
+                                  plotLineColor: LegacyColors.accent,
                                 ),
                               ),
                             ),
