@@ -15,7 +15,8 @@ import 'package:path_provider/path_provider.dart';
 import 'runtime/device_sources.dart';
 import 'runtime/dsp_engine.dart';
 import 'runtime/sdr_radio_controller.dart';
-import 'ui/main_screen.dart';
+import 'ui/legacy/app_shell.dart';
+import 'ui/legacy/theme.dart';
 import 'ui/radio_controller.dart';
 import 'usb/usb_device_provider.dart';
 
@@ -61,13 +62,8 @@ class SdrApp extends StatelessWidget {
     return MaterialApp(
       title: 'SDR Flutter',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        brightness: Brightness.dark,
-        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF66E5FF), brightness: Brightness.dark),
-        scaffoldBackgroundColor: const Color(0xFF0F0F0F),
-        useMaterial3: true,
-      ),
-      home: MainScreen(controller: controller),
+      theme: legacyTheme(),
+      home: LegacyAppShell(controller: controller),
     );
   }
 }

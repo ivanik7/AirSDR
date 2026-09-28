@@ -1,0 +1,396 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+import 'package:flutter/material.dart';
+
+import '../favorites/favorites.dart';
+import '../radio_controller.dart';
+import '../sdr_ui_state.dart';
+import '../source_settings.dart';
+import '../spectrum_waterfall.dart';
+import 'centered_receiver.dart';
+import 'theme.dart';
+
+class ReceiveScreen extends StatefulWidget {
+  const ReceiveScreen({
+    super.key,
+    required this.controller,
+    required this.receiver,
+    required this.spectrum,
+    required this.favorites,
+  });
+  final RadioController controller;
+  final CenteredReceiver receiver;
+  final SdrUiState spectrum;
+  final FavoritesRepository favorites;
+  @override
+  State<ReceiveScreen> createState() => _ReceiveScreenState();
+}
+
+class _ReceiveScreenState extends State<ReceiveScreen> {
+  String? feedback;
+  void key(String label) {
+    final ok = widget.receiver.pressKey(label);
+    setState(() => feedback = ok ? null : 'Неверная частота');
+  }
+
+  @override
+  Widget build(BuildContext context) => ListenableBuilder(
+    listenable: widget.controller,
+    builder: (context, _) {
+      final r = widget.controller;
+      final f = widget.receiver;
+      final mhz = r.tunedFrequency / 1000000;
+      return ListView(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+        children: [
+          Row(
+            children: [
+              IconButton.filled(
+                key: const ValueKey('legacyPlayStop'),
+                tooltip: r.running ? 'Стоп' : 'Старт',
+                onPressed: () => r.running ? r.stop() : f.start(),
+                icon: Icon(r.running ? Icons.stop : Icons.play_arrow),
+              ),
+              const SizedBox(width: 9),
+              Expanded(
+                child: DropdownButton<SdrDeviceInfo>(
+                  key: const ValueKey('legacyDevice'),
+                  isExpanded: true,
+                  value: r.selectedDevice,
+                  hint: const Text('Нет устройства'),
+                  items: [
+                    for (final d in r.devices)
+                      DropdownMenuItem(
+                        value: d,
+                        child: Text(d.name, overflow: TextOverflow.ellipsis),
+                      ),
+                  ],
+                  onChanged: r.running
+                      ? null
+                      : (d) {
+                          if (d != null) r.selectDevice(d);
+                        },
+                ),
+              ),
+              IconButton(
+                tooltip: 'Обновить USB',
+                onPressed: r.running ? null : r.refreshDevices,
+                icon: const Icon(Icons.refresh),
+              ),
+              IconButton(
+                tooltip: 'Настройки USB',
+                onPressed: () => showSourceSettingsSheet(context, r),
+                icon: const Icon(Icons.tune),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Expanded(
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    f.entry.isEmpty ? mhz.toStringAsFixed(3) : f.entry,
+                    style: plex(
+                      size: 49,
+                      mono: true,
+                      color: f.entry.isEmpty
+                          ? LegacyColors.primary
+                          : LegacyColors.accent,
+                    ),
+                  ),
+                ),
+              ),
+              Text(' MHz', style: plex(size: 14, color: LegacyColors.muted)),
+              IconButton(
+                tooltip: 'Очистить ввод',
+                onPressed: () => key('CLR'),
+                icon: const Icon(Icons.close, size: 17),
+              ),
+              IconButton(
+                tooltip: 'Без звука',
+                onPressed: () => r.setVolume(r.volume == 0 ? 1 : 0),
+                icon: Icon(
+                  r.volume == 0 ? Icons.volume_off : Icons.volume_up,
+                  size: 18,
+                ),
+              ),
+            ],
+          ),
+          Row(
+            children: [
+              Text(
+                '${r.mode.label} · BW ${(r.bandwidth / 1000).toStringAsFixed(1)}k',
+                style: plex(mono: true, size: 12, color: LegacyColors.accent),
+              ),
+              const Spacer(),
+              Text(
+                r.running ? statsLine(r) : 'Нет сигнала · приём остановлен',
+                overflow: TextOverflow.ellipsis,
+                style: plex(mono: true, size: 10, color: LegacyColors.muted),
+              ),
+            ],
+          ),
+          if (r.lastError != null)
+            Text(
+              r.lastError!,
+              style: plex(size: 12, color: LegacyColors.danger),
+            ),
+          const SizedBox(height: 8),
+          SizedBox(
+            height: 36,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              children: [
+                for (final mode in DemodMode.values)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 6),
+                    child: ChoiceChip(
+                      key: ValueKey('legacyMode-${mode.label}'),
+                      selected: mode == r.mode,
+                      label: Text(mode.label, style: plex(size: 11)),
+                      onSelected: (_) {
+                        f.changeMode(mode);
+                        setState(() {});
+                      },
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 10),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(15),
+            child: Container(
+              color: const Color(0xFF0A0C0A),
+              height: 128,
+              child: Stack(
+                children: [
+                  LayoutBuilder(
+                    builder: (context, box) {
+                      final cols =
+                          (box.maxWidth *
+                                  MediaQuery.devicePixelRatioOf(context))
+                              .round()
+                              .clamp(32, 1024);
+                      widget.spectrum.setLayout(columns: cols, historyRows: 64);
+                      return Column(
+                        children: [
+                          SizedBox(
+                            height: 66,
+                            width: box.maxWidth,
+                            child: CustomPaint(
+                              painter: SpectrumPainter(state: widget.spectrum),
+                            ),
+                          ),
+                          SizedBox(
+                            height: 20,
+                            width: box.maxWidth,
+                            child: CustomPaint(
+                              painter: FrequencyScalePainter(
+                                state: widget.spectrum,
+                              ),
+                            ),
+                          ),
+                          SizedBox(
+                            height: 42,
+                            width: box.maxWidth,
+                            child: CustomPaint(
+                              painter: WaterfallPainter(state: widget.spectrum),
+                            ),
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+                  // No stale FFT is represented as a current measurement while stopped.
+                  if (!r.running)
+                    const Positioned.fill(
+                      child: ColoredBox(color: Color(0xB80A0C0A)),
+                    ),
+                  Positioned.fill(
+                    child: IgnorePointer(
+                      child: Center(
+                        child: Container(width: 2, color: LegacyColors.accent),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 9),
+          SizedBox(
+            height: 44,
+            child: Row(
+              children: [
+                _square('◀', const ValueKey('nudgeLeft'), () {
+                  f.nudge(-1);
+                  setState(() {});
+                }),
+                const SizedBox(width: 9),
+                Expanded(
+                  child: GestureDetector(
+                    onHorizontalDragEnd: (d) {
+                      if ((d.primaryVelocity ?? 0).abs() > 30) {
+                        f.nudge(d.primaryVelocity! < 0 ? 1 : -1);
+                        setState(() {});
+                      }
+                    },
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: LegacyColors.card,
+                        borderRadius: BorderRadius.circular(13),
+                      ),
+                      child: CustomPaint(painter: _RulerPainter()),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 9),
+                _square('▶', const ValueKey('nudgeRight'), () {
+                  f.nudge(1);
+                  setState(() {});
+                }),
+              ],
+            ),
+          ),
+          const SizedBox(height: 6),
+          TextButton(
+            onPressed: () => setState(f.cycleStep),
+            child: Text(
+              'ШАГ ${(CenteredReceiver.steps[f.stepIndex] / 1000).toStringAsFixed(2)} кГц',
+              style: plex(size: 11, color: LegacyColors.muted),
+            ),
+          ),
+          Text(
+            'КАНАЛЫ · один текущий',
+            style: plex(size: 12, color: LegacyColors.muted),
+          ),
+          const SizedBox(height: 7),
+          Row(
+            children: [
+              Expanded(
+                child: legacyCard(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        mhz.toStringAsFixed(3),
+                        style: plex(size: 15, mono: true),
+                      ),
+                      Text(
+                        'Текущий · ${r.mode.label}',
+                        style: plex(size: 11, color: LegacyColors.muted),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: legacyCard(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '+ канал · позже',
+                        style: plex(size: 13, color: LegacyColors.muted),
+                      ),
+                      Text(
+                        'Мульти-приём недоступен',
+                        style: plex(size: 10, color: LegacyColors.muted),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 11),
+          for (final row in const [
+            ['1', '2', '3'],
+            ['4', '5', '6'],
+            ['7', '8', '9'],
+            ['.', '0', 'OK'],
+          ]) ...[
+            Row(
+              children: [
+                for (final label in row)
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.only(right: 7, bottom: 7),
+                      child: SizedBox(
+                        height: 48,
+                        child: Material(
+                          color: label == 'OK'
+                              ? LegacyColors.accent
+                              : LegacyColors.key,
+                          borderRadius: BorderRadius.circular(13),
+                          child: InkWell(
+                            key: ValueKey('key-$label'),
+                            onTap: () => key(label),
+                            child: Center(
+                              child: Text(
+                                label,
+                                style: plex(
+                                  mono: true,
+                                  size: 21,
+                                  color: label == 'OK'
+                                      ? LegacyColors.background
+                                      : LegacyColors.primary,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ],
+          if (feedback != null)
+            Text(feedback!, style: plex(color: LegacyColors.danger)),
+        ],
+      );
+    },
+  );
+  Widget _square(String label, Key key, VoidCallback onTap) => SizedBox(
+    width: 44,
+    height: 44,
+    child: Material(
+      color: LegacyColors.key,
+      borderRadius: BorderRadius.circular(13),
+      child: InkWell(
+        key: key,
+        onTap: onTap,
+        child: Center(child: Text(label, style: plex(mono: true, size: 14))),
+      ),
+    ),
+  );
+}
+
+class _RulerPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final p = Paint()
+      ..color = const Color(0xFF23282E)
+      ..strokeWidth = 1;
+    for (double x = 0; x < size.width; x += 12) {
+      canvas.drawLine(Offset(x, 6), Offset(x, size.height - 6), p);
+    }
+    canvas.drawRect(
+      Rect.fromCenter(
+        center: Offset(size.width / 2, size.height / 2),
+        width: 2,
+        height: size.height,
+      ),
+      Paint()..color = LegacyColors.accent,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}

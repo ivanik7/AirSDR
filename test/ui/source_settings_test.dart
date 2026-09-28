@@ -6,6 +6,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:sdr_flutter/ui/main_screen.dart';
 import 'package:sdr_flutter/main.dart';
 import 'package:sdr_flutter/runtime/sdr_radio_controller.dart';
 import 'package:sdr_flutter/ui/demo_radio_controller.dart';
@@ -62,7 +63,7 @@ void main() {
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
     final c = _SettingsDemo();
-    await tester.pumpWidget(SdrApp(controller: c));
+    await tester.pumpWidget(MaterialApp(home: MainScreen(controller: c)));
     await tester.pump();
 
     await tester.tap(find.byKey(const ValueKey<String>('sourceSettings')));

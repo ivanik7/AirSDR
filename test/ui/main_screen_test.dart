@@ -2,7 +2,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:sdr_flutter/main.dart';
+import 'package:sdr_flutter/ui/main_screen.dart';
 import 'package:sdr_flutter/ui/demo_radio_controller.dart';
 import 'package:sdr_flutter/ui/radio_controller.dart';
 import 'package:sdr_flutter/ui/spectrum_waterfall.dart';
@@ -21,7 +21,7 @@ void main() {
       addTearDown(tester.view.reset);
 
       final c = DemoRadioController();
-      await tester.pumpWidget(SdrApp(controller: c));
+      await tester.pumpWidget(MaterialApp(home: MainScreen(controller: c)));
       await tester.pump();
       expect(find.byType(SpectrumWaterfallView), findsOneWidget);
       expect(find.byKey(const ValueKey<String>('modeSelector')), findsOneWidget);
