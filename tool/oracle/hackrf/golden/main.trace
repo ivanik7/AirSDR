@@ -1,0 +1,105 @@
+RESULT init=0
+CTRL 80 08 0000 0000 len=1 to=1000 ret=1 data=00
+SET_CONFIGURATION 1
+CLAIM_INTERFACE 0
+CTRL c0 3d 0000 0000 len=4 to=100 ret=4 data=00800000
+RESULT open=0
+RESULT usb_api_version_read=0
+INFO usb_api_version=0112
+CTRL c0 0e 0000 0000 len=1 to=100 ret=1 data=02
+RESULT board_id_read=0
+INFO board_id=2 name=HackRF One
+CTRL c0 0f 0000 0000 len=255 to=100 ret=14 data=66616b652d323032362e30312e30
+RESULT version_string_read=0
+INFO version=fake-2026.01.0
+CTRL c0 12 0000 0000 len=24 to=100 ret=24 data=3ccb00a0464f5700000000000000000078563412f0debc9a
+RESULT board_partid_serialno_read=0
+INFO part_id=a000cb3c 00574f46 serial=00000000 00000000 12345678 9abcdef0
+CTRL 40 06 0000 0000 len=8 to=100 ret=8 data=80841e0001000000
+CTRL 40 07 b3f0 001a len=0 to=100 ret=0 data=
+RESULT set_sample_rate(413e848000000000)=0
+INFO bw_auto=1750000
+CTRL 40 07 b3f0 001a len=0 to=100 ret=0 data=
+RESULT set_baseband_filter_bandwidth=0
+CTRL 40 06 0000 0000 len=8 to=100 ret=8 data=00127a0001000000
+CTRL 40 07 8d80 005b len=0 to=100 ret=0 data=
+RESULT set_sample_rate(415e848000000000)=0
+INFO bw_auto=8000000
+CTRL 40 07 1200 007a len=0 to=100 ret=0 data=
+RESULT set_baseband_filter_bandwidth=0
+CTRL 40 06 0000 0000 len=8 to=100 ret=8 data=002d310101000000
+CTRL 40 07 e1c0 00e4 len=0 to=100 ret=0 data=
+RESULT set_sample_rate(417312d000000000)=0
+INFO bw_auto=20000000
+CTRL 40 07 2d00 0131 len=0 to=100 ret=0 data=
+RESULT set_baseband_filter_bandwidth=0
+CTRL 40 06 0000 0000 len=8 to=100 ret=8 data=c0789a0001000000
+CTRL 40 07 cfc0 006a len=0 to=100 ret=0 data=
+RESULT set_sample_rate(41634f1800000000)=0
+INFO bw_auto=10000000
+CTRL 40 07 9680 0098 len=0 to=100 ret=0 data=
+RESULT set_baseband_filter_bandwidth=0
+CTRL 40 10 0000 0000 len=8 to=100 ret=8 data=6400000000000000
+RESULT set_freq=0
+CTRL 40 10 0000 0000 len=8 to=100 ret=8 data=b1010000c0090e00
+RESULT set_freq=0
+CTRL 40 10 0000 0000 len=8 to=100 ret=8 data=6009000000000000
+RESULT set_freq=0
+CTRL 40 18 0000 0000 len=24 to=100 ret=24 data=00daf89a0000000000f90295000000000200000000000000
+RESULT set_freq_explicit=0
+CTRL 40 18 0000 0000 len=24 to=100 ret=24 data=800808920000000000000000000000000000000000000000
+RESULT set_freq_explicit_bypass=0
+RESULT set_freq_explicit_bad_if=-2
+RESULT set_freq_explicit_bad_lo=-2
+CTRL c0 13 0000 0010 len=1 to=100 ret=1 data=01
+RESULT set_lna_gain(16)=0
+CTRL c0 14 0000 0014 len=1 to=100 ret=1 data=01
+RESULT set_vga_gain(20)=0
+CTRL c0 13 0000 0020 len=1 to=100 ret=1 data=01
+RESULT set_lna_gain(39)=0
+RESULT set_lna_gain(41)=-2
+CTRL c0 14 0000 0014 len=1 to=100 ret=1 data=01
+RESULT set_vga_gain(21)=0
+CTRL c0 14 0000 003e len=1 to=100 ret=1 data=00
+RESULT set_vga_gain(62)=-2
+RESULT set_vga_gain(63)=-2
+CTRL 40 11 0001 0000 len=0 to=100 ret=0 data=
+RESULT set_amp_enable(1)=0
+CTRL 40 11 0000 0000 len=0 to=100 ret=0 data=
+RESULT set_amp_enable(0)=0
+CTRL 40 17 0001 0000 len=0 to=100 ret=0 data=
+RESULT set_antenna_enable(1)=0
+CTRL 40 17 0000 0000 len=0 to=100 ret=0 data=
+RESULT set_antenna_enable(0)=0
+RESULT is_streaming=-1003
+CTRL 40 01 0001 0000 len=0 to=100 ret=0 data=
+SUBMIT ep=81 len=262144
+SUBMIT ep=81 len=262144
+SUBMIT ep=81 len=262144
+SUBMIT ep=81 len=262144
+RESULT start_rx=0
+RESULT is_streaming=1
+CTRL 40 01 0001 0000 len=0 to=100 ret=0 data=
+RESULT start_rx_again=-6
+CANCEL ep=81
+CANCEL ep=81
+CANCEL ep=81
+CANCEL ep=81
+CTRL 40 01 0000 0000 len=0 to=100 ret=0 data=
+RESULT stop_rx=0
+RESULT is_streaming=-1003
+RESULT stop_rx_again=-9999
+CTRL 40 01 0001 0000 len=0 to=100 ret=0 data=
+SUBMIT ep=81 len=262144
+SUBMIT ep=81 len=262144
+SUBMIT ep=81 len=262144
+SUBMIT ep=81 len=262144
+RESULT start_rx=0
+CTRL 40 01 0000 0000 len=0 to=100 ret=0 data=
+CANCEL ep=81
+CANCEL ep=81
+CANCEL ep=81
+CANCEL ep=81
+RELEASE_INTERFACE 0
+CLOSE
+RESULT close=0

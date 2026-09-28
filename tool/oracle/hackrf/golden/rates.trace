@@ -1,0 +1,139 @@
+RESULT init=0
+INFO bw(0)=1750000 lt=1750000
+INFO bw(1)=1750000 lt=1750000
+INFO bw(1000000)=1750000 lt=1750000
+INFO bw(1749999)=1750000 lt=1750000
+INFO bw(1750000)=1750000 lt=1750000
+INFO bw(1750001)=1750000 lt=1750000
+INFO bw(2499999)=1750000 lt=1750000
+INFO bw(2500000)=2500000 lt=1750000
+INFO bw(3000000)=2500000 lt=2500000
+INFO bw(5500000)=5500000 lt=5000000
+INFO bw(7500000)=7000000 lt=7000000
+INFO bw(9000000)=9000000 lt=8000000
+INFO bw(10000000)=10000000 lt=9000000
+INFO bw(13999999)=12000000 lt=12000000
+INFO bw(15000001)=15000000 lt=15000000
+INFO bw(20000000)=20000000 lt=15000000
+INFO bw(24000000)=24000000 lt=20000000
+INFO bw(27999999)=24000000 lt=24000000
+INFO bw(28000000)=28000000 lt=24000000
+INFO bw(28000001)=0 lt=28000000
+INFO bw(40000000)=0 lt=28000000
+INFO bw(4294967295)=0 lt=28000000
+CTRL 80 08 0000 0000 len=1 to=1000 ret=1 data=01
+CLAIM_INTERFACE 0
+CTRL c0 3d 0000 0000 len=4 to=100 ret=4 data=00800000
+RESULT open=0
+CTRL 40 06 0000 0000 len=8 to=100 ret=8 data=40420f0001000000
+CTRL 40 07 b3f0 001a len=0 to=100 ret=0 data=
+RESULT set_sample_rate(412e848000000000)=0
+CTRL 40 06 0000 0000 len=8 to=100 ret=8 data=80841e0001000000
+CTRL 40 07 b3f0 001a len=0 to=100 ret=0 data=
+RESULT set_sample_rate(413e848000000000)=0
+CTRL 40 06 0000 0000 len=8 to=100 ret=8 data=00401f0001000000
+CTRL 40 07 b3f0 001a len=0 to=100 ret=0 data=
+RESULT set_sample_rate(413f400000000000)=0
+CTRL 40 06 0000 0000 len=8 to=100 ret=8 data=009f240001000000
+CTRL 40 07 b3f0 001a len=0 to=100 ret=0 data=
+RESULT set_sample_rate(41424f8000000000)=0
+CTRL 40 06 0000 0000 len=8 to=100 ret=8 data=00d4300001000000
+CTRL 40 07 b3f0 001a len=0 to=100 ret=0 data=
+RESULT set_sample_rate(41486a0000000000)=0
+CTRL 40 06 0000 0000 len=8 to=100 ret=8 data=00093d0001000000
+CTRL 40 07 25a0 0026 len=0 to=100 ret=0 data=
+RESULT set_sample_rate(414e848000000000)=0
+CTRL 40 06 0000 0000 len=8 to=100 ret=8 data=404b4c0001000000
+CTRL 40 07 67e0 0035 len=0 to=100 ret=0 data=
+RESULT set_sample_rate(415312d000000000)=0
+CTRL 40 06 0000 0000 len=8 to=100 ret=8 data=00127a0001000000
+CTRL 40 07 8d80 005b len=0 to=100 ret=0 data=
+RESULT set_sample_rate(415e848000000000)=0
+CTRL 40 06 0000 0000 len=8 to=100 ret=8 data=8096980001000000
+CTRL 40 07 cfc0 006a len=0 to=100 ret=0 data=
+RESULT set_sample_rate(416312d000000000)=0
+CTRL 40 06 0000 0000 len=8 to=100 ret=8 data=c0789a0001000000
+CTRL 40 07 cfc0 006a len=0 to=100 ret=0 data=
+RESULT set_sample_rate(41634f1800000000)=0
+CTRL 40 06 0000 0000 len=8 to=100 ret=8 data=20bcbe0001000000
+CTRL 40 07 5440 0089 len=0 to=100 ret=0 data=
+RESULT set_sample_rate(4167d78400000000)=0
+CTRL 40 06 0000 0000 len=8 to=100 ret=8 data=0024f40001000000
+CTRL 40 07 1b00 00b7 len=0 to=100 ret=0 data=
+RESULT set_sample_rate(416e848000000000)=0
+CTRL 40 06 0000 0000 len=8 to=100 ret=8 data=002d310101000000
+CTRL 40 07 e1c0 00e4 len=0 to=100 ret=0 data=
+RESULT set_sample_rate(417312d000000000)=0
+CTRL 40 06 0000 0000 len=8 to=100 ret=8 data=00127a0003000000
+CTRL 40 07 b3f0 001a len=0 to=100 ret=0 data=
+RESULT set_sample_rate(4144585555555555)=0
+CTRL 40 06 0000 0000 len=8 to=100 ret=8 data=002d310103000000
+CTRL 40 07 4b40 004c len=0 to=100 ret=0 data=
+RESULT set_sample_rate(41596e6aaaaaaaab)=0
+CTRL 40 06 0000 0000 len=8 to=100 ret=8 data=8096980007000000
+CTRL 40 07 b3f0 001a len=0 to=100 ret=0 data=
+RESULT set_sample_rate(4135cc5b6db6db6e)=0
+CTRL 40 06 0000 0000 len=8 to=100 ret=8 data=88d6120001000000
+CTRL 40 07 b3f0 001a len=0 to=100 ret=0 data=
+RESULT set_sample_rate(4132d687e4189375)=0
+CTRL 40 06 0000 0000 len=8 to=100 ret=8 data=64c5540001000000
+CTRL 40 07 67e0 0035 len=0 to=100 ret=0 data=
+RESULT set_sample_rate(41553158e38d4fdf)=0
+CTRL 40 06 0000 0000 len=8 to=100 ret=8 data=f1ad760001000000
+CTRL 40 07 ec60 0053 len=0 to=100 ret=0 data=
+RESULT set_sample_rate(415dab7c40000000)=0
+CTRL 40 06 0000 0000 len=8 to=100 ret=8 data=002d310101000000
+CTRL 40 07 e1c0 00e4 len=0 to=100 ret=0 data=
+RESULT set_sample_rate(417312cffffbe76d)=0
+CTRL 40 06 0000 0000 len=8 to=100 ret=8 data=2195860002000000
+CTRL 40 07 25a0 0026 len=0 to=100 ret=0 data=
+RESULT set_sample_rate(4150d2a420000000)=0
+CTRL 40 06 0000 0000 len=8 to=100 ret=8 data=4154890003000000
+CTRL 40 07 b3f0 001a len=0 to=100 ret=0 data=
+RESULT set_sample_rate(4146e3602aaaaaab)=0
+CTRL 40 06 0000 0000 len=8 to=100 ret=8 data=01366e0104000000
+CTRL 40 07 67e0 0035 len=0 to=100 ret=0 data=
+RESULT set_sample_rate(4156e36010000000)=0
+CTRL 40 06 0000 0000 len=8 to=100 ret=8 data=814a5d050a000000
+CTRL 40 07 8d80 005b len=0 to=100 ret=0 data=
+RESULT set_sample_rate(41612a8803333333)=0
+INFO error_name(0)=HACKRF_SUCCESS
+INFO error_name(-1)=unknown error code
+INFO error_name(-2)=invalid parameter(s)
+INFO error_name(-3)=unknown error code
+INFO error_name(-4)=unknown error code
+INFO error_name(-5)=HackRF not found
+INFO error_name(-6)=HackRF busy
+INFO error_name(-7)=unknown error code
+INFO error_name(-8)=unknown error code
+INFO error_name(-9)=unknown error code
+INFO error_name(-10)=unknown error code
+INFO error_name(-11)=insufficient memory
+INFO error_name(-12)=unknown error code
+INFO error_name(-13)=unknown error code
+INFO error_name(-14)=unknown error code
+INFO error_name(-15)=unknown error code
+INFO error_name(1)=HACKRF_TRUE
+INFO error_name(-1000)=USB error
+INFO error_name(-1001)=transfer thread error
+INFO error_name(-1002)=streaming thread encountered an error
+INFO error_name(-1003)=streaming stopped
+INFO error_name(-1004)=streaming terminated
+INFO error_name(-1005)=feature not supported by installed firmware
+INFO error_name(-2000)=one or more HackRFs still in use
+INFO error_name(-9999)=unspecified error
+INFO error_name(42)=unknown error code
+INFO board_id_name(0)=Jellybean
+INFO board_id_name(1)=Jawbreaker
+INFO board_id_name(2)=HackRF One
+INFO board_id_name(3)=rad1o
+INFO board_id_name(4)=HackRF One
+INFO board_id_name(5)=HackRF Pro
+INFO board_id_name(6)=unknown
+INFO board_id_name(7)=unknown
+INFO board_id_name(254)=unrecognized
+INFO board_id_name(255)=undetected
+CTRL 40 01 0000 0000 len=0 to=100 ret=0 data=
+RELEASE_INTERFACE 0
+CLOSE
+RESULT close=0

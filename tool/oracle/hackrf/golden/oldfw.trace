@@ -1,0 +1,13 @@
+RESULT init=0
+CTRL 80 08 0000 0000 len=1 to=1000 ret=1 data=01
+CLAIM_INTERFACE 0
+RESULT open=0
+RESULT usb_api_version_read=0
+INFO usb_api_version=0100
+CTRL 40 06 0000 0000 len=8 to=100 ret=8 data=80841e0001000000
+CTRL 40 07 b3f0 001a len=0 to=100 ret=0 data=
+RESULT set_sample_rate(413e848000000000)=0
+CTRL 40 01 0000 0000 len=0 to=100 ret=0 data=
+RELEASE_INTERFACE 0
+CLOSE
+RESULT close=0
