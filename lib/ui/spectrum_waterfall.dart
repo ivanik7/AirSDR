@@ -38,7 +38,6 @@ import 'waterfall_math.dart';
 import 'waterfall_model.dart';
 
 const Color kPlotLines = Color(0xFF66E5FF);
-const Color kPlotShadow = Color(0x3366E5FF); // PlotLines, alpha 0.2
 const Color kFftHold = Color(0xFFFFFF00);
 const Color kGrid = Color(0xFF323232); // IM_COL32(50, 50, 50, 255)
 const Color kVfoRect = Color(0x32FFFFFF); // IM_COL32(255, 255, 255, 50)
@@ -75,10 +74,11 @@ double gridStep(double viewBandwidth, double dataWidth, double labelWidth) {
 
 /// FFT line painter (`WaterFall::drawFFT`).
 class SpectrumPainter extends CustomPainter {
-  SpectrumPainter({required this.state, this.fontSize = 11}) : super(repaint: Listenable.merge([state, state.waterfall]));
+  SpectrumPainter({required this.state, this.fontSize = 11, this.plotLineColor = kPlotLines}) : super(repaint: Listenable.merge([state, state.waterfall]));
 
   final SdrUiState state;
   final double fontSize;
+  final Color plotLineColor;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -142,12 +142,12 @@ class SpectrumPainter extends CustomPainter {
         strip[i * 4 + 2] = x;
         strip[i * 4 + 3] = fftHeight;
       }
-      canvas.drawVertices(ui.Vertices.raw(ui.VertexMode.triangleStrip, strip), BlendMode.srcOver, Paint()..color = kPlotShadow);
+      canvas.drawVertices(ui.Vertices.raw(ui.VertexMode.triangleStrip, strip), BlendMode.srcOver, Paint()..color = plotLineColor.withValues(alpha: 0.2));
       canvas.drawRawPoints(
           ui.PointMode.polygon,
           pts,
           Paint()
-            ..color = kPlotLines
+            ..color = plotLineColor
             ..strokeWidth = 1);
 
       if (wf.fftHold) {
@@ -174,7 +174,7 @@ class SpectrumPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(SpectrumPainter oldDelegate) => oldDelegate.state != state || oldDelegate.fontSize != fontSize;
+  bool shouldRepaint(SpectrumPainter oldDelegate) => oldDelegate.state != state || oldDelegate.fontSize != fontSize || oldDelegate.plotLineColor != plotLineColor;
 }
 
 /// Frequency scale under the spectrum (ticks + printAndScale labels).
