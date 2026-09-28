@@ -117,6 +117,8 @@ void main() {
       late SdrRadioController c;
       final favorites = FavoritesRepository();
       await favorites.load();
+      final clock = Stopwatch()..start();
+      final trace = <String>[];
 
       Future<void> until(bool Function() cond, String what) async {
         final sw = Stopwatch()..start();
@@ -137,7 +139,8 @@ void main() {
           reason:
               'timeout: $what (link=${c.linkState} running=${c.running} '
               'device=${c.selectedDevice?.id} devices=${c.devices.map((d) => d.id).toList()} '
-              'error=${c.lastError} opens=${plugin.opens} closes=${plugin.closes})',
+              'error=${c.lastError} opens=${plugin.opens} closes=${plugin.closes})\n'
+              '${trace.join('\n')}',
         );
       }
 
@@ -163,9 +166,15 @@ void main() {
       // Frames are built only at pump(); the stale window on the phone was between two
       // awaits of the controller. Check the same invariant at every notification too.
       final violations = <String>[];
+      String? lastLine;
       c.addListener(() {
         final d = c.selectedDevice;
         if (d != null && !c.devices.contains(d)) violations.add(d.id);
+        final line =
+            '${c.linkState.name} run=${c.running} dev=${d?.id} err=${c.lastError} '
+            'opens=${plugin.opens.length} closes=${plugin.closes.length}';
+        if (line != lastLine) trace.add('${clock.elapsedMilliseconds} $line');
+        lastLine = line;
       });
       await tester.pumpWidget(
         MaterialApp(
@@ -180,6 +189,7 @@ void main() {
       );
 
       // Cable pulled: ENODEV from the stream, then Android's detach broadcast.
+      trace.add('${clock.elapsedMilliseconds} >> simulateLoss + detach 002');
       c.setSourceSetting('simulateLoss', true);
       await tester.runAsync(
         () => Future<void>.delayed(const Duration(milliseconds: 30)),
@@ -195,6 +205,7 @@ void main() {
       expect(tester.widget<DropdownButton<SdrDeviceInfo>>(dd).value, isNull);
 
       // Re-plugged on a new bus address: resumes by itself.
+      trace.add('${clock.elapsedMilliseconds} >> attach 009');
       plugin.attach(fakeRtlReplugged);
       await until(() => c.running, 're-plug');
       expect(
@@ -205,6 +216,7 @@ void main() {
       expect(tester.takeException(), isNull);
 
       // Detach broadcast before any ENODEV (the other order seen on the phone).
+      trace.add('${clock.elapsedMilliseconds} >> detach 009');
       plugin.detach(fakeRtlReplugged);
       await until(
         () =>
@@ -212,6 +224,7 @@ void main() {
             c.selectedDevice == null,
         'disconnected 2',
       );
+      trace.add('${clock.elapsedMilliseconds} >> attach 002');
       plugin.attach(fakeRtl);
       await until(() => c.running, 're-plug 2');
       expect(violations, isEmpty);

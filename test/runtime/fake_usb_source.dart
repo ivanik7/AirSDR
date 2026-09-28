@@ -5,12 +5,20 @@
 //
 // Used by controller tests (auto-connect, hot re-plug) that drive the real DSP isolate with a
 // mocked Android USB plugin — no usbfs fd is ever touched.
+//
+// Load: the reported sample rate is the real one (2.4 MS/s, settings/restore assertions depend
+// on it), but blocks are pushed at a fixed slow pace ([fakeUsbBlockInterval], ~10 % of real
+// time): several of these isolates run in parallel in the full suite and none of these tests
+// needs real-time DSP load.
 import 'dart:async';
 
 import 'package:sdr_flutter/runtime/device_sources.dart' show usbSourceId;
 import 'package:sdr_flutter/runtime/source_registry.dart';
 import 'package:sdr_flutter/sdrpp/modules/sources/synth_source.dart';
 import 'package:sdr_flutter/sdrpp/signal_path/source_handler.dart';
+
+/// One block (sampleRate / 200 samples) per interval: 50 ms ≈ 10 % of real time.
+const Duration fakeUsbBlockInterval = Duration(milliseconds: 50);
 
 /// Registry hook (top-level: sent to the DSP isolate).
 void registerFakeUsbSources(SourceRegistry r) {
@@ -23,7 +31,7 @@ SourceInstance createFakeUsbSource(
 ) {
   final synth = SourceRegistry.createSynth(<Object?, Object?>{
     'sampleRate': 2400000.0,
-    'pump': 'realTime',
+    'pump': 'manual',
   }, ctx);
   final h = FakeUsbHandler(
     synth.handler as SynthSource,
@@ -46,6 +54,7 @@ class FakeUsbHandler implements SourceHandler {
   final String deviceName;
   double gain = 0;
   bool agc = false;
+  Timer? _pacer;
 
   @override
   void select() => synth.select();
@@ -58,10 +67,17 @@ class FakeUsbHandler implements SourceHandler {
       await Future<void>.delayed(const Duration(milliseconds: 400));
     }
     await synth.start(sink);
+    _pacer?.cancel();
+    _pacer = Timer.periodic(fakeUsbBlockInterval, (_) => synth.pump.pump());
   }
 
   @override
-  Future<void> stop() => synth.stop();
+  Future<void> stop() {
+    _pacer?.cancel();
+    _pacer = null;
+    return synth.stop();
+  }
+
   @override
   void tune(double frequencyHz) => synth.tune(frequencyHz);
 
@@ -73,7 +89,7 @@ class FakeUsbHandler implements SourceHandler {
   @override
   void applySetting(String id, Object value) {
     if (id == 'simulateLoss') {
-      unawaited(synth.stop());
+      unawaited(stop());
       ctx.reportError('Fake USB device disconnected', fatal: true);
     }
   }
