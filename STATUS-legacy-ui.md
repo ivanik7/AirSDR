@@ -1,6 +1,6 @@
 # Legacy UI migration status
 
-Branch/worktree: `wip/legacy-ui` in `~/prj/wt/legacy-ui`.
+Branch/worktree: `wip/legacy-ui` in `~/prj/wt/legacy-ui`. Implementation commit: `25a697ae3ab1fe840b9373fd5b76c64620eea3ef` (prior feature commits: `deb5426`, `bed2681`, `3b96d64`, `4870d7e`).
 
 ## Implemented
 
