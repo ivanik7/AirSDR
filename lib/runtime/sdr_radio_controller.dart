@@ -211,7 +211,9 @@ class SdrRadioController extends RadioController {
 
   void _applyState(Map<Object?, Object?> m) {
     _running = m['running'] == true;
-    _sampleRate = (m['sampleRate'] as num).toDouble();
+    // Before a source is selected, the DSP frontend reports its placeholder 8 MHz rate.
+    // Do not turn that into a device setting (USB would choose its maximum 3.2 MHz).
+    if (m['sourceId'] != null) _sampleRate = (m['sampleRate'] as num).toDouble();
     _centerLocked = m['centerLocked'] == true;
     // The persisted LO is adopted once (first state); afterwards the UI owns it unless the
     // source locks it (file recordings).

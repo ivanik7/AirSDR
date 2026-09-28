@@ -90,6 +90,9 @@ class DspEngine {
     if (core.sigpath.sinkManager.getStream('Radio')!.providerName == 'None') {
       core.sigpath.sinkManager.setStreamSink('Radio', 'Audio');
     }
+    // The radio module starts its stream during construction, before a source runs.
+    // Release Android playback until Start is pressed.
+    core.sigpath.sinkManager.stopStream('Radio');
     radio.stream.bindStream(_audioTapHandler);
     _ready = true;
 
@@ -170,6 +173,7 @@ class DspEngine {
   void _sourceStopped() {
     if (!_running) return;
     _running = false;
+    core.sigpath.sinkManager.stopStream('Radio');
     _fftWanted = false;
     _statsTimer?.cancel();
     _statsTimer = null;
@@ -294,6 +298,7 @@ class DspEngine {
       rethrow;
     }
     core.sigpath.sourceManager.tune(_centerFreq);
+    core.sigpath.sinkManager.startStream('Radio');
     _running = true;
     _fftWanted = true;
     _statsTimer?.cancel();
@@ -308,6 +313,7 @@ class DspEngine {
     _statsTimer?.cancel();
     _statsTimer = null;
     await core.sigpath.sourceManager.stop();
+    core.sigpath.sinkManager.stopStream('Radio');
     core.iqFrontEnd.flushInputBuffer();
     _sendStats();
     _sendState();

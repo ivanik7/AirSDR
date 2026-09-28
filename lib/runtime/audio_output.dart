@@ -189,7 +189,9 @@ class AudioOutputSink extends Sink {
 
   @override
   void stop() {
+    if (!_running) return;
     _running = false;
+    output.close();
   }
 
   @override
