@@ -154,6 +154,20 @@ void main() {
       await expectLater(bad.handler.start(SinkRecorder().call), throwsA(isA<StateError>()));
       expect(c2.errors, isNotEmpty);
     });
+
+    // The device that could not be opened (fd refused / gone before select) must be reported
+    // as such on Start, not as SDR++'s generic "No device selected" that hid the cause.
+    test('open failure at select is the start failure reason', () async {
+      final c2 = _Ctx();
+      final bad = createUsbSourceInstance(_rtlParams, c2.ctx,
+          opener: (_) => throw UsbException(UsbError.noDevice, 'gone'));
+      expect(c2.errors.single.$1, startsWith('Could not open RTL-SDR'));
+      await expectLater(
+        bad.handler.start(SinkRecorder().call),
+        throwsA(isA<StateError>().having((e) => e.message, 'message', startsWith('Could not open RTL-SDR'))),
+      );
+      expect(c2.errors.length, 1, reason: 'no second, misleading "No device selected" error');
+    });
   });
 
   group('HackRF controls', () {

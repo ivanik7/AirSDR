@@ -158,6 +158,26 @@ void main() {
     await sub.cancel();
   });
 
+  // Hot re-plug race (cable bouncing on the phone): the controller's queued refresh listed
+  // the devices just before the attach event; its preferredDevice() call must not consume
+  // the attach, or the refresh queued by that event never auto-connects.
+  test('attach seen before the list contains the device stays pending', () async {
+    devices = <Map<String, Object?>>[_hackrf];
+    final p = provider();
+    final sub = p.changes.listen((_) {});
+    await pumpEventQueue();
+    await p.listDevices();
+    await p.preferredDevice(); // initialDevice (none)
+    devices = <Map<String, Object?>>[_hackrf, _rtl];
+    eventSink!.add(<String, Object?>{'event': 'attached', 'device': _rtl});
+    await pumpEventQueue();
+    expect(await p.preferredDevice(), isNull); // not listed yet
+    await p.listDevices();
+    expect((await p.preferredDevice())?.id, 'usb:/dev/bus/usb/001/002');
+    expect(await p.preferredDevice(), isNull); // consumed once listed
+    await sub.cancel();
+  });
+
   test('without the platform plugin: no devices, no errors', () async {
     final p = UsbDeviceProvider(
         usb: AndroidUsb(methods: const MethodChannel('absent/usb'), events: const EventChannel('absent/ev')),

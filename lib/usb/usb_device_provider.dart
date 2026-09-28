@@ -183,8 +183,10 @@ class UsbDeviceProvider extends DeviceProvider {
   @override
   Future<SdrDeviceInfo?> preferredDevice() async {
     if (!enabled) return null;
+    // The attach event may arrive after the caller's listDevices() (the refresh queued by
+    // that very event runs later): keep it pending until the device is actually listed.
     String? id = _pendingPreferred;
-    _pendingPreferred = null;
+    if (id != null && _known.containsKey(id)) _pendingPreferred = null;
     if (id == null && !_initialChecked) {
       _initialChecked = true;
       try {

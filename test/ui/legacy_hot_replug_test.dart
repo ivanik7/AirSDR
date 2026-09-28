@@ -127,7 +127,14 @@ void main() {
             reason: 'while waiting for $what',
           );
         }
-        expect(cond(), isTrue, reason: 'timeout: $what (link=${c.linkState})');
+        expect(
+          cond(),
+          isTrue,
+          reason:
+              'timeout: $what (link=${c.linkState} running=${c.running} '
+              'device=${c.selectedDevice?.id} devices=${c.devices.map((d) => d.id).toList()} '
+              'error=${c.lastError} opens=${plugin.opens} closes=${plugin.closes})',
+        );
       }
 
       await tester.runAsync(() async {
