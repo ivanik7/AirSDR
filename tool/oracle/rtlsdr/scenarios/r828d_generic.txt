@@ -1,0 +1,18 @@
+# Plain R828D dongle (not a Blog V4): 16 MHz tuner xtal, Cable1/Air-In switch at 345 MHz
+model tuner=r828d manufact=Realtek product=RTL2832U serial=77771111
+open
+get_tuner_type
+get_xtal_freq
+set_sample_rate 2400000
+set_center_freq 100000000
+set_center_freq 345000000
+set_center_freq 345000001
+set_center_freq 500000000
+set_center_freq 200000000
+set_freq_correction 12
+set_tuner_gain_mode 1
+set_tuner_gain 197
+set_tuner_bandwidth 0
+set_direct_sampling 1
+set_direct_sampling 0
+close

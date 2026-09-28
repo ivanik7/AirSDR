@@ -1,0 +1,15 @@
+# No tuner answers: GPIO4 reset probe for FC2580/FC0012, then direct sampling
+model tuner=none manufact= product= serial=
+open
+get_tuner_type
+get_tuner_gains
+get_direct_sampling
+set_sample_rate 2400000
+set_center_freq 7000000
+set_tuner_gain 100
+set_tuner_gain_mode 1
+set_tuner_bandwidth 0
+set_offset_tuning 1
+set_direct_sampling 0
+get_usb_strings
+close

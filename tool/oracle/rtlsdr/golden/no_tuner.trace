@@ -1,0 +1,174 @@
+CLAIM if=0 ret=0
+CTRL rt=40 req=00 val=2000 idx=0110 len=1 to=300 ret=1 data=09
+CTRL rt=40 req=00 val=2000 idx=0110 len=1 to=300 ret=1 data=09
+CTRL rt=40 req=00 val=2158 idx=0110 len=2 to=300 ret=2 data=0002
+CTRL rt=40 req=00 val=2148 idx=0110 len=2 to=300 ret=2 data=1002
+CTRL rt=40 req=00 val=300b idx=0210 len=1 to=300 ret=1 data=22
+CTRL rt=40 req=00 val=3000 idx=0210 len=1 to=300 ret=1 data=e8
+CTRL rt=40 req=00 val=0120 idx=0011 len=1 to=300 ret=1 data=14
+CTRL rt=c0 req=00 val=0120 idx=000a len=1 to=300 ret=1 data=00
+CTRL rt=40 req=00 val=0120 idx=0011 len=1 to=300 ret=1 data=10
+CTRL rt=c0 req=00 val=0120 idx=000a len=1 to=300 ret=1 data=00
+CTRL rt=40 req=00 val=1520 idx=0011 len=1 to=300 ret=1 data=00
+CTRL rt=c0 req=00 val=0120 idx=000a len=1 to=300 ret=1 data=00
+CTRL rt=40 req=00 val=1620 idx=0011 len=2 to=300 ret=2 data=0000
+CTRL rt=c0 req=00 val=0120 idx=000a len=1 to=300 ret=1 data=00
+CTRL rt=40 req=00 val=1620 idx=0011 len=1 to=300 ret=1 data=00
+CTRL rt=c0 req=00 val=0120 idx=000a len=1 to=300 ret=1 data=00
+CTRL rt=40 req=00 val=1720 idx=0011 len=1 to=300 ret=1 data=00
+CTRL rt=c0 req=00 val=0120 idx=000a len=1 to=300 ret=1 data=00
+CTRL rt=40 req=00 val=1820 idx=0011 len=1 to=300 ret=1 data=00
+CTRL rt=c0 req=00 val=0120 idx=000a len=1 to=300 ret=1 data=00
+CTRL rt=40 req=00 val=1920 idx=0011 len=1 to=300 ret=1 data=00
+CTRL rt=c0 req=00 val=0120 idx=000a len=1 to=300 ret=1 data=00
+CTRL rt=40 req=00 val=1a20 idx=0011 len=1 to=300 ret=1 data=00
+CTRL rt=c0 req=00 val=0120 idx=000a len=1 to=300 ret=1 data=00
+CTRL rt=40 req=00 val=1b20 idx=0011 len=1 to=300 ret=1 data=00
+CTRL rt=c0 req=00 val=0120 idx=000a len=1 to=300 ret=1 data=00
+CTRL rt=40 req=00 val=1c20 idx=0011 len=1 to=300 ret=1 data=ca
+CTRL rt=c0 req=00 val=0120 idx=000a len=1 to=300 ret=1 data=00
+CTRL rt=40 req=00 val=1d20 idx=0011 len=1 to=300 ret=1 data=dc
+CTRL rt=c0 req=00 val=0120 idx=000a len=1 to=300 ret=1 data=00
+CTRL rt=40 req=00 val=1e20 idx=0011 len=1 to=300 ret=1 data=d7
+CTRL rt=c0 req=00 val=0120 idx=000a len=1 to=300 ret=1 data=00
+CTRL rt=40 req=00 val=1f20 idx=0011 len=1 to=300 ret=1 data=d8
+CTRL rt=c0 req=00 val=0120 idx=000a len=1 to=300 ret=1 data=00
+CTRL rt=40 req=00 val=2020 idx=0011 len=1 to=300 ret=1 data=e0
+CTRL rt=c0 req=00 val=0120 idx=000a len=1 to=300 ret=1 data=00
+CTRL rt=40 req=00 val=2120 idx=0011 len=1 to=300 ret=1 data=f2
+CTRL rt=c0 req=00 val=0120 idx=000a len=1 to=300 ret=1 data=00
+CTRL rt=40 req=00 val=2220 idx=0011 len=1 to=300 ret=1 data=0e
+CTRL rt=c0 req=00 val=0120 idx=000a len=1 to=300 ret=1 data=00
+CTRL rt=40 req=00 val=2320 idx=0011 len=1 to=300 ret=1 data=35
+CTRL rt=c0 req=00 val=0120 idx=000a len=1 to=300 ret=1 data=00
+CTRL rt=40 req=00 val=2420 idx=0011 len=1 to=300 ret=1 data=06
+CTRL rt=c0 req=00 val=0120 idx=000a len=1 to=300 ret=1 data=00
+CTRL rt=40 req=00 val=2520 idx=0011 len=1 to=300 ret=1 data=50
+CTRL rt=c0 req=00 val=0120 idx=000a len=1 to=300 ret=1 data=00
+CTRL rt=40 req=00 val=2620 idx=0011 len=1 to=300 ret=1 data=9c
+CTRL rt=c0 req=00 val=0120 idx=000a len=1 to=300 ret=1 data=00
+CTRL rt=40 req=00 val=2720 idx=0011 len=1 to=300 ret=1 data=0d
+CTRL rt=c0 req=00 val=0120 idx=000a len=1 to=300 ret=1 data=00
+CTRL rt=40 req=00 val=2820 idx=0011 len=1 to=300 ret=1 data=71
+CTRL rt=c0 req=00 val=0120 idx=000a len=1 to=300 ret=1 data=00
+CTRL rt=40 req=00 val=2920 idx=0011 len=1 to=300 ret=1 data=11
+CTRL rt=c0 req=00 val=0120 idx=000a len=1 to=300 ret=1 data=00
+CTRL rt=40 req=00 val=2a20 idx=0011 len=1 to=300 ret=1 data=14
+CTRL rt=c0 req=00 val=0120 idx=000a len=1 to=300 ret=1 data=00
+CTRL rt=40 req=00 val=2b20 idx=0011 len=1 to=300 ret=1 data=71
+CTRL rt=c0 req=00 val=0120 idx=000a len=1 to=300 ret=1 data=00
+CTRL rt=40 req=00 val=2c20 idx=0011 len=1 to=300 ret=1 data=74
+CTRL rt=c0 req=00 val=0120 idx=000a len=1 to=300 ret=1 data=00
+CTRL rt=40 req=00 val=2d20 idx=0011 len=1 to=300 ret=1 data=19
+CTRL rt=c0 req=00 val=0120 idx=000a len=1 to=300 ret=1 data=00
+CTRL rt=40 req=00 val=2e20 idx=0011 len=1 to=300 ret=1 data=41
+CTRL rt=c0 req=00 val=0120 idx=000a len=1 to=300 ret=1 data=00
+CTRL rt=40 req=00 val=2f20 idx=0011 len=1 to=300 ret=1 data=a5
+CTRL rt=c0 req=00 val=0120 idx=000a len=1 to=300 ret=1 data=00
+CTRL rt=40 req=00 val=1920 idx=0010 len=1 to=300 ret=1 data=05
+CTRL rt=c0 req=00 val=0120 idx=000a len=1 to=300 ret=1 data=00
+CTRL rt=40 req=00 val=9320 idx=0011 len=1 to=300 ret=1 data=f0
+CTRL rt=c0 req=00 val=0120 idx=000a len=1 to=300 ret=1 data=00
+CTRL rt=40 req=00 val=9420 idx=0011 len=1 to=300 ret=1 data=0f
+CTRL rt=c0 req=00 val=0120 idx=000a len=1 to=300 ret=1 data=00
+CTRL rt=40 req=00 val=1120 idx=0011 len=1 to=300 ret=1 data=00
+CTRL rt=c0 req=00 val=0120 idx=000a len=1 to=300 ret=1 data=00
+CTRL rt=40 req=00 val=0420 idx=0011 len=1 to=300 ret=1 data=00
+CTRL rt=c0 req=00 val=0120 idx=000a len=1 to=300 ret=1 data=00
+CTRL rt=40 req=00 val=6120 idx=0010 len=1 to=300 ret=1 data=60
+CTRL rt=c0 req=00 val=0120 idx=000a len=1 to=300 ret=1 data=00
+CTRL rt=40 req=00 val=0620 idx=0010 len=1 to=300 ret=1 data=80
+CTRL rt=c0 req=00 val=0120 idx=000a len=1 to=300 ret=1 data=00
+CTRL rt=40 req=00 val=b120 idx=0011 len=1 to=300 ret=1 data=1b
+CTRL rt=c0 req=00 val=0120 idx=000a len=1 to=300 ret=1 data=00
+CTRL rt=40 req=00 val=0d20 idx=0010 len=1 to=300 ret=1 data=83
+CTRL rt=c0 req=00 val=0120 idx=000a len=1 to=300 ret=1 data=00
+STR idx=1 ret=0 s=
+STR idx=2 ret=0 s=
+CTRL rt=40 req=00 val=0120 idx=0011 len=1 to=300 ret=1 data=18
+CTRL rt=c0 req=00 val=0120 idx=000a len=1 to=300 ret=1 data=00
+CTRL rt=40 req=00 val=00c8 idx=0610 len=1 to=300 ret=-9 data=02
+CTRL rt=c0 req=00 val=00c8 idx=0600 len=1 to=300 ret=-9 data=
+CTRL rt=40 req=00 val=00c6 idx=0610 len=1 to=300 ret=-9 data=00
+CTRL rt=c0 req=00 val=00c6 idx=0600 len=1 to=300 ret=-9 data=
+CTRL rt=40 req=00 val=0034 idx=0610 len=1 to=300 ret=-9 data=00
+CTRL rt=c0 req=00 val=0034 idx=0600 len=1 to=300 ret=-9 data=
+CTRL rt=40 req=00 val=0074 idx=0610 len=1 to=300 ret=-9 data=00
+CTRL rt=c0 req=00 val=0074 idx=0600 len=1 to=300 ret=-9 data=
+CTRL rt=c0 req=00 val=3004 idx=0200 len=1 to=300 ret=1 data=00
+CTRL rt=40 req=00 val=3004 idx=0210 len=1 to=300 ret=1 data=00
+CTRL rt=c0 req=00 val=3003 idx=0200 len=1 to=300 ret=1 data=00
+CTRL rt=40 req=00 val=3003 idx=0210 len=1 to=300 ret=1 data=10
+CTRL rt=c0 req=00 val=3001 idx=0200 len=1 to=300 ret=1 data=00
+CTRL rt=40 req=00 val=3001 idx=0210 len=1 to=300 ret=1 data=10
+CTRL rt=c0 req=00 val=3001 idx=0200 len=1 to=300 ret=1 data=10
+CTRL rt=40 req=00 val=3001 idx=0210 len=1 to=300 ret=1 data=00
+CTRL rt=40 req=00 val=00ac idx=0610 len=1 to=300 ret=-9 data=01
+CTRL rt=c0 req=00 val=00ac idx=0600 len=1 to=300 ret=-9 data=
+CTRL rt=40 req=00 val=00c6 idx=0610 len=1 to=300 ret=-9 data=00
+CTRL rt=c0 req=00 val=00c6 idx=0600 len=1 to=300 ret=-9 data=
+CTRL rt=40 req=00 val=b120 idx=0011 len=1 to=300 ret=1 data=1a
+CTRL rt=c0 req=00 val=0120 idx=000a len=1 to=300 ret=1 data=00
+CTRL rt=40 req=00 val=1520 idx=0011 len=1 to=300 ret=1 data=00
+CTRL rt=c0 req=00 val=0120 idx=000a len=1 to=300 ret=1 data=00
+CTRL rt=40 req=00 val=0820 idx=0010 len=1 to=300 ret=1 data=4d
+CTRL rt=c0 req=00 val=0120 idx=000a len=1 to=300 ret=1 data=00
+CTRL rt=40 req=00 val=0620 idx=0010 len=1 to=300 ret=1 data=80
+CTRL rt=c0 req=00 val=0120 idx=000a len=1 to=300 ret=1 data=00
+CTRL rt=40 req=00 val=1920 idx=0011 len=1 to=300 ret=1 data=00
+CTRL rt=c0 req=00 val=0120 idx=000a len=1 to=300 ret=1 data=00
+CTRL rt=40 req=00 val=1a20 idx=0011 len=1 to=300 ret=1 data=00
+CTRL rt=c0 req=00 val=0120 idx=000a len=1 to=300 ret=1 data=00
+CTRL rt=40 req=00 val=1b20 idx=0011 len=1 to=300 ret=1 data=00
+CTRL rt=c0 req=00 val=0120 idx=000a len=1 to=300 ret=1 data=00
+CTRL rt=40 req=00 val=0120 idx=0011 len=1 to=300 ret=1 data=10
+CTRL rt=c0 req=00 val=0120 idx=000a len=1 to=300 ret=1 data=00
+CALL open -> 0
+CALL get_tuner_type -> 0
+CALL get_tuner_gains -> 1 0
+CALL get_direct_sampling -> 1
+CTRL rt=40 req=00 val=9f20 idx=0011 len=2 to=300 ret=2 data=0300
+CTRL rt=c0 req=00 val=0120 idx=000a len=1 to=300 ret=1 data=00
+CTRL rt=40 req=00 val=a120 idx=0011 len=2 to=300 ret=2 data=0000
+CTRL rt=c0 req=00 val=0120 idx=000a len=1 to=300 ret=1 data=00
+CTRL rt=40 req=00 val=3f20 idx=0011 len=1 to=300 ret=1 data=00
+CTRL rt=c0 req=00 val=0120 idx=000a len=1 to=300 ret=1 data=00
+CTRL rt=40 req=00 val=3e20 idx=0011 len=1 to=300 ret=1 data=00
+CTRL rt=c0 req=00 val=0120 idx=000a len=1 to=300 ret=1 data=00
+CTRL rt=40 req=00 val=0120 idx=0011 len=1 to=300 ret=1 data=14
+CTRL rt=c0 req=00 val=0120 idx=000a len=1 to=300 ret=1 data=00
+CTRL rt=40 req=00 val=0120 idx=0011 len=1 to=300 ret=1 data=10
+CTRL rt=c0 req=00 val=0120 idx=000a len=1 to=300 ret=1 data=00
+CALL set_sample_rate 2400000 -> 0
+CTRL rt=40 req=00 val=1920 idx=0011 len=1 to=300 ret=1 data=30
+CTRL rt=c0 req=00 val=0120 idx=000a len=1 to=300 ret=1 data=00
+CTRL rt=40 req=00 val=1a20 idx=0011 len=1 to=300 ret=1 data=71
+CTRL rt=c0 req=00 val=0120 idx=000a len=1 to=300 ret=1 data=00
+CTRL rt=40 req=00 val=1b20 idx=0011 len=1 to=300 ret=1 data=c8
+CTRL rt=c0 req=00 val=0120 idx=000a len=1 to=300 ret=1 data=00
+CALL set_center_freq 7000000 -> 0
+CALL set_tuner_gain 100 -> 0
+CALL set_tuner_gain_mode 1 -> 0
+CALL set_tuner_bandwidth 0 -> 0
+CALL set_offset_tuning 1 -> -3
+CTRL rt=40 req=00 val=1920 idx=0011 len=1 to=300 ret=1 data=00
+CTRL rt=c0 req=00 val=0120 idx=000a len=1 to=300 ret=1 data=00
+CTRL rt=40 req=00 val=1a20 idx=0011 len=1 to=300 ret=1 data=00
+CTRL rt=c0 req=00 val=0120 idx=000a len=1 to=300 ret=1 data=00
+CTRL rt=40 req=00 val=1b20 idx=0011 len=1 to=300 ret=1 data=00
+CTRL rt=c0 req=00 val=0120 idx=000a len=1 to=300 ret=1 data=00
+CTRL rt=40 req=00 val=0820 idx=0010 len=1 to=300 ret=1 data=cd
+CTRL rt=c0 req=00 val=0120 idx=000a len=1 to=300 ret=1 data=00
+CTRL rt=40 req=00 val=b120 idx=0011 len=1 to=300 ret=1 data=1b
+CTRL rt=c0 req=00 val=0120 idx=000a len=1 to=300 ret=1 data=00
+CTRL rt=40 req=00 val=0620 idx=0010 len=1 to=300 ret=1 data=80
+CTRL rt=c0 req=00 val=0120 idx=000a len=1 to=300 ret=1 data=00
+CALL set_direct_sampling 0 -> -1
+STR idx=1 ret=0 s=
+STR idx=2 ret=0 s=
+STR idx=3 ret=0 s=
+CALL get_usb_strings -> 0 [] [] []
+CTRL rt=40 req=00 val=3000 idx=0210 len=1 to=300 ret=1 data=20
+RELEASE if=0 ret=0
+CLOSE
+CALL close -> 0

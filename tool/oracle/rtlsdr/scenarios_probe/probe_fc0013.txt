@@ -1,0 +1,6 @@
+# probe-only: fc0013 (Dart port has no driver for it yet; prefix compare)
+model tuner=fc0013
+open
+get_tuner_type
+get_tuner_gains
+close
