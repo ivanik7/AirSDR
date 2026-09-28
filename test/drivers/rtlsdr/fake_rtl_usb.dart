@@ -81,6 +81,7 @@ class FakeRtlUsbDevice implements UsbDeviceHandle {
   final List<Uint8List> _i2cRegs = List.generate(256, (_) => Uint8List(256));
   final Uint8List _eeprom = Uint8List(256);
   int _r82xxReads = 0;
+  int _tunerReads = 0;
   bool closed = false;
 
   /// Bulk stream behaviour for readAsync tests.
@@ -176,7 +177,22 @@ class FakeRtlUsbDevice implements UsbDeviceHandle {
     }
 
     for (var i = 0; i < len; i++) {
-      data[i] = _i2cRegs[addr][(_i2cPtr[addr] + i) & 0xff];
+      final reg = (_i2cPtr[addr] + i) & 0xff;
+      data[i] = _i2cRegs[addr][reg];
+      // E4000: PLL lock bit in SYNTH1 (except every 5th read)
+      if (model.tuner == FakeTuner.e4000 && addr == 0xc8 && reg == 0x07) {
+        final lock = model.pllLock != 0 && (_tunerReads++ % 5 != 4);
+        data[i] = (data[i] & 0xfe) | (lock ? 1 : 0);
+      }
+      // FC0012/FC0013: VCO control voltage readback cycles through the
+      // "too high" / "too low" / "ok" cases of the VCO selection
+      if ((model.tuner == FakeTuner.fc0012 ||
+              model.tuner == FakeTuner.fc0013) &&
+          addr == 0xc6 &&
+          reg == 0x0e) {
+        const vco = [0x3d, 0x01, 0x20];
+        data[i] = 0x80 | vco[_tunerReads++ % 3];
+      }
     }
     return len;
   }

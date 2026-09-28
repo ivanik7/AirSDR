@@ -234,6 +234,44 @@ void main() {
     });
   });
 
+  group('USB trace == C oracle: E4000 / FC0012 / FC0013', () {
+    // default config (gain[0]), start, tune 433.92 MHz, tune 1090 MHz
+    // (SDR++ retry loop: E4000 fake PLL unlocks every 5th read -> 2 tries,
+    // FC0012 has no PLL solution at 1090 MHz -> 10 tries), gain slider 3,
+    // tuner AGC on, stop.
+    for (final (tuner, gains, gain3) in [
+      ('e4000', 14, 65),
+      ('fc0012', 5, 179),
+      ('fc0013', 23, -63),
+    ]) {
+      test(tuner, () async {
+        final rig = RtlRig(
+          'tuner=$tuner manufact=Realtek product=RTL2838UHIDIR serial=00000001',
+        );
+        expect(rig.errors, isEmpty);
+        expect(rig.src.gainList.length, gains);
+        final sink = SinkRecorder();
+        await rig.src.start(sink.call);
+        expect(rig.src.running, isTrue);
+        rig.src.tune(433.92e6);
+        expect(rig.src.openDev!.getCenterFreq(), 433920000);
+        rig.src.tune(1090e6);
+        rig.src.applySetting(RtlSdrSettingId.gain, 3);
+        expect(rig.src.gainList[3], gain3);
+        rig.src.applySetting(RtlSdrSettingId.tunerAgc, true);
+        await pumpEventQueue();
+        rig.stream.push(List<int>.filled(512, 200));
+        await pumpEventQueue();
+        expect(sink.counts, [256]);
+        await rig.src.stop();
+        expectSameLines(
+          rig.ctrlTrace,
+          goldenCtrlAsMock(readGolden('rtl_source_$tuner')),
+        );
+      });
+    }
+  });
+
   group('streaming', () {
     test('u8 bulk data -> sink with SDR++ values and counts', () async {
       final rig = RtlRig(_r820t);
@@ -481,11 +519,11 @@ void main() {
       expect(errors, ['No device selected']);
     });
 
-    test('unported tuner (E4000) is reported, start refuses', () async {
+    test('unported tuner (FC2580) is reported, start refuses', () async {
       final rig = RtlRig(
-        'tuner=e4000 manufact=Realtek product=RTL2838UHIDIR serial=1',
+        'tuner=fc2580 manufact=Realtek product=RTL2838UHIDIR serial=1',
       );
-      expect(rig.errors.single.$1, contains('E4000'));
+      expect(rig.errors.single.$1, contains('FC2580'));
       await rig.src.start(SinkRecorder().call);
       expect(rig.src.running, isFalse);
       expect(rig.handles.last.isClosed, isTrue);

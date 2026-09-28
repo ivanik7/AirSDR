@@ -1,6 +1,0 @@
-# probe-only: e4000 (Dart port has no driver for it yet; prefix compare)
-model tuner=e4000
-open
-get_tuner_type
-get_tuner_gains
-close

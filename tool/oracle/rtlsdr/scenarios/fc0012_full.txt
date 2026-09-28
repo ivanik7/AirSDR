@@ -1,0 +1,89 @@
+# Broad API coverage on a fc0012 dongle (Dart tuner port vs C tuner driver)
+model tuner=fc0012 manufact=Realtek product=RTL2838UHIDIR serial=00000001
+open
+get_tuner_type
+get_tuner_gains
+set_sample_rate 2048000
+set_center_freq 20000000
+set_center_freq 24000000
+set_center_freq 37083999
+set_center_freq 37084000
+set_center_freq 52000000
+set_center_freq 55625000
+set_center_freq 72399999
+set_center_freq 74167000
+set_center_freq 81200000
+set_center_freq 88500000
+set_center_freq 108300000
+set_center_freq 111250000
+set_center_freq 145000000
+set_center_freq 148334000
+set_center_freq 162500000
+set_center_freq 216600000
+set_center_freq 222500000
+set_center_freq 296667000
+set_center_freq 300000000
+set_center_freq 325000000
+set_center_freq 349999999
+set_center_freq 350000000
+set_center_freq 431999999
+set_center_freq 433920000
+set_center_freq 445000000
+set_center_freq 593334000
+set_center_freq 667000000
+set_center_freq 862000000
+set_center_freq 868000000
+set_center_freq 950000000
+set_center_freq 1090000000
+set_center_freq 1135000000
+set_center_freq 1199999999
+set_center_freq 1300000000
+set_center_freq 1575420000
+set_center_freq 1700000000
+set_center_freq 1766000000
+set_center_freq 2200000000
+set_center_freq 3000000000
+get_center_freq
+set_center_freq 100000000
+set_freq_correction 57
+set_freq_correction -33
+set_freq_correction 0
+set_tuner_gain_mode 1
+set_tuner_gain -99
+set_tuner_gain -41
+set_tuner_gain -40
+set_tuner_gain 0
+set_tuner_gain 71
+set_tuner_gain 100
+set_tuner_gain 179
+set_tuner_gain 191
+set_tuner_gain 192
+set_tuner_gain 300
+set_tuner_gain_mode 0
+set_tuner_if_gain 1 60
+set_tuner_if_gain 1 -30
+set_tuner_if_gain 2 90
+set_tuner_if_gain 4 20
+set_tuner_if_gain 5 150
+set_tuner_if_gain 6 70
+set_tuner_bandwidth 8000000
+set_tuner_bandwidth 2500000
+set_tuner_bandwidth 1000000
+set_tuner_bandwidth 0
+set_agc_mode 1
+set_agc_mode 0
+set_bias_tee 1
+set_bias_tee 0
+set_direct_sampling 2
+set_center_freq 14200000
+set_direct_sampling 0
+get_center_freq
+set_offset_tuning 1
+set_center_freq 433920000
+set_offset_tuning 0
+set_xtal_freq 28800100 0
+set_xtal_freq 28800000 28799000
+set_center_freq 145000000
+reset_buffer
+read_sync 16384
+close

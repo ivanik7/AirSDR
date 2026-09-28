@@ -144,16 +144,25 @@ void main() {
     expect(closed, isTrue);
   });
 
-  test('unported tuners are probed and reported as unsupported', () {
+  test('unported tuner (FC2580) is probed and reported as unsupported', () {
     final logs = <String>[];
     rtlsdrLog = logs.add;
     final dev =
-        RtlSdrDev.open(FakeRtlUsbDevice(FakeModel()..tuner = FakeTuner.e4000))
+        RtlSdrDev.open(FakeRtlUsbDevice(FakeModel()..tuner = FakeTuner.fc2580))
             .dev!;
     rtlsdrLog = (_) {};
-    expect(dev.getTunerType(), RtlSdrTuner.e4000);
+    expect(dev.getTunerType(), RtlSdrTuner.fc2580);
     expect(logs.any((l) => l.contains('unsupported tuner')), isTrue);
     expect(dev.setCenterFreq(100000000), -1); // no set_freq in iface
     expect(dev.getCenterFreq(), 0);
+  });
+
+  test('E4000 / FC0012 / FC0013 have a tuner driver', () {
+    for (final t in [FakeTuner.e4000, FakeTuner.fc0012, FakeTuner.fc0013]) {
+      final dev = RtlSdrDev.open(FakeRtlUsbDevice(FakeModel()..tuner = t)).dev!;
+      expect(dev.tuner!.setFreq, isNotNull, reason: '$t');
+      expect(dev.setCenterFreq(433920000), 0, reason: '$t');
+      expect(dev.getCenterFreq(), 433920000, reason: '$t');
+    }
   });
 }

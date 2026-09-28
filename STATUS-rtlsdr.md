@@ -50,23 +50,24 @@ This is a Dart port of librtlsdr: the RTL2832U core plus the R820T/R828D tuners,
   - `blog_v4l`
   - `r820t_nolock`: PLL never locks, plus the first USB write fails, which exercises the reset path.
   - `no_tuner`: GPIO4 reset probe, falling back to direct sampling.
-- **`oracle_trace_test.dart` — probe prefix-diff.** For 4 scenarios (e4000, fc0012, fc0013, fc2580) the open/probe sequence matches C up to the tuner init call, and the reported tuner type and gain table are identical.
+- **`oracle_trace_test.dart` — E4000 / FC0012 / FC0013 (added by worker `devices`).** `e4000_full`, `fc0012_full`, `fc0013_full`: tuners ported (`tuner_e4k.dart`, `tuner_fc0012.dart`, `tuner_fc0013.dart`), full trace-diff over 39 frequencies (every divider/band/filter boundary, out-of-range), every gain table entry plus invalid gains, IF gains, bandwidths, AGC, direct sampling, offset tuning, xtal/ppm change, read_sync. The fake models the E4000 PLL-lock bit (unlocked every 5th SYNTH1 read) and the FC001x VCO voltage readback (cycles the too-high / too-low / ok VCO re-selection paths).
+- **`oracle_trace_test.dart` — probe prefix-diff.** For fc2580 the open/probe sequence matches C up to the tuner init call, and the reported tuner type and gain table are identical.
 - **`tuner_r82xx_test.dart`:** bitrev, init chunking, bandwidth→IF, gain index accumulation, shadow write suppression, no-lock handling, V4 band/GPIO switching, R828D input switch, standby.
 - **`librtlsdr_test.dart`:**
   - open/probe, and claim failure (closes the handle);
   - sample-rate validation, ppm/xtal, `readSync`;
   - `readAsync`: delivery, release, cancel, the -2 "already running" result, buf_num/buf_len handling, device loss → -1;
   - close waits for async;
-  - unported tuner → "unsupported tuner".
+  - unported tuner (FC2580) → "unsupported tuner"; E4000/FC0012/FC0013 tune.
 - **To regenerate the golden traces:** `tool/oracle/rtlsdr/build.sh` (needs gcc only; no libusb headers required).
 
 ## Bug found by the oracle
 `r82xx_init_array` is declared `[NUM_REGS]` (30) with only 27 initialisers. C therefore writes 30 bytes (0x05..0x22), the last three being 0. The first Dart version wrote 27 bytes; this is now fixed and documented in the code.
 
 ## Not done / next
-1. **E4000, FC0012, FC0013 and FC2580 tuner drivers are not ported.**
-   - They are probed exactly like C (the GPIO4 reset and the GPIO6 output setup for FC0012 happen) and `tunerType` is set, but their `tuners[]` entries are empty. `open()` logs "…is not supported by the Dart port (unsupported tuner)", and `setCenterFreq` returns -1.
-   - Sources: `tuner_e4k.c` (1000 lines), `tuner_fc0012.c`, `tuner_fc0013.c`, `tuner_fc2580.c`. The oracle already builds and links them; to verify a port, add scenarios to `scenarios/` and move the probe scenarios there.
+1. **The FC2580 tuner driver is not ported** (E4000/FC0012/FC0013 were ported by worker `devices`, see above).
+   - It is probed exactly like C and `tunerType` is set, but its `tuners[]` entry is empty. `open()` logs "…is not supported by the Dart port (unsupported tuner)", and `setCenterFreq` returns -1.
+   - Source: `tuner_fc2580.c`. To verify a port, add a scenario to `scenarios/` and drop `scenarios_probe/probe_fc2580.txt`.
 2. **Enumeration is not ported:** `rtlsdr_get_device_count/name/usb_strings/index_by_serial`. Enumeration belongs to the Android plugin; `knownDevices` and `findKnownDevice` are exported for the VID:PID filter.
 3. **`readAsync` has only been tested against the fake `BulkInStream`.** It needs an integration run with the real `usbfs_transport` from worker `usb`.
 4. **Kernel-driver detach** (`DETACH_KERNEL_DRIVER`) is omitted because it does not apply on Android.

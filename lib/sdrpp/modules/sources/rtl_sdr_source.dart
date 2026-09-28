@@ -316,7 +316,7 @@ class RtlSdrSourceModule implements UsbSourceModule {
 
     if (dev.tuner?.setFreq == null && dev.tunerType != RtlSdrTuner.unknown) {
       final t = RtlSdrTuner.names[dev.tunerType];
-      SourceLog.error('RTL-SDR tuner $t is not supported by the Dart driver');
+      SourceLog.error('RTL-SDR tuner $t is not supported by the Dart driver (FC2580)');
       onError?.call(
         'RTL-SDR tuner $t is not supported yet',
         dev.tunerType,
@@ -447,7 +447,7 @@ class RtlSdrSourceModule implements UsbSourceModule {
       // Dart: tuner driver not ported (librtlsdr would drive it)
       final t = RtlSdrTuner.names[dev.tunerType];
       unawaited(dev.close());
-      SourceLog.error('RTL-SDR tuner $t is not supported by the Dart driver');
+      SourceLog.error('RTL-SDR tuner $t is not supported by the Dart driver (FC2580)');
       onError?.call(
         'RTL-SDR tuner $t is not supported yet',
         dev.tunerType,

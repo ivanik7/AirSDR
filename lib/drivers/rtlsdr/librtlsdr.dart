@@ -38,9 +38,17 @@ import 'dart:typed_data';
 import '../../usb/usb_transport.dart';
 import 'rtl_sdr.dart';
 import 'rtlsdr_i2c.dart';
+import 'tuner_e4k.dart';
+import 'tuner_fc0012.dart';
+import 'tuner_fc0013.dart';
 import 'tuner_r82xx.dart';
 
 export 'rtl_sdr.dart';
+export 'tuner_e4k.dart' show e4kI2cAddr, e4kCheckAddr, e4kCheckVal;
+export 'tuner_fc0012.dart'
+    show fc0012I2cAddr, fc0012CheckAddr, fc0012CheckVal;
+export 'tuner_fc0013.dart'
+    show fc0013I2cAddr, fc0013CheckAddr, fc0013CheckVal;
 
 /// rtlsdr_read_async_cb_t. [block] is valid only during the callback: the
 /// slot is released (resubmitted) when the callback returns, exactly like
@@ -96,8 +104,67 @@ const List<int> firDefault = [
 ];
 
 // ---- generic tuner interface functions (librtlsdr.c:129-298) ----
-// E4000 / FC0012 / FC0013 / FC2580 drivers are not ported yet (see
-// STATUS-rtlsdr.md): they are probed and reported, but get an empty interface.
+// The FC2580 driver is not ported yet (see STATUS-rtlsdr.md): it is probed
+// and reported, but gets an empty interface.
+
+int _e4000Init(RtlSdrDev devt) {
+  devt.e4kS.i2cAddr = e4kI2cAddr;
+  devt.e4kS.vco.fosc = devt.getXtalFreq().tunerFreq;
+  devt.e4kS.rtlDev = devt;
+  return devt.e4kS.e4kInit();
+}
+
+int _e4000Exit(RtlSdrDev devt) => devt.e4kS.e4kStandby(1);
+
+int _e4000SetFreq(RtlSdrDev devt, int freq) => devt.e4kS.e4kTuneFreq(freq);
+
+int _e4000SetBw(RtlSdrDev devt, int bw) {
+  int r = 0;
+
+  r |= devt.e4kS.e4kIfFilterBwSet(E4kIfFilter.mix, bw);
+  r |= devt.e4kS.e4kIfFilterBwSet(E4kIfFilter.rc, bw);
+  r |= devt.e4kS.e4kIfFilterBwSet(E4kIfFilter.chan, bw);
+
+  return r;
+}
+
+int _e4000SetGain(RtlSdrDev devt, int gain) {
+  final mixgain = (gain > 340) ? 12 : 4;
+  // #if 0: enhgain = gain - 420 (enhanced mixer gain seems to have no effect)
+  final lna = gain - mixgain * 10;
+  if (devt.e4kS.e4kSetLnaGain(lna < 300 ? lna : 300) == -22) return -1;
+  if (devt.e4kS.e4kMixerGainSet(mixgain) == -22) return -1;
+  return 0;
+}
+
+int _e4000SetIfGain(RtlSdrDev devt, int stage, int gain) =>
+    // (uint8_t)stage, (int8_t)(gain / 10) with C truncating division
+    devt.e4kS.e4kIfGainSet(stage & 0xff, (gain ~/ 10).toSigned(8));
+
+int _e4000SetGainMode(RtlSdrDev devt, int manual) =>
+    devt.e4kS.e4kEnableManualGain(manual & 0xff);
+
+int _fc0012Init(RtlSdrDev dev) => fc0012Init(dev);
+int _fc0012Exit(RtlSdrDev dev) => 0;
+int _fc0012SetFreq(RtlSdrDev dev, int freq) {
+  // select V-band/U-band filter
+  dev.setGpioBit(6, ((freq & 0xffffffff) > 300000000) ? 1 : 0);
+  return fc0012SetParams(dev, freq, 6000000);
+}
+
+int _fc0012SetBw(RtlSdrDev dev, int bw) => 0;
+int _fc0012SetGain(RtlSdrDev dev, int gain) => fc0012SetGain(dev, gain);
+int _fc0012SetGainMode(RtlSdrDev dev, int manual) => 0;
+
+int _fc0013Init(RtlSdrDev dev) => fc0013Init(dev);
+int _fc0013Exit(RtlSdrDev dev) => 0;
+int _fc0013SetFreq(RtlSdrDev dev, int freq) =>
+    fc0013SetParams(dev, freq, 6000000);
+int _fc0013SetBw(RtlSdrDev dev, int bw) => 0;
+int _fc0013SetGain(RtlSdrDev dev, int gain) => fc0013SetLnaGain(dev, gain);
+// C: tuners[] uses fc0013_set_gain_mode from tuner_fc0013.c
+int _fc0013SetGainMode(RtlSdrDev dev, int manual) =>
+    fc0013SetGainMode(dev, manual);
 
 int _r820tInit(RtlSdrDev devt) {
   devt.r82xxP.rtlDev = devt;
@@ -142,9 +209,31 @@ int _r820tSetGainMode(RtlSdrDev devt, int manual) =>
 /// definition order must match enum rtlsdr_tuner
 const List<RtlSdrTunerIface> tuners = [
   RtlSdrTunerIface(), // dummy for unknown tuners
-  RtlSdrTunerIface(), // E4000: not ported
-  RtlSdrTunerIface(), // FC0012: not ported
-  RtlSdrTunerIface(), // FC0013: not ported
+  RtlSdrTunerIface(
+    init: _e4000Init,
+    exit: _e4000Exit,
+    setFreq: _e4000SetFreq,
+    setBw: _e4000SetBw,
+    setGain: _e4000SetGain,
+    setIfGain: _e4000SetIfGain,
+    setGainMode: _e4000SetGainMode,
+  ),
+  RtlSdrTunerIface(
+    init: _fc0012Init,
+    exit: _fc0012Exit,
+    setFreq: _fc0012SetFreq,
+    setBw: _fc0012SetBw,
+    setGain: _fc0012SetGain,
+    setGainMode: _fc0012SetGainMode,
+  ),
+  RtlSdrTunerIface(
+    init: _fc0013Init,
+    exit: _fc0013Exit,
+    setFreq: _fc0013SetFreq,
+    setBw: _fc0013SetBw,
+    setGain: _fc0013SetGain,
+    setGainMode: _fc0013SetGainMode,
+  ),
   RtlSdrTunerIface(), // FC2580: not ported
   RtlSdrTunerIface(
     init: _r820tInit,
@@ -282,15 +371,8 @@ abstract final class Blocks {
 }
 
 // Tuner probe constants (include/tuner_*.h)
-const int e4kI2cAddr = 0xc8; // E4K_I2C_ADDR
-const int e4kCheckAddr = 0x02; // E4K_CHECK_ADDR
-const int e4kCheckVal = 0x40; // E4K_CHECK_VAL
-const int fc0012I2cAddr = 0xc6; // FC0012_I2C_ADDR
-const int fc0012CheckAddr = 0x00; // FC0012_CHECK_ADDR
-const int fc0012CheckVal = 0xa1; // FC0012_CHECK_VAL
-const int fc0013I2cAddr = 0xc6; // FC0013_I2C_ADDR
-const int fc0013CheckAddr = 0x00; // FC0013_CHECK_ADDR
-const int fc0013CheckVal = 0xa3; // FC0013_CHECK_VAL
+// E4K_* / FC0012_* / FC0013_*: tuner_e4k.dart, tuner_fc0012.dart,
+// tuner_fc0013.dart (re-exported above)
 const int fc2580I2cAddr = 0xac; // FC2580_I2C_ADDR
 const int fc2580CheckAddr = 0x01; // FC2580_CHECK_ADDR
 const int fc2580CheckVal = 0x56; // FC2580_CHECK_VAL
@@ -323,7 +405,7 @@ class RtlSdrDev implements RtlSdrI2c {
   int offsFreq = 0; // Hz
   int corr = 0; // ppm
   int gain = 0; // tenth dB
-  // struct e4k_state e4k_s: not ported
+  final E4kState e4kS = E4kState(); // struct e4k_state e4k_s
   final R82xxConfig r82xxC = R82xxConfig();
   late final R82xxPriv r82xxP = R82xxPriv(r82xxC, this);
   // status
@@ -674,6 +756,7 @@ class RtlSdrDev implements RtlSdrI2c {
       }
 
       // read corrected clock value into e4k and r82xx structure
+      e4kS.vco.fosc = getXtalFreq().tunerFreq;
       r82xxC.xtal = getXtalFreq().tunerFreq;
 
       // update xtal-dependent settings
@@ -802,6 +885,7 @@ class RtlSdrDev implements RtlSdrI2c {
     r |= setSampleFreqCorrection(ppm);
 
     // read corrected clock value into e4k and r82xx structure
+    e4kS.vco.fosc = getXtalFreq().tunerFreq;
     r82xxC.xtal = getXtalFreq().tunerFreq;
 
     if (freq != 0) {
@@ -1229,9 +1313,6 @@ class RtlSdrDev implements RtlSdrI2c {
       case RtlSdrTuner.unknown:
         rtlsdrLog('No supported tuner found');
         dev.setDirectSampling(1);
-      case RtlSdrTuner.e4000:
-      case RtlSdrTuner.fc0012:
-      case RtlSdrTuner.fc0013:
       case RtlSdrTuner.fc2580:
         // Dart port: driver for this tuner not ported yet
         rtlsdrLog('Tuner ${RtlSdrTuner.names[dev.tunerType]} is not '
