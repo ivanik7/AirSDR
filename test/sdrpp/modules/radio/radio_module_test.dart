@@ -6,7 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sdr_flutter/sdrpp/modules/radio/radio_module.dart';
 import 'package:sdr_flutter/sdrpp/modules/sources/synth_source.dart';
 
-import 'harness.dart';
+import '../../signal_path/harness.dart';
 
 void main() {
   const center = 100e6;
