@@ -1,0 +1,6 @@
+# probe-only: fc2580 (Dart port has no driver for it yet; prefix compare)
+model tuner=fc2580
+open
+get_tuner_type
+get_tuner_gains
+close

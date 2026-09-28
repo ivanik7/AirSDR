@@ -21,7 +21,7 @@ gcc -std=gnu99 -O0 -g -w \
   -lm -o "$OUT/rtlsdr_oracle"
 
 mkdir -p "$HERE/golden"
-for s in "$HERE"/scenarios/*.txt; do
+for s in "$HERE"/scenarios/*.txt "$HERE"/scenarios_probe/*.txt; do
   name="$(basename "$s" .txt)"
   "$OUT/rtlsdr_oracle" "$s" "$HERE/golden/$name.trace" 2>/dev/null
   echo "golden/$name.trace: $(wc -l < "$HERE/golden/$name.trace") lines"
