@@ -1,0 +1,10 @@
+# RTL-SDR Blog V4 Lite (R820T probe path, product "Blog V4L")
+model tuner=r820t manufact=RTLSDRBlog product=Blog_V4L serial=00000002
+open
+set_sample_rate 1024000
+set_center_freq 100000000
+set_center_freq 7000000
+set_center_freq 28800000
+set_center_freq 433000000
+set_center_freq 3500000
+close

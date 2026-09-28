@@ -1,0 +1,102 @@
+# Broad API coverage on a generic R820T dongle
+model tuner=r820t manufact=Realtek product=RTL2838UHIDIR serial=00000001
+open
+get_usb_strings
+get_xtal_freq
+set_sample_rate 225000
+set_sample_rate 250000
+set_sample_rate 300001
+set_sample_rate 1024000
+set_sample_rate 3200001
+set_sample_rate 1800000
+set_sample_rate 3200000
+set_sample_rate 2048000
+set_center_freq 24000000
+set_center_freq 52000000
+set_center_freq 88500000
+set_center_freq 145000000
+set_center_freq 433920000
+set_center_freq 868000000
+set_center_freq 1090000000
+set_center_freq 1700000000
+set_center_freq 1766000000
+get_center_freq
+set_center_freq 100000000
+set_freq_correction 57
+get_freq_correction
+get_xtal_freq
+set_freq_correction -33
+set_freq_correction -33
+set_freq_correction 0
+set_tuner_gain_mode 1
+set_tuner_gain 0
+set_tuner_gain 9
+set_tuner_gain 14
+set_tuner_gain 27
+set_tuner_gain 37
+set_tuner_gain 77
+set_tuner_gain 87
+set_tuner_gain 125
+set_tuner_gain 144
+set_tuner_gain 157
+set_tuner_gain 166
+set_tuner_gain 197
+set_tuner_gain 207
+set_tuner_gain 229
+set_tuner_gain 254
+set_tuner_gain 280
+set_tuner_gain 297
+set_tuner_gain 328
+set_tuner_gain 338
+set_tuner_gain 364
+set_tuner_gain 372
+set_tuner_gain 386
+set_tuner_gain 402
+set_tuner_gain 421
+set_tuner_gain 434
+set_tuner_gain 439
+set_tuner_gain 445
+set_tuner_gain 480
+set_tuner_gain 496
+set_tuner_gain 600
+set_tuner_gain -10
+set_tuner_gain_mode 0
+set_tuner_if_gain 1 30
+set_tuner_bandwidth 8000000
+set_tuner_bandwidth 6500000
+set_tuner_bandwidth 2500000
+set_tuner_bandwidth 2200000
+set_tuner_bandwidth 1900000
+set_tuner_bandwidth 1000000
+set_tuner_bandwidth 300000
+set_tuner_bandwidth 0
+set_agc_mode 1
+set_agc_mode 0
+set_testmode 1
+set_testmode 0
+set_bias_tee 1
+set_bias_tee 0
+set_bias_tee_gpio 3 1
+set_direct_sampling 1
+get_direct_sampling
+set_center_freq 7100000
+get_center_freq
+set_direct_sampling 2
+set_center_freq 14200000
+set_direct_sampling 0
+get_direct_sampling
+get_center_freq
+set_offset_tuning 1
+get_offset_tuning
+set_xtal_freq 28800100 0
+get_xtal_freq
+set_xtal_freq 28800000 28799000
+get_xtal_freq
+set_xtal_freq 30000000 0
+read_eeprom 0 16
+write_eeprom 4 6
+read_eeprom 0 16
+read_eeprom 250 10
+reset_buffer
+read_sync 262144
+close
