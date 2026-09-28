@@ -38,6 +38,18 @@ android {
     }
 }
 
+// Release target is arm64-v8a only: the usbfs transport (lib/usb/usbfs_abi.dart) needs a 64-bit
+// process. Plugins with their own CMake build (mp_audio_stream) would otherwise ship
+// armeabi-v7a/x86_64 libraries without libflutter.so / libapp.so next to them.
+// Debug keeps every ABI (x86_64 emulator; on 32-bit the app shows a clear USB error).
+androidComponents {
+    onVariants(selector().withBuildType("release")) { variant ->
+        variant.packaging.jniLibs.excludes.addAll(
+            listOf("lib/armeabi-v7a/**", "lib/armeabi/**", "lib/x86/**", "lib/x86_64/**"),
+        )
+    }
+}
+
 kotlin {
     compilerOptions {
         jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17

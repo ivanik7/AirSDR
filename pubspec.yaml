@@ -37,6 +37,7 @@ dependencies:
   ffi: ^2.2.0
   mp_audio_stream: ^0.3.0
   path_provider: ^2.1.6
+  # Pinned below 2.3: 2.3.x switched to package:jni (extra native lib + JNI glue) for no gain here.
   path_provider_android: ">=2.2.0 <2.3.0"
 
 dev_dependencies:
