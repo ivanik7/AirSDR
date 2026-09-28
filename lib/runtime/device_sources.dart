@@ -54,7 +54,12 @@ SourceInstance createUsbSourceInstance(Map<Object?, Object?> params, SourceConte
       ctx.reportError(message, fatal: fatal);
     },
   );
-  final handler = UsbSourceHandler(module, () => lastError, () => lastError = null);
+  // The module opens the fd at select (in the constructor). When that failed, this instance
+  // has no device: its start would only report SDR++'s "No device selected" and hide the
+  // real cause (the error event of which the UI shows last).
+  final selectError = lastError;
+  final handler = UsbSourceHandler(module, () => lastError, () => lastError = null,
+      selectError: selectError);
   final SourceControls controls = switch (module) {
     RtlSdrSourceModule() => const RtlSdrControls(),
     HackrfSourceModule() => const HackrfControls(),
@@ -72,13 +77,16 @@ SourceInstance createUsbSourceInstance(Map<Object?, Object?> params, SourceConte
 /// failures through `onError` and simply do not run; the engine needs a thrown error to keep
 /// its play state consistent.
 class UsbSourceHandler implements SourceHandler {
-  UsbSourceHandler(this.module, this._lastError, this._clearError);
+  UsbSourceHandler(this.module, this._lastError, this._clearError, {this.selectError});
 
   final UsbSourceModule module;
 
   /// Last message given to `onError` (used as the start failure reason).
   final String? Function() _lastError;
   final void Function() _clearError;
+
+  /// Why opening the device at select failed; start then fails with it without retrying.
+  final String? selectError;
 
   int get droppedBuffers => switch (module) {
         RtlSdrSourceModule m => m.openDev?.droppedBuffers ?? 0,
@@ -93,6 +101,7 @@ class UsbSourceHandler implements SourceHandler {
 
   @override
   Future<void> start(SourceSink sink) async {
+    if (selectError != null) throw StateError(selectError!);
     _clearError();
     await module.start(sink);
     if (!module.running) {

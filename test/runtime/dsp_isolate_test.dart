@@ -17,15 +17,23 @@ import '../sdrpp/signal_path/harness.dart';
 void registerTestSources(SourceRegistry r) {
   r.register('fake-usb', (params, ctx) {
     if (params['fd'] != 42) throw ArgumentError('fd');
-    return SourceRegistry.createSynth(<Object?, Object?>{'sampleRate': 1024000, 'pump': 'realTime'}, ctx);
+    return SourceRegistry.createSynth(<Object?, Object?>{
+      'sampleRate': 1024000,
+      'pump': 'realTime',
+    }, ctx);
   });
 }
 
 void main() {
   test('DSP isolate: synth → FFT rows + audio frames', () async {
     final dsp = await DspIsolate.spawn(
-        options: const DspEngineOptions(audio: 'null', fftSize: 8192, fftRate: 20),
-        registerSources: registerTestSources);
+      options: const DspEngineOptions(
+        audio: 'null',
+        fftSize: 8192,
+        fftRate: 20,
+      ),
+      registerSources: registerTestSources,
+    );
     final rows = <Float32List>[];
     final lows = <double>[];
     final audio = <double>[];
@@ -34,10 +42,14 @@ void main() {
     final sub = dsp.events.listen((m) {
       switch (m[DspMsg.evt]) {
         case DspEvt.fft:
-          rows.add((m['data'] as TransferableTypedData).materialize().asFloat32List());
+          rows.add(
+            (m['data'] as TransferableTypedData).materialize().asFloat32List(),
+          );
           lows.add((m['low'] as num).toDouble());
         case DspEvt.audio:
-          final d = (m['data'] as TransferableTypedData).materialize().asFloat32List();
+          final d = (m['data'] as TransferableTypedData)
+              .materialize()
+              .asFloat32List();
           for (int i = 0; i < d.length; i += 2) {
             audio.add(d[i]);
           }
@@ -56,14 +68,28 @@ void main() {
         'centerFreq': 100e6,
         'noiseLevel': 0.001,
         'carriers': [
-          {'frequency': 100.3e6, 'modulation': 'nfm', 'amplitude': 0.2, 'toneHz': 1000.0},
+          {
+            'frequency': 100.3e6,
+            'modulation': 'nfm',
+            'amplitude': 0.2,
+            'toneHz': 1000.0,
+          },
         ],
         'pump': 'realTime',
       },
     });
-    await dsp.request({DspMsg.cmd: DspCmd.setFft, 'width': 800, 'viewOffset': 0.0, 'viewBandwidth': 2400000.0});
+    await dsp.request({
+      DspMsg.cmd: DspCmd.setFft,
+      'width': 800,
+      'viewOffset': 0.0,
+      'viewBandwidth': 2400000.0,
+    });
     await dsp.request({DspMsg.cmd: DspCmd.setMode, 'mode': 0}); // NFM
-    await dsp.request({DspMsg.cmd: DspCmd.tune, 'center': 100e6, 'offset': 300e3});
+    await dsp.request({
+      DspMsg.cmd: DspCmd.tune,
+      'center': 100e6,
+      'offset': 300e3,
+    });
     await dsp.request({DspMsg.cmd: DspCmd.audioTap, 'enabled': true});
     await dsp.request({DspMsg.cmd: DspCmd.start});
     await Future<void>.delayed(const Duration(milliseconds: 1500));
@@ -89,12 +115,19 @@ void main() {
     expect(state!['running'], false);
 
     // Registered hook source + command errors are acked as failures.
-    await dsp.request({DspMsg.cmd: DspCmd.selectSource, 'id': 'fake-usb', 'params': {'fd': 42}});
+    await dsp.request({
+      DspMsg.cmd: DspCmd.selectSource,
+      'id': 'fake-usb',
+      'params': {'fd': 42},
+    });
     await dsp.request({DspMsg.cmd: DspCmd.getState});
     await Future<void>.delayed(const Duration(milliseconds: 50));
     expect(state!['sourceId'], 'fake-usb');
     expect(state!['sampleRate'], 1024000);
-    await expectLater(dsp.request({DspMsg.cmd: DspCmd.selectSource, 'id': 'nope'}), throwsA(isA<DspCommandException>()));
+    await expectLater(
+      dsp.request({DspMsg.cmd: DspCmd.selectSource, 'id': 'nope'}),
+      throwsA(isA<DspCommandException>()),
+    );
 
     await sub.cancel();
     await dsp.close();
@@ -102,7 +135,9 @@ void main() {
   });
 
   test('SdrRadioController drives the isolate', () async {
-    final c = SdrRadioController(options: const DspEngineOptions(audio: 'null'));
+    final c = SdrRadioController(
+      options: const DspEngineOptions(audio: 'null'),
+    );
     await c.ready;
     expect(c.lastError, isNull);
     expect(c.devices.single.id, 'synth:0');
@@ -123,7 +158,13 @@ void main() {
     await Future<void>.delayed(const Duration(milliseconds: 1000));
     expect(rows.length, greaterThan(10));
     expect(rows.last.width, 512);
-    expect(rows.last.lowFreq, closeTo(100e6 - 1.2e6, 1e3));
+    expect(rows.last.lowFreq, closeTo(100.2e6 - 1.2e6, 1e3));
+    expect(
+      c.vfoOffset,
+      0,
+      reason:
+          'Start centers the single VFO without changing the tuned frequency',
+    );
     expect(c.mode, DemodMode.nfm);
     expect(c.bandwidth, 10000);
     expect(c.squelchEnabled, isTrue);
