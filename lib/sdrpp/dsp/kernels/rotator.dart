@@ -22,10 +22,16 @@ class Rotator {
   double deltaIm = 0.0;
   int _sinceReload = 0;
 
-  /// Sets the increment to e^(j·omega).
+  static final Float32List _f = Float32List(2);
+
+  /// Sets the increment to e^(j·omega). Like C++ (`lv_cmake(cos(offset), sin(offset))`, an
+  /// lv_32fc_t) the increment is rounded to float32, so the tiny frequency error of SDR++ is
+  /// reproduced exactly.
   void setDelta(double omega) {
-    deltaRe = math.cos(omega);
-    deltaIm = math.sin(omega);
+    _f[0] = math.cos(omega);
+    _f[1] = math.sin(omega);
+    deltaRe = _f[0];
+    deltaIm = _f[1];
   }
 
   /// Resets the phase to 1+0j.

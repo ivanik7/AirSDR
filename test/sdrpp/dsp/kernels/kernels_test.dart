@@ -70,15 +70,19 @@ void main() {
       final out = Float32List(2 * n);
       final r = Rotator()..setDelta(omega);
       r.rotate(n, input, out);
+      // The increment is rounded to float32 like the C++ lv_32fc_t phaseDelta: the effective
+      // angle per sample is atan2(float(sin ω), float(cos ω)).
+      final f = Float32List.fromList([math.cos(omega), math.sin(omega)]);
+      final w = math.atan2(f[1], f[0]);
       double maxErr = 0;
       for (final i in [0, 1, 511, 512, 513, 50000, n - 1]) {
-        final er = (out[2 * i] - math.cos(omega * i)).abs();
-        final ei = (out[2 * i + 1] - math.sin(omega * i)).abs();
+        final er = (out[2 * i] - math.cos(w * i)).abs();
+        final ei = (out[2 * i + 1] - math.sin(w * i)).abs();
         maxErr = math.max(maxErr, math.max(er, ei));
       }
       expect(maxErr, lessThan(1e-4));
       final m = math.sqrt(r.phaseRe * r.phaseRe + r.phaseIm * r.phaseIm);
-      expect(m, closeTo(1.0, 1e-9));
+      expect(m, closeTo(1.0, 1e-6)); // float32 delta is not exactly unit-magnitude between reloads
     });
 
     test('block-boundary invariance (bit-exact)', () {
