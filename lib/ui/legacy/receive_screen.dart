@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import 'package:flutter/material.dart';
 
+import '../device_dropdown.dart';
 import '../favorites/favorites.dart';
 import '../radio_controller.dart';
 import '../sdr_ui_state.dart';
@@ -62,7 +63,7 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
                 child: DropdownButton<SdrDeviceInfo>(
                   key: const ValueKey('legacyDevice'),
                   isExpanded: true,
-                  value: r.selectedDevice,
+                  value: dropdownDeviceValue(r),
                   hint: const Text('Нет устройства'),
                   items: [
                     for (final d in r.devices)

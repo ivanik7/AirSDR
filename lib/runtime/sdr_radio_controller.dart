@@ -391,7 +391,8 @@ class SdrRadioController extends RadioController {
 
   @override
   Future<void> selectDevice(SdrDeviceInfo device) async {
-    if (_running || device == _device) return;
+    // A stale menu may still offer a device that was unplugged meanwhile.
+    if (_running || device == _device || !_devices.contains(device)) return;
     _adoptDevice(device, keepUserGain: false);
     _link = DeviceLinkState.connecting;
     _notify();
@@ -512,8 +513,11 @@ class SdrRadioController extends RadioController {
         _lastError = 'Device enumeration failed: $e';
       }
     }
-    _devices = List<SdrDeviceInfo>.unmodifiable(all);
+    // Invariant for every notification: selectedDevice is null or one of [devices] (the
+    // device dropdowns assert on it). The new list and the deselection are published
+    // together, before any await: DSP state/stats events notify listeners meanwhile.
     final gone = _device;
+    _devices = List<SdrDeviceInfo>.unmodifiable(all);
     if (gone != null && !_devices.contains(gone)) {
       // Device gone (detach): stop the DSP, release the source (and with it the audio
       // device), close the USB connection. Settings stay in the controller / DSP isolate.
@@ -522,13 +526,15 @@ class SdrRadioController extends RadioController {
           _link == DeviceLinkState.receiving ||
           _link == DeviceLinkState.connecting ||
           _link == DeviceLinkState.disconnected;
-      await _releaseLocked();
       _device = null;
+      _running = false;
       if (!_userStopped) {
         _link = wasActive
             ? DeviceLinkState.disconnected
             : DeviceLinkState.waiting;
       }
+      _notify();
+      await _releaseLocked();
     }
     _device ??= _defaultDevice();
     if (_device == null && _link == DeviceLinkState.idle) {

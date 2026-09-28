@@ -13,124 +13,17 @@ import 'package:sdr_flutter/ui/radio_controller.dart';
 import 'package:sdr_flutter/usb/android_usb.dart';
 import 'package:sdr_flutter/usb/usb_device_provider.dart';
 
+import 'fake_usb_plugin.dart';
 import 'fake_usb_source.dart';
 
-Map<String, Object?> _dev(String name, int vid, int pid, [String? product]) =>
-    <String, Object?>{
-      'deviceName': name,
-      'vid': vid,
-      'pid': pid,
-      'manufacturer': 'M',
-      'product': product,
-    };
-
-final _rtl = _dev('/dev/bus/usb/001/002', 0x0bda, 0x2838, 'Blog V4');
-final _rtlReplugged = _dev(
-  '/dev/bus/usb/001/009',
-  0x0bda,
-  0x2838,
-  'Blog V4',
-); // new bus address
-final _rtlOther = _dev(
-  '/dev/bus/usb/001/010',
-  0x0ccd,
-  0x00d3,
-  'Cinergy',
-); // another known_devices[] entry
-final _slowRtl = _dev('/dev/bus/usb/001/011', 0x0bda, 0x2838, 'Slow tuner');
-final _hackrf = _dev('/dev/bus/usb/001/003', 0x1d50, 0x6089, 'HackRF One');
-final _mouse = _dev('/dev/bus/usb/001/004', 0x046d, 0xc077);
-final _airspy = _dev(
-  '/dev/bus/usb/001/005',
-  0x1d50,
-  0x60a1,
-); // known, but no driver
-
-/// Mocked UsbSdrPlugin (Kotlin) on test channels.
-class _FakePlugin {
-  _FakePlugin(this.methods, this.events);
-
-  final MethodChannel methods;
-  final EventChannel events;
-  final messenger =
-      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
-  final List<Map<String, Object?>> devices = <Map<String, Object?>>[];
-  final Set<String> deny = <String>{};
-  final List<String> opens = <String>[];
-  final List<String> closes = <String>[];
-  Completer<void>? permissionResponse;
-  Map<String, Object?>? initial;
-  final StreamController<Object?> _events =
-      StreamController<Object?>.broadcast();
-
-  void install() {
-    messenger.setMockMethodCallHandler(methods, (call) async {
-      final args = call.arguments is Map
-          ? (call.arguments as Map).cast<String, Object?>()
-          : const <String, Object?>{};
-      switch (call.method) {
-        case 'listDevices':
-          return devices;
-        case 'open':
-          final name = args['deviceName'] as String;
-          opens.add(name);
-          await permissionResponse?.future;
-          final d = devices.where((e) => e['deviceName'] == name).firstOrNull;
-          if (d == null) {
-            throw PlatformException(
-              code: 'NOT_FOUND',
-              message: 'no device $name',
-            );
-          }
-          if (deny.contains(name)) {
-            throw PlatformException(
-              code: 'PERMISSION_DENIED',
-              message: 'denied',
-            );
-          }
-          return <String, Object?>{
-            'fd': 999999,
-            'vid': d['vid'],
-            'pid': d['pid'],
-          };
-        case 'close':
-          closes.add(args['deviceName'] as String);
-          return null;
-        case 'hasPermission':
-          return !deny.contains(args['deviceName']);
-        case 'initialDevice':
-          return initial;
-      }
-      return null;
-    });
-    messenger.setMockStreamHandler(
-      events,
-      MockStreamHandler.inline(
-        onListen: (args, sink) => _events.stream.listen(sink.success),
-      ),
-    );
-  }
-
-  void uninstall() {
-    messenger.setMockMethodCallHandler(methods, null);
-    messenger.setMockStreamHandler(events, null);
-    _events.close();
-  }
-
-  void attach(Map<String, Object?> d) {
-    devices.add(d);
-    _events.add(<String, Object?>{'event': 'attached', 'device': d});
-  }
-
-  void detach(Map<String, Object?> d) {
-    devices.removeWhere((e) => e['deviceName'] == d['deviceName']);
-    _events.add(<String, Object?>{'event': 'detached', 'device': d});
-  }
-
-  /// A non-SDR device event (only makes the provider re-list, like a USB hub/mouse).
-  void otherEvent() =>
-      _events.add(<String, Object?>{'event': 'attached', 'device': _mouse});
-}
+typedef _FakePlugin = FakeUsbPlugin;
+final _rtl = fakeRtl;
+final _rtlReplugged = fakeRtlReplugged;
+final _rtlOther = fakeRtlOther;
+final _slowRtl = fakeSlowRtl;
+final _hackrf = fakeHackrf;
+final _mouse = fakeMouse;
+final _airspy = fakeAirspy;
 
 // Generous: the first wait of a test includes spawning the DSP isolate, which takes several
 // seconds when the full suite runs in parallel. Returns as soon as the condition holds.
@@ -409,6 +302,116 @@ void main() {
     await _settle();
     expect(c.muted, isTrue);
     expect(c.lastState['muted'], isTrue);
+  });
+
+  // Phone QA: a physical unplug showed a red DropdownButton assertion ("There should be
+  // exactly one item with [DropdownButton]'s value") — the controller notified listeners
+  // while selectedDevice still was the vanished dongle but devices no longer listed it.
+  test('selectedDevice is always one of devices (or null) at every notification during unplug/re-plug', () async {
+    plugin.devices.add(_rtl);
+    final c = make();
+    final violations = <String>[];
+    c.addListener(() {
+      final d = c.selectedDevice;
+      if (d != null && !c.devices.contains(d)) {
+        violations.add(
+          'selected=${d.id} devices=${c.devices.map((e) => e.id).toList()} link=${c.linkState}',
+        );
+      }
+    });
+    await _until(() => c.running, reason: 'auto start');
+    await _settle();
+
+    // Cable pulled: ENODEV from the stream first, then the detach broadcast.
+    c.setSourceSetting('simulateLoss', true);
+    await _settle(50);
+    plugin.detach(_rtl);
+    await _until(
+      () => c.linkState == DeviceLinkState.disconnected && c.selectedDevice == null,
+      reason: 'disconnected',
+    );
+    // Stats / state events keep arriving while the device is gone.
+    await _settle(700);
+    plugin.attach(_rtlReplugged);
+    await _until(() => c.running, reason: 'resume after re-plug');
+    // Detach without a preceding ENODEV (the other order seen on the phone).
+    plugin.detach(_rtlReplugged);
+    await _until(
+      () => c.linkState == DeviceLinkState.disconnected && c.selectedDevice == null,
+      reason: 'disconnected 2',
+    );
+    await _settle(700);
+    plugin.attach(_rtl);
+    await _until(() => c.running, reason: 'resume 2');
+    expect(c.selectedDevice?.id, 'usb:${_rtl['deviceName']}');
+    expect(violations, isEmpty);
+  });
+
+  test('a vanished device cannot be selected manually from a stale menu', () async {
+    plugin.devices.add(_rtl);
+    final c = make();
+    await _until(() => c.running, reason: 'auto start');
+    await c.stop();
+    final stale = c.selectedDevice!;
+    plugin.detach(_rtl);
+    await _until(() => c.selectedDevice == null, reason: 'deselected');
+    await c.selectDevice(stale);
+    await _settle();
+    expect(c.selectedDevice, isNull);
+    expect(plugin.opens, <String>[_rtl['deviceName'] as String]);
+  });
+
+  // Phone logs: a loose OTG plug bounced attach/detach every few seconds. Each attach is a
+  // new connection (one open), each detach tears it down; the controller must follow without
+  // errors in the invariant and settle on the last state.
+  test('bouncing cable: one open per attach, ends consistent', () async {
+    plugin.devices.add(_rtl);
+    final c = make();
+    await _until(() => c.running, reason: 'auto start');
+    final bad = <String>[];
+    c.addListener(() {
+      final d = c.selectedDevice;
+      if (d != null && !c.devices.contains(d)) bad.add(d.id);
+    });
+    for (var i = 0; i < 5; i++) {
+      plugin.detach(_rtl);
+      await _settle(20 + 30 * i);
+      plugin.attach(_rtl);
+      await _settle(20 + 30 * i);
+    }
+    await _until(() => c.running, reason: 'running after the bouncing stopped');
+    await _settle(500);
+    expect(bad, isEmpty);
+    expect(c.selectedDevice?.id, 'usb:${_rtl['deviceName']}');
+    expect(plugin.opens.length, lessThanOrEqualTo(6));
+    plugin.detach(_rtl);
+    await _until(
+      () => c.linkState == DeviceLinkState.disconnected,
+      reason: 'final detach',
+    );
+    await _settle(500);
+    final n = plugin.opens.length;
+    await _settle(1000);
+    expect(plugin.opens.length, n, reason: 'no start attempts while unplugged');
+    expect(c.running, isFalse);
+  });
+
+  test('device lost without a detach (ENODEV only): one stop, no start loop', () async {
+    plugin.devices.add(_rtl);
+    final c = make();
+    await _until(() => c.running, reason: 'auto start');
+    await _settle();
+    c.setSourceSetting('simulateLoss', true);
+    await _until(
+      () => c.linkState == DeviceLinkState.disconnected,
+      reason: 'disconnected',
+    );
+    plugin.otherEvent();
+    await c.refreshDevices();
+    await _settle(1500);
+    expect(c.running, isFalse);
+    expect(c.linkState, DeviceLinkState.disconnected);
+    expect(plugin.opens.length, 1, reason: 'no automatic reopen loop on the lost device');
   });
 
   test('user Stop: no automatic restart until Start or a new attach', () async {
