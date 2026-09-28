@@ -3,10 +3,39 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sdr_flutter/ui/demo_radio_controller.dart';
 import 'package:sdr_flutter/ui/legacy/app_shell.dart';
+import 'package:sdr_flutter/ui/legacy/theme.dart';
 import 'package:sdr_flutter/ui/favorites/favorites.dart';
+import 'package:sdr_flutter/ui/spectrum_waterfall.dart';
 
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
+  testWidgets('receive spectrum uses the legacy accent for its FFT trace', (
+    tester,
+  ) async {
+    final radio = DemoRadioController();
+    final favorites = FavoritesRepository();
+    await favorites.load();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: LegacyAppShell(controller: radio, favorites: favorites),
+      ),
+    );
+
+    final spectrum = tester.widget<CustomPaint>(
+      find.byWidgetPredicate(
+        (widget) => widget is CustomPaint && widget.painter is SpectrumPainter,
+      ),
+    );
+    expect(
+      (spectrum.painter! as SpectrumPainter).plotLineColor,
+      LegacyColors.accent,
+    );
+
+    await tester.pumpWidget(const SizedBox());
+    radio.dispose();
+    favorites.dispose();
+  });
+
   testWidgets(
     'add arbitrary current frequency, edit, filter, delete and persist',
     (tester) async {

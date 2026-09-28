@@ -192,7 +192,10 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
                             height: 66,
                             width: box.maxWidth,
                             child: CustomPaint(
-                              painter: SpectrumPainter(state: widget.spectrum),
+                              painter: SpectrumPainter(
+                                state: widget.spectrum,
+                                plotLineColor: LegacyColors.accent,
+                              ),
                             ),
                           ),
                           SizedBox(
