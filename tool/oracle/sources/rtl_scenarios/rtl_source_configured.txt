@@ -1,0 +1,41 @@
+# SDR++ rtl_sdr_source with a saved per-device config
+#   {sampleRate: 1024000, directSampling: 0, ppm: 52, biasT: true,
+#    offsetTuning: true, rtlAgc: true, tunerAgc: false, gain: 16 (29.7 dB)}
+# then, while running, the menu actions of main.cpp:399-523:
+#   tune 145.5 MHz, direct sampling Q (2) then Disabled (0) -> "fix for
+#   librtlsdr bug" re-applies agc/gain mode/gain, ppm -3, gain slider 20
+#   (37.2 dB), tuner AGC on, RTL AGC off, bias-T off, offset tuning off,
+#   tuner AGC off, then stop().
+model tuner=r820t manufact=Realtek product=RTL2838UHIDIR serial=00000001
+open
+get_tuner_gains
+close
+open
+set_sample_rate 1024000
+set_center_freq 100000000
+set_freq_correction 52
+set_tuner_bandwidth 0
+set_direct_sampling 0
+set_bias_tee 1
+set_agc_mode 1
+set_tuner_gain 297
+set_tuner_gain_mode 1
+set_tuner_gain 297
+set_offset_tuning 1
+reset_buffer
+set_center_freq 145500000
+get_center_freq
+set_direct_sampling 2
+set_direct_sampling 0
+set_agc_mode 1
+set_tuner_gain_mode 1
+set_tuner_gain 297
+set_freq_correction -3
+set_tuner_gain 372
+set_tuner_gain_mode 0
+set_agc_mode 0
+set_bias_tee 0
+set_offset_tuning 0
+set_tuner_gain_mode 1
+set_tuner_gain 372
+close
