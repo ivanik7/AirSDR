@@ -1,4 +1,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- USB OTG host (RTL-SDR / HackRF / Airspy). required=false so the app also
+         installs on emulators / devices without host mode (lib/usb/, UsbSdrPlugin.kt). -->
+    <uses-feature android:name="android.hardware.usb.host" android:required="false" />
     <application
         android:label="sdr_flutter"
         android:name="${applicationName}"
@@ -24,6 +27,14 @@
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
+            <!-- Launch (and get permission without a dialog) when a known SDR is
+                 plugged in. DETACHED is received by a dynamic receiver in UsbSdrPlugin. -->
+            <intent-filter>
+                <action android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED" />
+            </intent-filter>
+            <meta-data
+                android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED"
+                android:resource="@xml/device_filter" />
         </activity>
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
