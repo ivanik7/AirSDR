@@ -27,6 +27,7 @@ class ReceiveScreen extends StatefulWidget {
 
 class _ReceiveScreenState extends State<ReceiveScreen> {
   String? feedback;
+  double _rulerDrag = 0;
   void key(String label) {
     final ok = widget.receiver.pressKey(label);
     setState(() => feedback = ok ? null : 'Неверная частота');
@@ -233,18 +234,34 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
                 const SizedBox(width: 9),
                 Expanded(
                   child: GestureDetector(
-                    onHorizontalDragEnd: (d) {
-                      if ((d.primaryVelocity ?? 0).abs() > 30) {
-                        f.nudge(d.primaryVelocity! < 0 ? 1 : -1);
+                    onHorizontalDragStart: (_) => _rulerDrag = 0,
+                    onHorizontalDragUpdate: (d) {
+                      _rulerDrag += d.delta.dx;
+                      if (_rulerDrag.abs() >= 12) {
+                        final steps = (_rulerDrag.abs() / 12).floor().clamp(
+                          1,
+                          20,
+                        );
+                        final direction = _rulerDrag < 0 ? 1 : -1;
+                        for (var i = 0; i < steps; i++) {
+                          f.nudge(direction);
+                        }
+                        _rulerDrag -= _rulerDrag.sign * steps * 12;
                         setState(() {});
                       }
                     },
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: LegacyColors.card,
-                        borderRadius: BorderRadius.circular(13),
+                    child: SizedBox(
+                      height: 44,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: LegacyColors.card,
+                          borderRadius: BorderRadius.circular(13),
+                        ),
+                        child: CustomPaint(
+                          key: const ValueKey('tuningRuler'),
+                          painter: _RulerPainter(),
+                        ),
                       ),
-                      child: CustomPaint(painter: _RulerPainter()),
                     ),
                   ),
                 ),

@@ -45,7 +45,10 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('Изменить').last);
       await tester.pumpAndSettle();
-      await tester.enterText(find.byKey(const ValueKey('favoriteName')), 'Другая станция');
+      await tester.enterText(
+        find.byKey(const ValueKey('favoriteName')),
+        'Другая станция',
+      );
       await tester.tap(find.byKey(const ValueKey('favoriteSave')));
       await tester.pumpAndSettle();
       expect(favorites.entries.last.name, 'Другая станция');
@@ -83,7 +86,27 @@ void main() {
     expect(radio.centerFrequency, radio.tunedFrequency);
     radio.setTuning(centerFrequency: 90000000, vfoOffset: 3500);
     await tester.pump();
-    expect(radio.vfoOffset, 0, reason: 'late backend offset must be recentered');
+    expect(
+      radio.vfoOffset,
+      0,
+      reason: 'late backend offset must be recentered',
+    );
+    final beforeRuler = radio.tunedFrequency;
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.byKey(const ValueKey('tuningRuler'))),
+    );
+    await gesture.moveBy(
+      const Offset(-24, 0),
+      timeStamp: const Duration(milliseconds: 500),
+    );
+    await gesture.moveBy(
+      const Offset(-24, 0),
+      timeStamp: const Duration(milliseconds: 1000),
+    );
+    await gesture.up();
+    await tester.pump();
+    expect(radio.tunedFrequency, isNot(beforeRuler));
+    expect(radio.vfoOffset, 0);
     await tester.pumpWidget(const SizedBox());
     radio.dispose();
     favorites.dispose();
