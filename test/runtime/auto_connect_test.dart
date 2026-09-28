@@ -2,6 +2,12 @@
 // Auto-connect / hot re-plug / user Stop / cold-start mute of SdrRadioController (task
 // t_3cfa7a1d), with the real DSP isolate, the real UsbDeviceProvider on a mocked Android USB
 // plugin and a fake 'usb' source (fake_usb_source.dart) instead of the RTL/HackRF drivers.
+//
+// Real DSP isolates are slow to spawn while the whole suite runs in parallel: the per-test
+// timeout must exceed _until's own limit, or the default 30 s kills the test first.
+@Timeout(Duration(minutes: 3))
+library;
+
 import 'dart:async';
 import 'dart:io';
 

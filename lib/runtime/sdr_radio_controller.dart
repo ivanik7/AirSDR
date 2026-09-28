@@ -215,6 +215,7 @@ class SdrRadioController extends RadioController {
         _dsp = await DspIsolate.spawn(
           options: options,
           registerSources: registerSources,
+          readyTimeout: spawnTimeout,
         ).timeout(spawnTimeout);
         if (_disposed) {
           // Disposed while the isolate was starting: nobody else will close it.

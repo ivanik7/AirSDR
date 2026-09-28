@@ -2,6 +2,9 @@
 // Phone QA regression (task t_3cfa7a1d): unplugging the RTL-SDR turned the Receive screen into
 // a red "There should be exactly one item with [DropdownButton]'s value" error — the device
 // dropdown got the vanished dongle as value while the device list no longer contained it.
+@Timeout(Duration(minutes: 3)) // real DSP isolate: slow to spawn under full-suite load
+library;
+
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -116,7 +119,8 @@ void main() {
       await favorites.load();
 
       Future<void> until(bool Function() cond, String what) async {
-        for (var i = 0; i < 3000 && !cond(); i++) {
+        final sw = Stopwatch()..start();
+        while (!cond() && sw.elapsed < const Duration(seconds: 60)) {
           await tester.runAsync(
             () => Future<void>.delayed(const Duration(milliseconds: 10)),
           );
@@ -151,7 +155,11 @@ void main() {
           registerSources: registerFakeUsbSources,
           spawnTimeout: const Duration(seconds: 90),
         );
+        // Spawning the DSP isolate takes seconds when the whole suite runs in parallel: wait
+        // for it in real time (not in the fake-async polling loop below).
+        await c.ready;
       });
+      expect(c.lastError ?? '', isNot(startsWith('DSP start failed')));
       // Frames are built only at pump(); the stale window on the phone was between two
       // awaits of the controller. Check the same invariant at every notification too.
       final violations = <String>[];

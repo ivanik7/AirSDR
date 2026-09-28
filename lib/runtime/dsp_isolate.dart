@@ -45,8 +45,11 @@ class DspIsolate {
 
   /// Spawns the isolate. [registerSources] (top-level function) runs inside the isolate after
   /// the built-in sources are registered: the integrator's hook for USB sources.
+  /// [readyTimeout]: how long the isolate may take to report ready.
   static Future<DspIsolate> spawn(
-      {DspEngineOptions options = const DspEngineOptions(), SourceRegistryHook? registerSources}) async {
+      {DspEngineOptions options = const DspEngineOptions(),
+      SourceRegistryHook? registerSources,
+      Duration readyTimeout = const Duration(seconds: 20)}) async {
     final rx = ReceivePort('sdr-dsp-events');
     final events = StreamController<Map<Object?, Object?>>.broadcast();
     final ready = Completer<SendPort>();
@@ -83,7 +86,7 @@ class DspIsolate {
     final isolate = await Isolate.spawn(_main, _SpawnArgs(rx.sendPort, options, registerSources),
         debugName: 'sdr-dsp', errorsAreFatal: false);
     isolate.addErrorListener(rx.sendPort); // uncaught errors arrive as [message, stack] lists
-    final port = await ready.future.timeout(const Duration(seconds: 20));
+    final port = await ready.future.timeout(readyTimeout);
     self = DspIsolate._(isolate, port, rx, events);
     return self;
   }
