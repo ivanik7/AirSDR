@@ -158,7 +158,14 @@ void main() {
       expect(find.text('Приём'), findsOneWidget);
       expect(find.text('Пресеты'), findsOneWidget);
       expect(find.text('Настройки'), findsOneWidget);
-      expect(find.textContaining('позже'), findsWidgets);
+      // The Приём tab now has real channel slots, not an inert "позже" card.
+      await tester.scrollUntilVisible(
+        find.byKey(const ValueKey('channelsSection')),
+        180,
+        scrollable: find.byType(Scrollable).first,
+      );
+      expect(find.text('КАНАЛЫ · 1'), findsOneWidget);
+      expect(find.text('+ канал · позже'), findsNothing);
       await tester.scrollUntilVisible(
         find.byKey(const ValueKey('key-1')),
         180,
