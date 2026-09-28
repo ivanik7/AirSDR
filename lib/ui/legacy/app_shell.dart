@@ -55,7 +55,7 @@ class _LegacyAppShellState extends State<LegacyAppShell> {
   }
 
   void _radioChanged() {
-    if (radioReady && widget.controller.vfoOffset != 0) {
+    if (radioReady && !receiver.dragging && widget.controller.vfoOffset != 0) {
       receiver.resetOffset();
       return;
     }

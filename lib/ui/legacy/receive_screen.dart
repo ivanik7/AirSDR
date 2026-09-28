@@ -28,6 +28,12 @@ class ReceiveScreen extends StatefulWidget {
 class _ReceiveScreenState extends State<ReceiveScreen> {
   String? feedback;
   double _rulerDrag = 0;
+  void _finishDrag() {
+    widget.receiver.endDrag();
+    _rulerDrag = 0;
+    setState(() {});
+  }
+
   void key(String label) {
     final ok = widget.receiver.pressKey(label);
     setState(() => feedback = ok ? null : 'Неверная частота');
@@ -171,63 +177,94 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
             ),
           ),
           const SizedBox(height: 10),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(15),
-            child: Container(
-              color: const Color(0xFF0A0C0A),
-              height: 128,
-              child: Stack(
-                children: [
-                  LayoutBuilder(
-                    builder: (context, box) {
-                      final cols =
-                          (box.maxWidth *
-                                  MediaQuery.devicePixelRatioOf(context))
-                              .round()
-                              .clamp(32, 1024);
-                      widget.spectrum.setLayout(columns: cols, historyRows: 64);
-                      return Column(
-                        children: [
-                          SizedBox(
-                            height: 66,
-                            width: box.maxWidth,
-                            child: CustomPaint(
-                              painter: SpectrumPainter(state: widget.spectrum),
-                            ),
-                          ),
-                          SizedBox(
-                            height: 20,
-                            width: box.maxWidth,
-                            child: CustomPaint(
-                              painter: FrequencyScalePainter(
-                                state: widget.spectrum,
+          GestureDetector(
+            key: const ValueKey('legacySpectrumDrag'),
+            onHorizontalDragStart: (_) => f.beginDrag(),
+            onHorizontalDragUpdate: (d) {
+              final width = MediaQuery.sizeOf(context).width - 32;
+              f.dragBy(-d.delta.dx * r.sampleRate / width);
+            },
+            onHorizontalDragEnd: (_) => _finishDrag(),
+            onHorizontalDragCancel: _finishDrag,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(15),
+              child: Container(
+                color: const Color(0xFF0A0C0A),
+                height: 128,
+                child: Stack(
+                  children: [
+                    LayoutBuilder(
+                      builder: (context, box) {
+                        final cols =
+                            (box.maxWidth *
+                                    MediaQuery.devicePixelRatioOf(context))
+                                .round()
+                                .clamp(32, 1024);
+                        widget.spectrum.setLayout(
+                          columns: cols,
+                          historyRows: 64,
+                        );
+                        return Column(
+                          children: [
+                            SizedBox(
+                              height: 66,
+                              width: box.maxWidth,
+                              child: CustomPaint(
+                                painter: SpectrumPainter(
+                                  state: widget.spectrum,
+                                ),
                               ),
                             ),
-                          ),
-                          SizedBox(
-                            height: 42,
-                            width: box.maxWidth,
-                            child: CustomPaint(
-                              painter: WaterfallPainter(state: widget.spectrum),
+                            SizedBox(
+                              height: 20,
+                              width: box.maxWidth,
+                              child: CustomPaint(
+                                painter: FrequencyScalePainter(
+                                  state: widget.spectrum,
+                                ),
+                              ),
                             ),
-                          ),
-                        ],
-                      );
-                    },
-                  ),
-                  // No stale FFT is represented as a current measurement while stopped.
-                  if (!r.running)
-                    const Positioned.fill(
-                      child: ColoredBox(color: Color(0xB80A0C0A)),
+                            SizedBox(
+                              height: 42,
+                              width: box.maxWidth,
+                              child: CustomPaint(
+                                painter: WaterfallPainter(
+                                  state: widget.spectrum,
+                                ),
+                              ),
+                            ),
+                          ],
+                        );
+                      },
                     ),
-                  Positioned.fill(
-                    child: IgnorePointer(
-                      child: Center(
-                        child: Container(width: 2, color: LegacyColors.accent),
+                    // No stale FFT is represented as a current measurement while stopped.
+                    if (!r.running)
+                      const Positioned.fill(
+                        child: ColoredBox(color: Color(0xB80A0C0A)),
+                      ),
+                    Positioned.fill(
+                      child: IgnorePointer(
+                        child: LayoutBuilder(
+                          builder: (context, box) => Stack(
+                            children: [
+                              Positioned(
+                                left: widget.spectrum.viewport
+                                    .freqToX(r.tunedFrequency, box.maxWidth)
+                                    .clamp(0.0, box.maxWidth - 2),
+                                top: 0,
+                                bottom: 0,
+                                child: Container(
+                                  width: 2,
+                                  color: LegacyColors.accent,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
                       ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
@@ -243,7 +280,10 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
                 const SizedBox(width: 9),
                 Expanded(
                   child: GestureDetector(
-                    onHorizontalDragStart: (_) => _rulerDrag = 0,
+                    onHorizontalDragStart: (_) {
+                      _rulerDrag = 0;
+                      f.beginDrag();
+                    },
                     onHorizontalDragUpdate: (d) {
                       _rulerDrag += d.delta.dx;
                       if (_rulerDrag.abs() >= 12) {
@@ -252,13 +292,17 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
                           20,
                         );
                         final direction = _rulerDrag < 0 ? 1 : -1;
-                        for (var i = 0; i < steps; i++) {
-                          f.nudge(direction);
-                        }
+                        f.dragBy(
+                          steps *
+                              CenteredReceiver.steps[f.stepIndex] *
+                              direction,
+                        );
                         _rulerDrag -= _rulerDrag.sign * steps * 12;
                         setState(() {});
                       }
                     },
+                    onHorizontalDragEnd: (_) => _finishDrag(),
+                    onHorizontalDragCancel: _finishDrag,
                     child: SizedBox(
                       height: 44,
                       child: Container(
