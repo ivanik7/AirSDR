@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import 'package:flutter/material.dart';
 
+import '../bands/bands.dart';
 import '../channels/channel_controller.dart';
 import '../channels/channel_scanner.dart';
 import '../channels/signal_meter.dart';
@@ -22,6 +23,7 @@ class ReceiveScreen extends StatefulWidget {
     required this.receiver,
     required this.spectrum,
     required this.favorites,
+    this.bands,
     required this.channels,
     required this.scanner,
     required this.meter,
@@ -30,6 +32,9 @@ class ReceiveScreen extends StatefulWidget {
   final CenteredReceiver receiver;
   final SdrUiState spectrum;
   final FavoritesRepository favorites;
+
+  /// Band name in the status line; none without it.
+  final BandsRepository? bands;
   final ChannelController channels;
   final ChannelScanner scanner;
   final SignalMeter meter;
@@ -51,10 +56,15 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
 
   @override
   Widget build(BuildContext context) => ListenableBuilder(
-    listenable: widget.controller,
+    listenable: Listenable.merge([widget.controller, ?widget.bands]),
     builder: (context, _) {
       final r = widget.controller;
       final f = widget.receiver;
+      // Band of the shown frequency; follows a drag live (tunedFrequency
+      // includes the VFO offset) and the scanner's held display.
+      final band = widget.bands?.bandAt(
+        (widget.spectrum.heldFrequency ?? r.tunedFrequency).round(),
+      );
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -103,6 +113,19 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
                   maxLines: 1,
                   style: plex(mono: true, size: 12, color: LegacyColors.accent),
                 ),
+                if (band != null) ...[
+                  const SizedBox(width: 8),
+                  Flexible(
+                    child: Text(
+                      band.name,
+                      key: const ValueKey('legacyBandName'),
+                      maxLines: 1,
+                      softWrap: false,
+                      overflow: TextOverflow.ellipsis,
+                      style: plex(size: 12, color: LegacyColors.primary),
+                    ),
+                  ),
+                ],
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(

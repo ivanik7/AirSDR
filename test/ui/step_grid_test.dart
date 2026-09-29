@@ -299,7 +299,7 @@ void main() {
   });
 
   test('stepIndexOf helper sanity', () {
-    expect(stepIndexOf(100000), CenteredReceiver.steps.length - 1);
+    expect(stepIndexOf(100000), CenteredReceiver.steps.indexOf(100000));
   });
 
   group('formatMhz', () {
@@ -326,9 +326,11 @@ void main() {
         ),
       );
       await tester.pump();
-      // Default 12.5 kHz: 118.20625 is a tie → 118.2125. 25 → 100 kHz lands on
-      // 118.200 (5 and 6.25 kHz keep it); ▶ on 6.25 kHz = 118.20625.
+      // Default 12.5 kHz: 118.20625 is a tie → 118.2125. Cycling through
+      // 25, 100, 200, 5 and 6.25 kHz lands on 118.200.
       expect(radio.tunedFrequency, 118212500);
+      await tester.tap(find.textContaining('ШАГ'));
+      await tester.pump();
       await tester.tap(find.textContaining('ШАГ'));
       await tester.pump();
       await tester.tap(find.textContaining('ШАГ'));

@@ -111,7 +111,9 @@ void main() {
       await until(() => allAt(118100000), 'keypad 118.1');
       expect(shown(), '118.100');
 
-      // 100 kHz → 5 kHz (cycle): 118.100 is on that grid too; then type 118.1837.
+      // 100 kHz → 200 → 5 kHz (cycle); then type 118.1837.
+      await tester.tap(find.textContaining('ШАГ'));
+      await tester.pump();
       await tester.tap(find.textContaining('ШАГ'));
       await tester.pump();
       expect(find.text('ШАГ 5.00 кГц'), findsOneWidget);
