@@ -189,13 +189,6 @@ class ChannelsRepository extends ChangeNotifier {
     return true;
   }
 
-  void rename(String id, String name) {
-    final i = _indexOf(id);
-    if (i < 0) throw ArgumentError.value(id, 'id');
-    _channels[i] = _channels[i].copyWith(name: _validName(name));
-    _save();
-  }
-
   /// Removes a slot. If it was active, the neighbour that takes its place
   /// (or the previous one at the end of the list) becomes active; removing
   /// the last slot leaves no active channel.

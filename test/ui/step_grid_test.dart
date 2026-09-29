@@ -261,8 +261,11 @@ void main() {
     expectOnGrid(radio, 100000, 118200000);
     expect(radio.centers.last, 118200000);
     expect(shownFrequency(tester), '118.200');
-    await tester.tap(find.byKey(const ValueKey('nudgeRight')));
-    await tester.pump();
+    // The ▶ nudge is gone with the tuning ruler: retune from the keypad.
+    for (final k in ['1', '1', '8', '.', '3', 'OK']) {
+      await tester.tap(find.byKey(ValueKey('key-$k')));
+      await tester.pump();
+    }
     expectOnGrid(radio, 100000, 118300000);
     expect(shownFrequency(tester), '118.300');
     for (final k in ['1', '1', '8', '.', '1', '8', 'OK']) {
@@ -336,8 +339,11 @@ void main() {
       await tester.pump();
       expect(find.text('ШАГ 6.25 кГц'), findsOneWidget);
       expectOnGrid(radio, 6250, 118200000);
-      await tester.tap(find.byKey(const ValueKey('nudgeRight')));
-      await tester.pump();
+      // 118.20625 typed on the 6.25 kHz grid stays exact.
+      for (final k in ['1', '1', '8', '.', '2', '0', '6', '2', '5', 'OK']) {
+        await tester.tap(find.byKey(ValueKey('key-$k')));
+        await tester.pump();
+      }
       expectOnGrid(radio, 6250, 118206250);
       expect(shownFrequency(tester), '118.20625');
       // The first-run channel slot follows the receiver.

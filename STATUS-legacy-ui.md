@@ -11,6 +11,16 @@ Branch/worktree: `wip/legacy-ui` in `~/prj/wt/legacy-ui`. Implementation commit:
 - Settings expose real USB/source settings sheet (Bias-T/PPM etc.), device enumeration, sample rate, gain/AGC, volume, squelch, stats/errors and start/stop. Recording/rtl_tcp/notifications/scanning are labeled unavailable; no fake functional toggles.
 - Kept `lib/ui/main_screen.dart` and its widgets. Existing old-screen widget tests now mount `MainScreen` explicitly so their original interactions remain covered despite the new production home.
 
+## Compact Приём (task t_7f55e98d)
+
+Supersedes the ruler/device-bar notes above for the Приём tab.
+- The frequency is the topmost element; the device list, Start/Stop and USB retry live in Settings (`legacyDevice`, `legacyRetryUsb`). Auto-connect is unchanged.
+- `_FixedFrequencyRow` (`legacyFrequencyField`): one font size per screen width/text scale, sized for 11 monospace characters (keypad entry limit), fixed height; value length, partial entry and mute ↔ «Очистить ввод» do not move anything.
+- Mode = one `PopupMenuButton` (`legacyModeSelect`); the step button (`legacyStep`) sits to its right. The tuning ruler and ◀/▶ are gone: retune by horizontal drag on the spectrum/waterfall (one retune + centering on End/Cancel), keypad, presets, channels.
+- No vertical scroll: the waterfall takes the remaining height.
+- Channels: header «КАНАЛЫ · N» + «+ канал» + «Скан», then ONE horizontal row of fixed-size tiles (`channelsRow`); block height depends only on text scale. No channel limit, no «Все каналы / Свернуть». The active channel (and the scanner's tuned one) scrolls into view; a dragged tile scrolls the row at its edges (36 dp zone).
+- Channels have no own names: `ChannelController.displayName` = preset name at exactly the same Hz, else `<mode> <MHz>`; stored names are ignored (old manual names included). Rename was removed. «Сохранить как пресет» asks for a name (prefilled, empty rejected, Отмена = no-op).
+
 ## Verification
 
 - `flutter analyze`: **No issues found!**

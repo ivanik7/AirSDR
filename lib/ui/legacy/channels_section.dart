@@ -1,8 +1,19 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
-// "КАНАЛЫ" block of the Приём tab (layout from the old UI's _ChannelsSection:
-// 2-column tile grid + "+ канал" tile + long-press menu), but honest about the
-// single receiver: exactly one slot is active and only it shows a (real) level.
+// "КАНАЛЫ" block of the Приём tab (tiles + "+ канал" + long-press menu from
+// the old UI's _ChannelsSection), but honest about the single receiver:
+// exactly one slot is active and only it shows a (real) level.
+//
+// Layout: a header and ONE horizontally scrolling row of fixed-size tiles.
+// The block height never depends on the number of channels, so the Приём
+// tab needs no vertical scrolling. The active channel (and the one the
+// scanner is tuned to) is scrolled into view automatically; a tile dragged
+// to the row edge scrolls the row, so it can be dropped anywhere.
+//
+// Channels have no own names: a tile shows the preset name at exactly the
+// same frequency, else "<mode> <MHz>" ([ChannelController.displayName]).
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../channels/channel_controller.dart';
@@ -26,30 +37,47 @@ class ChannelsSection extends StatefulWidget {
   final RadioController radio;
   final SignalMeter meter;
 
-  /// Tiles shown while collapsed (old UI: `collapsedChannels` = 4).
-  static const collapsedTiles = 4;
+  static const tileGap = 4.0;
+
+  /// Tile width for a row of [rowWidth]: about 2.5 tiles are visible, so a
+  /// cut-off tile hints that the row scrolls.
+  static double tileWidthFor(double rowWidth) =>
+      ((rowWidth - 2 * tileGap) / 2.5).clamp(104.0, 160.0);
 
   @override
   State<ChannelsSection> createState() => _ChannelsSectionState();
 }
 
 class _ChannelsSectionState extends State<ChannelsSection> {
-  bool expanded = false;
-  String? message;
+  final _scroll = ScrollController();
+  final _rowKey = GlobalKey();
+  double _tileWidth = 120;
+  String? _shownKey;
+
+  // Auto-scroll while a tile is dragged near the row edge.
+  bool _dragging = false;
+  Offset? _pointer;
+  Timer? _edgeTimer;
+  static const _edgeZone = 36.0;
+  static const _edgeSpeed = 9.0; // logical px per 16 ms tick
 
   ChannelsRepository get repo => widget.controller.channels;
 
-  void _select(ReceiverChannel c) {
-    final ok = widget.controller.select(c.id);
-    setState(
-      () => message = ok ? null : 'Частота канала вне диапазона устройства',
-    );
+  @override
+  void dispose() {
+    _edgeTimer?.cancel();
+    _scroll.dispose();
+    super.dispose();
   }
 
-  void _add() {
-    widget.controller.add();
-    setState(() => message = null);
+  void _select(ReceiverChannel c) {
+    final ok = widget.controller.select(c.id);
+    if (!ok) _snack('Частота канала вне диапазона устройства');
   }
+
+  void _snack(String text) => ScaffoldMessenger.maybeOf(context)
+    ?..hideCurrentSnackBar()
+    ..showSnackBar(SnackBar(content: Text(text)));
 
   Future<void> _menu(ReceiverChannel c, Offset position) async {
     final selected = await showMenu<String>(
@@ -63,7 +91,6 @@ class _ChannelsSectionState extends State<ChannelsSection> {
       color: LegacyColors.card,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       items: [
-        _item('rename', Icons.edit_outlined, 'Переименовать'),
         _item('preset', Icons.bookmark_add_outlined, 'Сохранить как пресет'),
         _item(
           'delete',
@@ -75,21 +102,8 @@ class _ChannelsSectionState extends State<ChannelsSection> {
     );
     if (!mounted) return;
     switch (selected) {
-      case 'rename':
-        await _rename(c);
       case 'preset':
-        final error = widget.controller.saveAsPreset(c.id);
-        ScaffoldMessenger.maybeOf(context)
-          ?..hideCurrentSnackBar()
-          ..showSnackBar(
-            SnackBar(
-              content: Text(
-                error == null
-                    ? 'Сохранено как пресет'
-                    : 'Не удалось сохранить: $error',
-              ),
-            ),
-          );
+        await _saveAsPreset(c);
       case 'delete':
         await _confirmDelete(c);
     }
@@ -122,21 +136,26 @@ class _ChannelsSectionState extends State<ChannelsSection> {
     ),
   );
 
-  Future<void> _rename(ReceiverChannel c) async {
-    var name = c.name;
+  /// Asks for the preset name (prefilled with the channel's shown name).
+  Future<void> _saveAsPreset(ReceiverChannel c) async {
+    var name = widget.controller.displayName(c);
     String? error;
     final ok = await showDialog<bool>(
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, update) => AlertDialog(
-          title: const Text('Переименовать канал'),
+          title: const Text('Сохранить как пресет'),
           content: TextFormField(
-            key: const ValueKey('channelName'),
+            key: const ValueKey('presetName'),
             initialValue: name,
             autofocus: true,
-            maxLength: ChannelsRepository.maxNameLength,
+            maxLength: 60,
             onChanged: (v) => name = v,
-            decoration: InputDecoration(errorText: error),
+            decoration: InputDecoration(
+              labelText: 'Название',
+              helperText: '${formatMhz(c.frequencyHz)} MHz · ${c.mode.label}',
+              errorText: error,
+            ),
           ),
           actions: [
             TextButton(
@@ -144,7 +163,7 @@ class _ChannelsSectionState extends State<ChannelsSection> {
               child: const Text('Отмена'),
             ),
             FilledButton(
-              key: const ValueKey('channelNameSave'),
+              key: const ValueKey('presetNameSave'),
               onPressed: () {
                 if (name.trim().isEmpty) {
                   update(() => error = 'введите название');
@@ -158,9 +177,13 @@ class _ChannelsSectionState extends State<ChannelsSection> {
         ),
       ),
     );
-    if (ok == true && repo.indexOf(c.id) >= 0) {
-      widget.controller.rename(c.id, name);
-    }
+    if (ok != true || !mounted) return;
+    final saveError = widget.controller.saveAsPreset(c.id, name: name.trim());
+    _snack(
+      saveError == null
+          ? 'Сохранено как пресет'
+          : 'Не удалось сохранить: $saveError',
+    );
   }
 
   Future<void> _confirmDelete(ReceiverChannel c) async {
@@ -168,7 +191,10 @@ class _ChannelsSectionState extends State<ChannelsSection> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Удалить канал?'),
-        content: Text('${c.name} · ${formatMhz(c.frequencyHz)} MHz'),
+        content: Text(
+          '${widget.controller.displayName(c)} · '
+          '${formatMhz(c.frequencyHz)} MHz',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -185,163 +211,233 @@ class _ChannelsSectionState extends State<ChannelsSection> {
     );
     if (ok == true && repo.indexOf(c.id) >= 0) {
       widget.controller.delete(c.id);
-      setState(() => message = null);
     }
+  }
+
+  /// Channel whose tile must be visible: the one the scanner is tuned to,
+  /// else the active one.
+  String? get _focusId => widget.scanner.active
+      ? (widget.scanner.tunedChannelId ?? repo.activeId)
+      : repo.activeId;
+
+  void _scheduleReveal() {
+    final id = _focusId;
+    final key = '$id/${repo.indexOf(id ?? '')}/${repo.length}/$_tileWidth';
+    if (key == _shownKey || _dragging) return;
+    _shownKey = key;
+    WidgetsBinding.instance.addPostFrameCallback((_) => _reveal(id));
+  }
+
+  void _reveal(String? id) {
+    if (!mounted || id == null || !_scroll.hasClients) return;
+    final i = repo.indexOf(id);
+    if (i < 0) return;
+    final p = _scroll.position;
+    final left = i * (_tileWidth + ChannelsSection.tileGap);
+    final right = left + _tileWidth;
+    double? target;
+    if (left < p.pixels) {
+      target = left;
+    } else if (right > p.pixels + p.viewportDimension) {
+      target = right - p.viewportDimension;
+    }
+    if (target == null) return;
+    _scroll.animateTo(
+      target.clamp(p.minScrollExtent, p.maxScrollExtent),
+      duration: const Duration(milliseconds: 200),
+      curve: Curves.easeOut,
+    );
+  }
+
+  void _dragStarted() {
+    _dragging = true;
+    _edgeTimer ??= Timer.periodic(
+      const Duration(milliseconds: 16),
+      (_) => _edgeTick(),
+    );
+  }
+
+  void _dragStopped() {
+    _dragging = false;
+    _pointer = null;
+    _edgeTimer?.cancel();
+    _edgeTimer = null;
+  }
+
+  void _edgeTick() {
+    final box = _rowKey.currentContext?.findRenderObject() as RenderBox?;
+    final at = _pointer;
+    if (!_dragging || box == null || at == null || !_scroll.hasClients) return;
+    final x = box.globalToLocal(at).dx;
+    final w = box.size.width;
+    double delta = 0;
+    if (x < _edgeZone) {
+      delta = -_edgeSpeed * ((_edgeZone - x) / _edgeZone).clamp(0.3, 1.0);
+    } else if (x > w - _edgeZone) {
+      delta = _edgeSpeed * ((x - (w - _edgeZone)) / _edgeZone).clamp(0.3, 1.0);
+    }
+    if (delta == 0) return;
+    final p = _scroll.position;
+    final to = (p.pixels + delta).clamp(p.minScrollExtent, p.maxScrollExtent);
+    if (to != p.pixels) _scroll.jumpTo(to);
   }
 
   @override
   Widget build(BuildContext context) => ListenableBuilder(
-    listenable: Listenable.merge([repo, widget.scanner]),
+    listenable: Listenable.merge([
+      repo,
+      widget.scanner,
+      widget.controller.favorites,
+    ]),
     builder: (context, _) {
       final all = repo.channels;
-      final more = all.length > ChannelsSection.collapsedTiles;
-      final extra =
-          widget.scanner.active &&
-              widget.scanner.tunedChannelId != repo.activeId
-          ? 1
-          : 0;
-      final visible = expanded || !more
-          ? all
-          : <ReceiverChannel>[
-              ...all
-                  .where(
-                    (c) =>
-                        c.id != repo.activeId &&
-                        c.id != widget.scanner.tunedChannelId,
-                  )
-                  .take(
-                    ChannelsSection.collapsedTiles -
-                        (repo.active == null ? 0 : 1) -
-                        extra,
-                  ),
-              if (repo.active != null) repo.active!,
-              if (widget.scanner.active &&
-                  widget.scanner.tunedChannelId != repo.activeId)
-                ...all.where((c) => c.id == widget.scanner.tunedChannelId),
-            ];
-      final showAdd = expanded || all.length < ChannelsSection.collapsedTiles;
+      final scaler = MediaQuery.textScalerOf(context);
+      // Fixed by text scale only — never by the number of channels.
+      // Tile: 15 pt MHz + 11 pt name lines (scaled) + level bar, gaps,
+      // padding and the active border (fixed).
+      final rowHeight = scaler.scale(38) + 18;
+      final receivingId = widget.scanner.receivingChannelId;
+      final receiving = receivingId == null
+          ? null
+          : all.where((c) => c.id == receivingId).firstOrNull;
       return Column(
         key: const ValueKey('channelsSection'),
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  'КАНАЛЫ · ${all.length}',
-                  key: const ValueKey('channelsHeader'),
-                  overflow: TextOverflow.ellipsis,
-                  style: plex(size: 12, color: LegacyColors.muted),
-                ),
-              ),
-              if (more)
-                GestureDetector(
-                  key: const ValueKey('channelsExpand'),
-                  onTap: () => setState(() => expanded = !expanded),
+          SizedBox(
+            height: 34,
+            child: Row(
+              children: [
+                Flexible(
                   child: Text(
-                    expanded ? 'Свернуть ▲' : 'Все каналы (${all.length}) ▼',
-                    style: plex(size: 12, color: LegacyColors.accent),
+                    'КАНАЛЫ · ${all.length}',
+                    key: const ValueKey('channelsHeader'),
+                    maxLines: 1,
+                    softWrap: false,
+                    overflow: TextOverflow.ellipsis,
+                    style: plex(size: 12, color: LegacyColors.muted),
                   ),
                 ),
-              const SizedBox(width: 4),
-              Tooltip(
-                message: widget.scanner.canStart || widget.scanner.active
-                    ? 'Последовательный приём каналов'
-                    : !widget.radio.running
-                    ? 'Сначала включите приёмник'
-                    : 'Выберите канал с авто-шумодавом; нужно минимум два (без WFM/RAW)',
-                child: TextButton(
-                  key: const ValueKey('channelScanToggle'),
-                  onPressed: widget.scanner.active
-                      ? () => widget.scanner.stop()
-                      : widget.scanner.canStart
-                      ? () => widget.scanner.start()
-                      : null,
+                const SizedBox(width: 6),
+                if (widget.scanner.active)
+                  Expanded(
+                    flex: 2,
+                    child: Text(
+                      receiving == null
+                          ? 'Скан…'
+                          : 'Приём: ${widget.controller.displayName(receiving)}',
+                      key: const ValueKey('channelScanStatus'),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: plex(size: 11, color: LegacyColors.accent),
+                    ),
+                  )
+                else
+                  const Spacer(),
+                TextButton(
+                  key: const ValueKey('channelAdd'),
+                  onPressed: widget.controller.add,
                   style: TextButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 5),
+                    padding: const EdgeInsets.symmetric(horizontal: 6),
                     minimumSize: const Size(48, 32),
                     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   ),
                   child: Text(
-                    widget.scanner.active ? 'Стоп скан' : 'Скан',
+                    '+ канал',
                     style: plex(size: 12, color: LegacyColors.accent),
                   ),
                 ),
-              ),
-            ],
-          ),
-          if (widget.scanner.active)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 5),
-              child: Text(
-                widget.scanner.receivingChannelId == null
-                    ? 'Скан…'
-                    : 'Приём: ${all.firstWhere((c) => c.id == widget.scanner.receivingChannelId).name}',
-                key: const ValueKey('channelScanStatus'),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: plex(size: 11, color: LegacyColors.accent),
-              ),
-            ),
-          const SizedBox(height: 7),
-          GridView.count(
-            crossAxisCount: 2,
-            mainAxisSpacing: 8,
-            crossAxisSpacing: 8,
-            childAspectRatio: 1.7,
-            shrinkWrap: true,
-            padding: EdgeInsets.zero,
-            physics: const NeverScrollableScrollPhysics(),
-            children: [
-              for (final c in visible)
-                _ChannelTile(
-                  key: ValueKey('channel-${c.id}'),
-                  channel: c,
-                  active: c.id == repo.activeId,
-                  tuned: widget.scanner.active
-                      ? c.id == widget.scanner.tunedChannelId
-                      : c.id == repo.activeId,
-                  receiving: c.id == widget.scanner.receivingChannelId,
-                  scanning: widget.scanner.active,
-                  radio: widget.radio,
-                  meter: widget.meter,
-                  onTap: () => _select(c),
-                  onMenu: (pos) => _menu(c, pos),
-                  onDropped: (draggedId) =>
-                      widget.controller.move(draggedId, repo.indexOf(c.id)),
-                ),
-              if (showAdd)
-                DragTarget<String>(
-                  onAcceptWithDetails: (d) =>
-                      widget.controller.move(d.data, repo.length - 1),
-                  builder: (context, candidates, _) => Material(
-                    color: candidates.isEmpty
-                        ? const Color(0xFF12161A)
-                        : LegacyColors.key,
-                    borderRadius: BorderRadius.circular(14),
-                    child: InkWell(
-                      key: const ValueKey('channelAdd'),
-                      borderRadius: BorderRadius.circular(14),
-                      onTap: _add,
-                      child: Center(
-                        child: Text(
-                          '+ канал',
-                          style: plex(size: 13, color: LegacyColors.accent),
-                        ),
-                      ),
+                Tooltip(
+                  message: widget.scanner.canStart || widget.scanner.active
+                      ? 'Последовательный приём каналов'
+                      : !widget.radio.running
+                      ? 'Сначала включите приёмник'
+                      : 'Выберите канал с авто-шумодавом; нужно минимум два (без WFM/RAW)',
+                  child: TextButton(
+                    key: const ValueKey('channelScanToggle'),
+                    onPressed: widget.scanner.active
+                        ? () => widget.scanner.stop()
+                        : widget.scanner.canStart
+                        ? () => widget.scanner.start()
+                        : null,
+                    style: TextButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 5),
+                      minimumSize: const Size(48, 32),
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                    child: Text(
+                      widget.scanner.active ? 'Стоп скан' : 'Скан',
+                      style: plex(size: 12, color: LegacyColors.accent),
                     ),
                   ),
                 ),
-            ],
-          ),
-          if (message != null)
-            Padding(
-              padding: const EdgeInsets.only(top: 6),
-              child: Text(
-                message!,
-                style: plex(size: 12, color: LegacyColors.danger),
-              ),
+              ],
             ),
+          ),
+          SizedBox(
+            key: _rowKey,
+            height: rowHeight,
+            child: LayoutBuilder(
+              builder: (context, box) {
+                _tileWidth = ChannelsSection.tileWidthFor(box.maxWidth);
+                _scheduleReveal();
+                return Listener(
+                  onPointerMove: (e) {
+                    if (_dragging) _pointer = e.position;
+                  },
+                  onPointerUp: (_) => _dragStopped(),
+                  onPointerCancel: (_) => _dragStopped(),
+                  child: all.isEmpty
+                      ? Center(
+                          child: Text(
+                            'Нет каналов — «+ канал» добавит текущую частоту',
+                            key: const ValueKey('channelsRow'),
+                            textAlign: TextAlign.center,
+                            style: plex(size: 11, color: LegacyColors.muted),
+                          ),
+                        )
+                      : SingleChildScrollView(
+                          key: const ValueKey('channelsRow'),
+                          controller: _scroll,
+                          scrollDirection: Axis.horizontal,
+                          child: Row(
+                            children: [
+                              for (final (i, c) in all.indexed) ...[
+                                if (i > 0)
+                                  const SizedBox(
+                                    width: ChannelsSection.tileGap,
+                                  ),
+                                SizedBox(
+                                  width: _tileWidth,
+                                  height: rowHeight,
+                                  child: _ChannelTile(
+                                    key: ValueKey('channel-${c.id}'),
+                                    channel: c,
+                                    name: widget.controller.displayName(c),
+                                    active: c.id == repo.activeId,
+                                    tuned: widget.scanner.active
+                                        ? c.id == widget.scanner.tunedChannelId
+                                        : c.id == repo.activeId,
+                                    receiving: c.id == receivingId,
+                                    scanning: widget.scanner.active,
+                                    radio: widget.radio,
+                                    meter: widget.meter,
+                                    onTap: () => _select(c),
+                                    onMenu: (pos) => _menu(c, pos),
+                                    onDragStarted: _dragStarted,
+                                    onDragFinished: _dragStopped,
+                                    onDropped: (draggedId) => widget.controller
+                                        .move(draggedId, repo.indexOf(c.id)),
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                );
+              },
+            ),
+          ),
         ],
       );
     },
@@ -352,6 +448,7 @@ class _ChannelTile extends StatefulWidget {
   const _ChannelTile({
     super.key,
     required this.channel,
+    required this.name,
     required this.active,
     required this.tuned,
     required this.receiving,
@@ -360,9 +457,12 @@ class _ChannelTile extends StatefulWidget {
     required this.meter,
     required this.onTap,
     required this.onMenu,
+    required this.onDragStarted,
+    required this.onDragFinished,
     required this.onDropped,
   });
   final ReceiverChannel channel;
+  final String name;
   final bool active;
   final bool tuned;
   final bool receiving;
@@ -371,6 +471,8 @@ class _ChannelTile extends StatefulWidget {
   final SignalMeter meter;
   final VoidCallback onTap;
   final void Function(Offset globalPosition) onMenu;
+  final VoidCallback onDragStarted;
+  final VoidCallback onDragFinished;
   final void Function(String draggedId) onDropped;
 
   @override
@@ -386,6 +488,7 @@ class _ChannelTileState extends State<_ChannelTile> {
   static const _moveSlop = 18.0;
 
   void _dragEnded() {
+    widget.onDragFinished();
     if (!_dropped && _moved < _moveSlop) widget.onMenu(_down);
   }
 
@@ -404,6 +507,7 @@ class _ChannelTileState extends State<_ChannelTile> {
             onDragStarted: () {
               _moved = 0;
               _dropped = false;
+              widget.onDragStarted();
             },
             onDragUpdate: (d) => _moved += d.delta.distance,
             onDragCompleted: () => _dropped = true,
@@ -432,14 +536,14 @@ class _ChannelTileState extends State<_ChannelTile> {
     final active = widget.active;
     final receiving = widget.receiving;
     return Container(
-      padding: const EdgeInsets.fromLTRB(11, 8, 11, 8),
+      padding: const EdgeInsets.fromLTRB(7, 3, 7, 3),
       decoration: BoxDecoration(
         color: receiving
             ? const Color(0xFF34491B)
             : active
             ? const Color(0xFF1A2114)
             : LegacyColors.card,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(
           color: target
               ? LegacyColors.primary
@@ -480,12 +584,12 @@ class _ChannelTileState extends State<_ChannelTile> {
                 ),
             ],
           ),
-          const SizedBox(height: 2),
+          const SizedBox(height: 1),
           Row(
             children: [
               Expanded(
                 child: Text(
-                  c.name,
+                  widget.name,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: plex(size: 11, color: LegacyColors.muted),
@@ -514,7 +618,7 @@ class _ChannelTileState extends State<_ChannelTile> {
                 ),
             ],
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 2),
           // Level only for the channel actually being received.
           SizedBox(
             height: 4,

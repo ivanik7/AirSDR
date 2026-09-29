@@ -68,7 +68,11 @@ void main() {
         ),
       );
       await tester.pump();
-      final dd = find.byKey(const ValueKey('legacyDevice'));
+      // The device list lives in Settings (an IndexedStack tab, built offstage).
+      final dd = find.byKey(
+        const ValueKey('legacyDevice'),
+        skipOffstage: false,
+      );
       expect(tester.widget<DropdownButton<SdrDeviceInfo>>(dd).value, isNotNull);
 
       radio.unplug();
@@ -181,7 +185,11 @@ void main() {
           home: LegacyAppShell(controller: c, favorites: favorites),
         ),
       );
-      final dd = find.byKey(const ValueKey('legacyDevice'));
+      // The device list lives in Settings (an IndexedStack tab, built offstage).
+      final dd = find.byKey(
+        const ValueKey('legacyDevice'),
+        skipOffstage: false,
+      );
       await until(() => c.running, 'auto start');
       expect(
         tester.widget<DropdownButton<SdrDeviceInfo>>(dd).value?.id,

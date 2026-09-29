@@ -103,8 +103,12 @@ void main() {
       expect(find.text('ШАГ 100.00 кГц'), findsOneWidget);
       expect(shown(), '118.200');
 
-      await tester.tap(find.byKey(const ValueKey('nudgeLeft')));
-      await until(() => allAt(118100000), '◀');
+      // ◀/▶ left with the tuning ruler: type the neighbouring grid value.
+      for (final k in ['1', '1', '8', '.', '1', 'OK']) {
+        await tester.tap(find.byKey(ValueKey('key-$k')));
+        await tester.pump();
+      }
+      await until(() => allAt(118100000), 'keypad 118.1');
       expect(shown(), '118.100');
 
       // 100 kHz → 5 kHz (cycle): 118.100 is on that grid too; then type 118.1837.
