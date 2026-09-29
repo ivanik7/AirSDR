@@ -18,7 +18,16 @@ import '../radio_controller.dart';
 
 /// Tuning steps of the receiver (Hz); a band's step is one of these.
 /// `CenteredReceiver.steps` is this list.
-const receiverSteps = <int>[5000, 6250, 10000, 12500, 25000, 100000, 200000];
+const receiverSteps = <int>[
+  5000,
+  6250,
+  10000,
+  12500,
+  25000,
+  100000,
+  200000,
+  1000000,
+];
 
 /// Allowed band limits: any positive frequency up to the top of the widest
 /// supported device (HackRF, 6 GHz). Bands are device independent.

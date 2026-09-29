@@ -34,6 +34,9 @@ class CenteredReceiver {
   final RadioController radio;
   void Function()? onManualChange;
   String entry = '';
+  void Function()? onEntryExpired;
+  Timer? _entryTimer;
+  static const entryTimeout = Duration(seconds: 10);
   static const steps = receiverSteps;
   static const stepStorageKey = 'receiver_step_hz_v1';
   static const defaultStepHz = 12500;
@@ -137,6 +140,7 @@ class CenteredReceiver {
   }
 
   void _setStepIndex(int i) {
+    _clearEntry(); // A partial entry belongs to the old precision.
     _selectStep(i);
     if (_dragging) {
       _dragRaw = radio.tunedFrequency.round();
@@ -163,6 +167,7 @@ class CenteredReceiver {
 
   void dispose() {
     _dragTimer?.cancel();
+    _entryTimer?.cancel();
     _dragTimer = null;
     _dragging = false;
   }
@@ -328,15 +333,16 @@ class CenteredReceiver {
 
   bool pressKey(String key) {
     if (key == 'CLR') {
-      entry = '';
+      _clearEntry();
       return true;
     }
     if (key == 'OK') {
+      _entryTimer?.cancel();
       final mhz = double.tryParse(entry);
       if (mhz == null) return false;
       try {
         tune((mhz * 1000000).roundToDouble());
-        entry = '';
+        _clearEntry();
         return true;
       } on ArgumentError {
         return false;
@@ -347,7 +353,41 @@ class CenteredReceiver {
         (key == '.' && entry.contains('.'))) {
       return false;
     }
+    // A decimal entry is complete once it reaches the resolution of the
+    // selected grid. 25 kHz needs three places, 12.5 kHz four, 6.25 five.
+    var unit = stepHz;
+    var decimals = 6;
+    while (unit % 10 == 0 && decimals > 0) {
+      unit ~/= 10;
+      decimals--;
+    }
+    if (key != '.' &&
+        entry.contains('.') &&
+        entry.split('.').last.length >= decimals) {
+      return false;
+    }
     entry += key;
+    _entryTimer?.cancel();
+    _entryTimer = Timer(entryTimeout, () {
+      entry = '';
+      onEntryExpired?.call();
+    });
+    if (entry.contains('.') && entry.split('.').last.length == decimals) {
+      return pressKey('OK');
+    }
+    if (decimals == 0 && key == '.') return pressKey('OK');
+    // At the top of the device range no more integer digits can be entered.
+    if (!entry.contains('.') &&
+        int.tryParse(entry) != null &&
+        int.parse(entry) * 1000000 > _max ~/ 10) {
+      return pressKey('OK');
+    }
     return true;
+  }
+
+  void _clearEntry() {
+    _entryTimer?.cancel();
+    _entryTimer = null;
+    entry = '';
   }
 }

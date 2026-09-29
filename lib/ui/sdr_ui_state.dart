@@ -118,6 +118,24 @@ class SdrUiState extends ChangeNotifier {
   // ---- Automatic levels ------------------------------------------------------
 
   static const autoLevelsStorageKey = 'waterfall_auto_levels_v1';
+  static const waterfallSpeedStorageKey = 'waterfall_row_height_v1';
+  static const waterfallRowHeights = <int>[1, 2, 4];
+  int waterfallRowHeight = 2;
+  bool _waterfallSpeedChanged = false;
+
+  void setWaterfallRowHeight(int height) {
+    if (!waterfallRowHeights.contains(height)) {
+      throw ArgumentError.value(height);
+    }
+    _waterfallSpeedChanged = true;
+    waterfallRowHeight = height;
+    notifyListeners();
+    unawaited(
+      SharedPreferences.getInstance()
+          .then((p) => p.setInt(waterfallSpeedStorageKey, height))
+          .then((_) {}, onError: (_) {}),
+    );
+  }
 
   /// Automatic Max/Min (auto_levels.dart). While on, the Max/Min sliders show
   /// the automatic values and are disabled; switching it off keeps the current
@@ -169,6 +187,14 @@ class SdrUiState extends ChangeNotifier {
       final prefs = await SharedPreferences.getInstance();
       final v = prefs.getBool(autoLevelsStorageKey);
       if (v != null && !_autoLevelsChanged && !_disposed) _setAuto(v);
+      final height = prefs.getInt(waterfallSpeedStorageKey);
+      if (height != null &&
+          waterfallRowHeights.contains(height) &&
+          !_waterfallSpeedChanged &&
+          !_disposed) {
+        waterfallRowHeight = height;
+        notifyListeners();
+      }
     } catch (_) {
       // No storage (tests without the plugin): keep the default.
     }

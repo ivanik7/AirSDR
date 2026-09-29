@@ -105,13 +105,13 @@ void main() {
   });
 
   group('CenteredReceiver on a 100 kHz grid', () {
-    test('keypad 0.180 → 200 kHz; 118.180 → 118.200 MHz', () {
+    test('keypad 118.2 autocompletes on a 100 kHz grid', () {
       final radio = TunerRadio();
       radio.selectDevice(radio.devices[1]); // HackRF demo: 1 MHz..6 GHz
       final r = receiverWithStep(radio, 100000);
       r.tune(1180000);
       expectOnGrid(radio, 100000, 1200000);
-      for (final k in ['1', '1', '8', '.', '1', '8', 'OK']) {
+      for (final k in ['1', '1', '8', '.', '2']) {
         r.pressKey(k);
       }
       expectOnGrid(radio, 100000, 118200000);
@@ -252,23 +252,22 @@ void main() {
     await tester.pump();
     // Default step 12.5 kHz: 118.1875 is on its grid.
     expect(radio.tunedFrequency, 118187500);
-    // ШАГ 12.5 → 25 → 100 kHz.
-    await tester.tap(find.textContaining('ШАГ'));
-    await tester.pump();
-    await tester.tap(find.textContaining('ШАГ'));
-    await tester.pump();
-    expect(find.text('ШАГ 100.00 кГц'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('legacyStep')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('legacyStep-100000')));
+    await tester.pumpAndSettle();
+    expect(find.text('ШАГ 100 кГц'), findsOneWidget);
     expectOnGrid(radio, 100000, 118200000);
     expect(radio.centers.last, 118200000);
     expect(shownFrequency(tester), '118.200');
     // The ▶ nudge is gone with the tuning ruler: retune from the keypad.
-    for (final k in ['1', '1', '8', '.', '3', 'OK']) {
+    for (final k in ['1', '1', '8', '.', '3']) {
       await tester.tap(find.byKey(ValueKey('key-$k')));
       await tester.pump();
     }
     expectOnGrid(radio, 100000, 118300000);
     expect(shownFrequency(tester), '118.300');
-    for (final k in ['1', '1', '8', '.', '1', '8', 'OK']) {
+    for (final k in ['1', '1', '8', '.', '2']) {
       await tester.tap(find.byKey(ValueKey('key-$k')));
       await tester.pump();
     }
@@ -290,7 +289,7 @@ void main() {
     );
     await tester.pump();
     await tester.pump();
-    expect(find.text('ШАГ 100.00 кГц'), findsOneWidget);
+    expect(find.text('ШАГ 100 кГц'), findsOneWidget);
     expectOnGrid(radio2, 100000, 145500000);
     await tester.pumpWidget(const SizedBox());
     radio.dispose();
@@ -326,23 +325,16 @@ void main() {
         ),
       );
       await tester.pump();
-      // Default 12.5 kHz: 118.20625 is a tie → 118.2125. Cycling through
-      // 25, 100, 200, 5 and 6.25 kHz lands on 118.200.
+      // Default 12.5 kHz: 118.20625 is a tie → 118.2125.
       expect(radio.tunedFrequency, 118212500);
-      await tester.tap(find.textContaining('ШАГ'));
-      await tester.pump();
-      await tester.tap(find.textContaining('ШАГ'));
-      await tester.pump();
-      await tester.tap(find.textContaining('ШАГ'));
-      await tester.pump();
-      await tester.tap(find.textContaining('ШАГ'));
-      await tester.pump();
-      await tester.tap(find.textContaining('ШАГ'));
-      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('legacyStep')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('legacyStep-6250')));
+      await tester.pumpAndSettle();
       expect(find.text('ШАГ 6.25 кГц'), findsOneWidget);
-      expectOnGrid(radio, 6250, 118200000);
+      expectOnGrid(radio, 6250, 118212500);
       // 118.20625 typed on the 6.25 kHz grid stays exact.
-      for (final k in ['1', '1', '8', '.', '2', '0', '6', '2', '5', 'OK']) {
+      for (final k in ['1', '1', '8', '.', '2', '0', '6', '2', '5']) {
         await tester.tap(find.byKey(ValueKey('key-$k')));
         await tester.pump();
       }

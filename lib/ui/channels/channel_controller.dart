@@ -123,6 +123,14 @@ class ChannelController {
   String displayName(ReceiverChannel c) =>
       channelDisplayName(c.frequencyHz, c.mode, favorites.entries);
 
+  /// The second line of a tile is reserved for a matching preset only.
+  String tileName(ReceiverChannel c) =>
+      favorites.entries
+          .where((f) => f.frequencyHz == c.frequencyHz)
+          .firstOrNull
+          ?.name ??
+      '';
+
   /// "+ канал": a new slot with the current frequency/mode, made active.
   ReceiverChannel add() {
     cancelScan?.call();

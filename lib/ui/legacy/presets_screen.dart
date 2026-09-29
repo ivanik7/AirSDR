@@ -238,13 +238,11 @@ class _PresetsScreenState extends State<PresetsScreen> {
             PopupMenuItem(value: 'delete', child: Text('Удалить')),
           ],
         ),
-        FilledButton(
+        IconButton.filled(
           key: ValueKey('apply-${f.id}'),
+          tooltip: 'Применить',
           onPressed: () => apply(f),
-          child: Text(
-            'Применить',
-            style: plex(size: 11, color: LegacyColors.background),
-          ),
+          icon: const Icon(Icons.check),
         ),
       ],
     ),

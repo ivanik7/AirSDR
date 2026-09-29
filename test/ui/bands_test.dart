@@ -60,6 +60,7 @@ void main() {
         25000,
         100000,
         200000,
+        1000000,
       ]);
       expect(receiverSteps, CenteredReceiver.steps);
       // Default step is still 12.5 kHz.

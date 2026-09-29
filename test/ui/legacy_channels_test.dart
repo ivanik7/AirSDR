@@ -10,6 +10,7 @@ import 'package:sdr_flutter/ui/channels/signal_meter.dart';
 import 'package:sdr_flutter/ui/demo_radio_controller.dart';
 import 'package:sdr_flutter/ui/favorites/favorites.dart';
 import 'package:sdr_flutter/ui/legacy/app_shell.dart';
+import 'package:sdr_flutter/ui/legacy/theme.dart';
 import 'package:sdr_flutter/ui/radio_controller.dart';
 import 'package:sdr_flutter/ui/sdr_ui_state.dart';
 
@@ -187,6 +188,28 @@ void main() {
       await tester.tap(toggle);
       await tester.pump();
       expect(find.text('Стоп скан'), findsOneWidget);
+      final mute = find.byKey(const ValueKey('legacyMute'));
+      expect(
+        tester
+            .widget<Icon>(
+              find.descendant(
+                of: mute,
+                matching: find.byIcon(Icons.volume_off),
+              ),
+            )
+            .color,
+        LegacyColors.danger,
+      );
+      await tester.tap(mute);
+      await tester.pump();
+      expect(
+        tester
+            .widget<Icon>(
+              find.descendant(of: mute, matching: find.byIcon(Icons.volume_up)),
+            )
+            .color,
+        isNot(LegacyColors.danger),
+      );
       expect(
         tester.widget<Text>(find.byKey(const ValueKey('legacyFrequency'))).data,
         '145.500',
@@ -308,7 +331,7 @@ void main() {
     await _dispose(tester, env);
   });
 
-  testWidgets('long press without moving opens the menu; delete confirms', (
+  testWidgets('long press without moving opens the menu; delete immediately', (
     tester,
   ) async {
     final env = await _pump(tester, seed: _seed3);
@@ -324,10 +347,7 @@ void main() {
     expect(find.text('Сохранить как пресет'), findsOneWidget);
     await tester.tap(find.text('Удалить'));
     await tester.pumpAndSettle();
-    expect(find.text('Удалить канал?'), findsOneWidget);
-    expect(env.channels.length, 3, reason: 'not before confirmation');
-    await tester.tap(find.byKey(const ValueKey('channelDeleteConfirm')));
-    await tester.pumpAndSettle();
+    expect(find.byType(AlertDialog), findsNothing);
     expect(env.channels.length, 2);
     expect(env.channels.activeId, third.id, reason: 'neighbour takes over');
     expect(env.radio.tunedFrequency, 145500000);
@@ -366,7 +386,7 @@ void main() {
     expect(env.channels.channels[2].frequencyHz, 99912500);
     expect(
       find.descendant(of: tile, matching: find.text('NFM 99.9125')),
-      findsOneWidget,
+      findsNothing,
     );
     final before = env.favorites.entries.length;
     await tester.longPress(tile);
@@ -435,7 +455,7 @@ void main() {
     expect(env.channels.active!.frequencyHz, 145600000);
     expect(
       find.descendant(of: tile, matching: find.text('NFM 145.600')),
-      findsOneWidget,
+      findsNothing,
     );
     final p = env.favorites.add(
       frequencyHz: 145600000,
@@ -452,7 +472,7 @@ void main() {
     await tester.pump();
     expect(
       find.descendant(of: tile, matching: find.text('NFM 145.600')),
-      findsOneWidget,
+      findsNothing,
     );
     await _dispose(tester, env);
   });
@@ -516,6 +536,65 @@ void main() {
   }
 
   Finder tileOf(String id) => find.byKey(ValueKey('channel-$id'));
+  for (final n in [2, 4, 6]) {
+    testWidgets(
+      '$n channels use ${n == 2 ? 1 : 2} rows, scroll only above four',
+      (tester) async {
+        final env = await _pump(
+          tester,
+          size: const Size(344, 690),
+          seed: (c) => seedMany(c, n),
+        );
+        await _showChannels(tester);
+        final ids = env.channels.channels.map((c) => c.id).toList();
+        final first = tester.getRect(tileOf(ids[0]));
+        final second = tester.getRect(tileOf(ids[1]));
+        if (n == 2) {
+          expect(first.top, second.top);
+        } else {
+          expect(first.left, second.left);
+          expect(first.top, lessThan(second.top));
+        }
+        final scroll = tester.state<ScrollableState>(
+          find.descendant(
+            of: find.byKey(const ValueKey('channelsSection')),
+            matching: find.byType(Scrollable),
+          ),
+        );
+        expect(scroll.position.maxScrollExtent > 0, n > 4);
+        if (n == 4) {
+          expect(first.width, closeTo((344 - 24 - 4) / 2, 0.01));
+        }
+        if (n == 6) expect(first.width, lessThan((344 - 24) / 2));
+        expect(tester.takeException(), isNull);
+        await _dispose(tester, env);
+      },
+    );
+  }
+
+  testWidgets(
+    'selected tile tap opens the same menu; inactive tile selects without menu',
+    (tester) async {
+      final env = await _pump(tester, seed: _seed3);
+      await _showChannels(tester);
+      final inactive = env.channels.channels.first;
+      await tester.tap(tileOf(inactive.id));
+      await tester.pump();
+      expect(find.byKey(const ValueKey('channelMenu-delete')), findsNothing);
+      expect(env.channels.activeId, inactive.id);
+      final tuned = env.radio.tunedFrequency;
+      await tester.tap(tileOf(inactive.id));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('channelMenu-delete')), findsOneWidget);
+      expect(find.byKey(const ValueKey('channelMenu-preset')), findsOneWidget);
+      expect(env.radio.tunedFrequency, tuned);
+      await tester.tap(find.byKey(const ValueKey('channelMenu-delete')));
+      await tester.pumpAndSettle();
+      expect(find.byType(AlertDialog), findsNothing);
+      expect(env.channels.indexOf(inactive.id), -1);
+      await _dispose(tester, env);
+    },
+  );
   Rect rowRect(WidgetTester tester) =>
       tester.getRect(find.byKey(const ValueKey('channelsRow')));
   bool fullyVisible(WidgetTester tester, String id) {
@@ -547,7 +626,7 @@ void main() {
   });
 
   for (final n in [5, 12]) {
-    testWidgets('$n channels: one horizontal row, + канал always there', (
+    testWidgets('$n channels: two horizontal rows, + канал always there', (
       tester,
     ) async {
       final env = await _pump(tester, seed: (c) => seedMany(c, n));
@@ -565,13 +644,16 @@ void main() {
         tester.widget<Scrollable>(scrollables).axisDirection,
         AxisDirection.right,
       );
-      // All tiles are in one row.
-      final firstTop = tester.getRect(tileOf(env.channels.activeId!)).top;
-      for (final c in env.channels.channels) {
-        if (tileOf(c.id).evaluate().isNotEmpty) {
-          expect(tester.getRect(tileOf(c.id)).top, firstTop);
-        }
-      }
+      final first = env.channels.channels.first.id;
+      final second = env.channels.channels[1].id;
+      expect(
+        tester.getRect(tileOf(first)).left,
+        tester.getRect(tileOf(second)).left,
+      );
+      expect(
+        tester.getRect(tileOf(first)).top,
+        lessThan(tester.getRect(tileOf(second)).top),
+      );
       // The (last-added) active channel was scrolled into view.
       expect(fullyVisible(tester, env.channels.activeId!), isTrue);
       final add = find.byKey(const ValueKey('channelAdd'));
@@ -582,7 +664,6 @@ void main() {
       expect(find.text('КАНАЛЫ · ${n + 1}'), findsOneWidget);
       expect(fullyVisible(tester, env.channels.activeId!), isTrue);
       // Horizontal fling reveals the first channel again.
-      final first = env.channels.channels.first.id;
       await tester.drag(scrollables, const Offset(4000, 0));
       await tester.pumpAndSettle();
       expect(fullyVisible(tester, first), isTrue);
@@ -591,7 +672,7 @@ void main() {
     });
   }
 
-  testWidgets('channels block height does not depend on the channel count', (
+  testWidgets('channels block is one row up to two, two rows above two', (
     tester,
   ) async {
     final heights = <double>[];
@@ -616,7 +697,9 @@ void main() {
       expect(tester.takeException(), isNull);
       await _dispose(tester, env);
     }
-    expect(heights.toSet().length, 1, reason: '$heights');
+    expect(heights[0], heights[1]);
+    expect(heights[2], heights[3]);
+    expect(heights[2], greaterThan(heights[1]));
   });
 
   testWidgets('active channel off-screen is scrolled into view on switch', (
