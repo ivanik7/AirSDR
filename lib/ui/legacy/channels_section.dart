@@ -9,6 +9,7 @@ import '../channels/channel_controller.dart';
 import '../channels/channels.dart';
 import '../channels/signal_meter.dart';
 import '../radio_controller.dart';
+import 'step_grid.dart';
 import 'theme.dart';
 
 class ChannelsSection extends StatefulWidget {
@@ -164,9 +165,7 @@ class _ChannelsSectionState extends State<ChannelsSection> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Удалить канал?'),
-        content: Text(
-          '${c.name} · ${(c.frequencyHz / 1000000).toStringAsFixed(3)} MHz',
-        ),
+        content: Text('${c.name} · ${formatMhz(c.frequencyHz)} MHz'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -393,7 +392,7 @@ class _ChannelTileState extends State<_ChannelTile> {
                   fit: BoxFit.scaleDown,
                   alignment: Alignment.centerLeft,
                   child: Text(
-                    (c.frequencyHz / 1000000).toStringAsFixed(3),
+                    formatMhz(c.frequencyHz),
                     maxLines: 1,
                     style: plex(
                       size: 15,

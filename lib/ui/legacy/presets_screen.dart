@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../favorites/favorites.dart';
 import '../radio_controller.dart';
 import 'centered_receiver.dart';
+import 'step_grid.dart';
 import 'theme.dart';
 
 /// Human-readable reason for a rejected add/edit (never an empty string).
@@ -51,7 +52,7 @@ class _PresetsScreenState extends State<PresetsScreen> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  'Частота ${((existing?.frequencyHz ?? widget.controller.tunedFrequency) / 1000000).toStringAsFixed(3)} MHz',
+                  'Частота ${formatMhz(existing?.frequencyHz ?? widget.controller.tunedFrequency)} MHz',
                   style: plex(mono: true),
                 ),
                 TextFormField(
@@ -250,7 +251,7 @@ class _PresetsScreenState extends State<PresetsScreen> {
                               style: plex(size: 14),
                             ),
                             Text(
-                              '${(f.frequencyHz / 1000000).toStringAsFixed(3)} MHz · ${f.mode.label} · ${f.category}',
+                              '${formatMhz(f.frequencyHz)} MHz · ${f.mode.label} · ${f.category}',
                               style: plex(
                                 size: 11,
                                 mono: true,
