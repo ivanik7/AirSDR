@@ -198,6 +198,9 @@ class SdrRadioController extends RadioController {
   double _volume = 1.0;
   bool _squelchEnabled = false;
   double _squelchLevel = -50;
+  SquelchType _squelchType = SquelchType.off;
+  double _autoSquelchOffset = 0;
+  bool _autoSquelchAllowed = false;
   bool _centerLocked = false;
 
   int _outstanding = 0;
@@ -306,6 +309,13 @@ class SdrRadioController extends RadioController {
     _bandwidth = (m['bandwidth'] as num).toDouble();
     _squelchEnabled = m['squelchEnabled'] == true;
     _squelchLevel = (m['squelchLevel'] as num).toDouble();
+    final sqm = m['squelchMode'];
+    _squelchType = sqm is String
+        ? SquelchType.fromKey(sqm)
+        : (_squelchEnabled ? SquelchType.manual : SquelchType.off);
+    final sqo = m['squelchAutoOffset'];
+    if (sqo is num) _autoSquelchOffset = sqo.toDouble();
+    _autoSquelchAllowed = m['squelchAutoAllowed'] == true;
     final gain = m['gain'];
     if (gain is num) _gain = gain.toDouble();
     final agc = m['agc'];
@@ -784,6 +794,7 @@ class SdrRadioController extends RadioController {
     _bandwidth = mode
         .params
         .defaultBandwidth; // corrected by the DSP state (saved per mode)
+    _autoSquelchAllowed = mode.params.autoSquelch != null; // idem (squelch mode per mode)
     _fire(<String, Object?>{DspMsg.cmd: DspCmd.setMode, 'mode': mode.id});
     _notify();
   }
@@ -873,12 +884,60 @@ class SdrRadioController extends RadioController {
   @override
   void setSquelchEnabled(bool enabled) {
     _squelchEnabled = enabled;
+    _squelchType = enabled ? SquelchType.manual : SquelchType.off;
     _fire(<String, Object?>{
       DspMsg.cmd: DspCmd.setSquelch,
       'enabled': enabled,
       'level': _squelchLevel,
     });
     _notify();
+  }
+
+  @override
+  SquelchType get squelchType => _squelchType;
+
+  @override
+  void setSquelchType(SquelchType type) {
+    if (type == SquelchType.auto && !_autoSquelchAllowed) return;
+    _squelchType = type;
+    _squelchEnabled = type == SquelchType.manual;
+    _fire(<String, Object?>{
+      DspMsg.cmd: DspCmd.setSquelch,
+      'mode': type.key,
+      'level': _squelchLevel,
+      'autoOffset': _autoSquelchOffset,
+    });
+    _notify();
+  }
+
+  @override
+  bool get autoSquelchAvailable => _autoSquelchAllowed;
+
+  @override
+  double get autoSquelchOffset => _autoSquelchOffset;
+
+  @override
+  void setAutoSquelchOffset(double db) {
+    _autoSquelchOffset = db
+        .clamp(RadioController.minAutoSquelchOffset, RadioController.maxAutoSquelchOffset)
+        .toDouble();
+    _fire(<String, Object?>{
+      DspMsg.cmd: DspCmd.setSquelch,
+      'autoOffset': _autoSquelchOffset,
+    });
+    _notify();
+  }
+
+  @override
+  AutoSquelchStatus? get autoSquelchStatus {
+    if (!_running || _squelchType != SquelchType.auto) return null;
+    final s = lastStats['squelch'];
+    if (s is! Map) return null;
+    return AutoSquelchStatus(
+      open: s['open'] == true,
+      metricDb: (s['metric'] as num?)?.toDouble(),
+      thresholdDb: (s['threshold'] as num?)?.toDouble(),
+    );
   }
 
   @override
@@ -948,7 +1007,7 @@ class SdrRadioController extends RadioController {
   @override
   Map<String, Object?> get stats => <String, Object?>{
     for (final e in lastStats.entries)
-      if (e.key != DspMsg.evt) '${e.key}': e.value,
+      if (e.key != DspMsg.evt && e.key != 'squelch') '${e.key}': e.value,
     'sampleRate': _sampleRate,
   };
 

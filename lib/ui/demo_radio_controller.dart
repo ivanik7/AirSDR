@@ -158,6 +158,9 @@ class DemoRadioController extends RadioController {
   void setMode(DemodMode mode) {
     if (mode == _mode) return;
     _mode = mode;
+    if (_squelchType == SquelchType.auto && mode.params.autoSquelch == null) {
+      _squelchType = SquelchType.off;
+    }
     notifyListeners();
   }
 
@@ -230,8 +233,38 @@ class DemoRadioController extends RadioController {
 
   @override
   void setSquelchEnabled(bool enabled) {
-    if (enabled == _squelchEnabled) return;
+    if (enabled == _squelchEnabled && _squelchType != SquelchType.auto) return;
     _squelchEnabled = enabled;
+    _squelchType = enabled ? SquelchType.manual : SquelchType.off;
+    notifyListeners();
+  }
+
+  // Auto squelch: stored only (nothing is demodulated, so no live status).
+  SquelchType _squelchType = SquelchType.off;
+  double _autoSquelchOffset = 0;
+
+  @override
+  SquelchType get squelchType => _squelchType;
+
+  @override
+  void setSquelchType(SquelchType type) {
+    if (type == SquelchType.auto && !autoSquelchAvailable) return;
+    _squelchType = type;
+    _squelchEnabled = type == SquelchType.manual;
+    notifyListeners();
+  }
+
+  @override
+  bool get autoSquelchAvailable => mode.params.autoSquelch != null;
+
+  @override
+  double get autoSquelchOffset => _autoSquelchOffset;
+
+  @override
+  void setAutoSquelchOffset(double db) {
+    _autoSquelchOffset = db
+        .clamp(RadioController.minAutoSquelchOffset, RadioController.maxAutoSquelchOffset)
+        .toDouble();
     notifyListeners();
   }
 

@@ -11,6 +11,7 @@ import '../source_settings.dart';
 import '../spectrum_waterfall.dart';
 import 'centered_receiver.dart';
 import 'channels_section.dart';
+import 'squelch_controls.dart';
 import 'step_grid.dart';
 import 'theme.dart';
 
@@ -358,6 +359,8 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
             radio: r,
             meter: widget.meter,
           ),
+          const SizedBox(height: 11),
+          SquelchControls(controller: r, compact: true),
           const SizedBox(height: 11),
           for (final row in const [
             ['1', '2', '3'],

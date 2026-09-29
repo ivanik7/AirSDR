@@ -113,6 +113,10 @@ class DspEngine {
     core.sigpath.sinkManager.getStream('Radio')?.setMuted(true);
     _updateAudio();
     radio.stream.bindStream(_audioTapHandler);
+    // Auto squelch open/close reaches the UI at once, not only with the periodic stats.
+    radio.autoSquelch.onChange = (_) {
+      if (_running) _sendStats();
+    };
     _ready = true;
 
     final vfoOffsets = coreConfig.conf['vfoOffsets'];
@@ -281,23 +285,28 @@ class DspEngine {
               (m['hz'] as num).toDouble(),
             ),
           );
+          radio.resetAutoSquelch();
           _sendState();
         case DspCmd.setGain:
           _withSource(
             (s) =>
                 s.controls.setGain(s.handler, (m['value'] as num).toDouble()),
           );
+          // The noise floor moved with the gain: the level squelch relearns it.
+          radio.resetAutoSquelch();
           _sendState();
         case DspCmd.setAgc:
           _withSource(
             (s) => s.controls.setAgc(s.handler, m['enabled'] as bool),
           );
+          radio.resetAutoSquelch();
           _sendState();
         case DspCmd.sourceSetting:
           _withSource((s) {
             s.handler.applySetting(m['id'] as String, m['value']!);
             return true;
           });
+          radio.resetAutoSquelch();
           _sendState();
         case DspCmd.setVolume:
           core.sigpath.sinkManager.setStreamVolume(
@@ -312,7 +321,10 @@ class DspEngine {
           setSquelch(
             enabled: m['enabled'] as bool?,
             level: (m['level'] as num?)?.toDouble(),
+            mode: m['mode'] as String?,
+            autoOffset: (m['autoOffset'] as num?)?.toDouble(),
           );
+          _sendState();
         case DspCmd.demodOption:
           radio.selectedDemod?.setOption(m['key'] as String, m['value']!);
           _sendState();
@@ -410,6 +422,7 @@ class DspEngine {
       rethrow;
     }
     core.sigpath.sourceManager.tune(_centerFreq);
+    radio.resetAutoSquelch();
     _running = true;
     _updateAudio();
     _fftWanted = core.iqFrontEnd.fftEnabled;
@@ -438,19 +451,24 @@ class DspEngine {
 
   void tune({double? center, double? offset}) {
     final locked = _source?.centerFrequencyLocked ?? false;
+    var retuned = false;
     if (center != null && center != _centerFreq && !locked) {
       _centerFreq = center;
       core.sigpath.sourceManager.tune(center);
       coreConfig.acquire();
       coreConfig.conf['frequency'] = center;
       coreConfig.release(true);
+      retuned = true;
     }
     if (offset != null) {
+      retuned |= offset != radio.vfo?.getOffset();
       radio.vfo?.setOffset(offset);
       coreConfig.acquire();
       coreConfig.obj('vfoOffsets')['Radio'] = offset;
       coreConfig.release(true);
     }
+    // New channel: the auto squelch relearns (level squelch: noise floor of the new channel).
+    if (retuned) radio.resetAutoSquelch();
   }
 
   void setMode(int modeId) {
@@ -460,11 +478,27 @@ class DspEngine {
     _sendState();
   }
 
-  void setSquelch({bool? enabled, double? level}) {
-    if (enabled != null) {
+  void setSquelch({bool? enabled, double? level, String? mode, double? autoOffset}) {
+    final m = mode == null ? null : squelchModeKeys[mode];
+    if (m != null) {
+      radio.setSquelchMode(m);
+    } else if (enabled != null) {
       radio.setSquelchMode(enabled ? SquelchMode.power : SquelchMode.off);
     }
     if (level != null) radio.setSquelchLevel(level);
+    if (autoOffset != null) radio.setAutoSquelchOffset(autoOffset);
+  }
+
+  /// Live auto squelch status for the UI (null unless the auto squelch is active).
+  Map<String, Object?>? squelchStatus() {
+    if (radio.squelchMode != SquelchMode.auto) return null;
+    final a = radio.autoSquelch;
+    return <String, Object?>{
+      'open': a.open,
+      'metric': a.metricDb,
+      'threshold': a.thresholdDb,
+      'detector': a.detector.name,
+    };
   }
 
   void setFft({
@@ -588,6 +622,7 @@ class DspEngine {
     'audioWritten': audio.framesWritten,
     'audioDropped': audio.framesDropped,
     'audioOutput': audio.name,
+    'squelch': ?squelchStatus(),
     ...?_source?.stats?.call(),
   };
 
@@ -611,6 +646,11 @@ class DspEngine {
       'maxBandwidth': radio.maxBandwidth,
       'squelchEnabled': radio.squelchMode == SquelchMode.power,
       'squelchLevel': radio.squelchLevel,
+      // App extension (auto squelch): the mode key of squelchModeKeys, the threshold offset
+      // and whether the current demodulator has an automatic detector.
+      'squelchMode': _squelchModeKey(radio.squelchMode),
+      'squelchAutoOffset': radio.autoSquelchOffset,
+      'squelchAutoAllowed': radio.autoSquelchAllowed,
       'volume': radio.stream.getVolume(),
       'muted': _muted,
       'fftSize': core.iqFrontEnd.fftSize,
@@ -626,6 +666,9 @@ class DspEngine {
       'agc': src?.controls.agcOf(src.handler),
     };
   }
+
+  static String _squelchModeKey(SquelchMode m) =>
+      squelchModeKeys.entries.where((e) => e.value == m).map((e) => e.key).firstOrNull ?? 'off';
 
   static Map<String, Object?> settingToMap(SourceSetting s) => switch (s) {
     ChoiceSetting c => <String, Object?>{

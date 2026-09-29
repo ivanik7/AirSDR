@@ -30,6 +30,7 @@ export 'multirate/polyphase_bank.dart';
 export 'multirate/polyphase_resampler.dart';
 export 'multirate/power_decimator.dart';
 export 'multirate/rational_resampler.dart';
+export 'noise_reduction/auto_squelch.dart';
 export 'noise_reduction/noise_blanker.dart';
 export 'noise_reduction/power_squelch.dart';
 export 'processor.dart';

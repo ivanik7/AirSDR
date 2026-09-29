@@ -68,6 +68,15 @@ const Map<String, SquelchMode> squelchModeKeys = <String, SquelchMode>{
   'power': SquelchMode.power,
   'ctcss_mute': SquelchMode.ctcssMute,
   'ctcss_decode': SquelchMode.ctcssDecode,
+  'auto': SquelchMode.auto, // app extension
+};
+
+/// Automatic squelch detector per demodulator (app extension, see auto_squelch.dart):
+/// noise squelch for NFM, level squelch for AM/SSB/DSB/CW; WFM and RAW have none.
+dsp.AutoSquelchDetector? autoSquelchDetectorFor(DemodID id) => switch (id) {
+  DemodID.nfm => dsp.AutoSquelchDetector.noise,
+  DemodID.am || DemodID.usb || DemodID.lsb || DemodID.dsb || DemodID.cw => dsp.AutoSquelchDetector.level,
+  DemodID.wfm || DemodID.raw => null,
 };
 
 String _keyOf<T>(Map<String, T> m, T v) => m.entries.firstWhere((e) => e.value == v, orElse: () => m.entries.first).key;
@@ -77,6 +86,10 @@ class RadioModule extends ModuleInstance {
   static const double maxNb = 10.0;
   static const double minSquelch = -100.0;
   static const double maxSquelch = 0.0;
+
+  /// Auto squelch threshold offset range (dB), app extension.
+  static const double minAutoSquelchOffset = -10.0;
+  static const double maxAutoSquelchOffset = 20.0;
 
   /// radio_module.h:40-135.
   RadioModule(this.name, this.core, this.config) {
@@ -137,6 +150,9 @@ class RadioModule extends ModuleInstance {
   late final dsp.NoiseBlanker nb;
   late final dsp.PowerSquelch powerSquelch;
 
+  /// App extension: automatic squelch (not an ifChain block — it analyses the IF after the
+  /// chain and gates the audio with a short fade, see auto_squelch.dart).
+  final dsp.AutoSquelch autoSquelch = dsp.AutoSquelch();
   // Audio chain
   final dsp.Chain afChain = dsp.Chain(dsp.SampleType.stereo);
   late final dsp.RationalResampler resamp;
@@ -161,6 +177,10 @@ class RadioModule extends ModuleInstance {
   double squelchLevel = minSquelch;
   int ctcssToneX10 = 670;
   bool squelchAllowed = false;
+
+  /// App extension: auto squelch availability (per demod) and its threshold offset (dB).
+  bool autoSquelchAllowed = false;
+  double autoSquelchOffset = 0.0;
 
   bool highPass = false;
   bool highPassAllowed = false;
@@ -236,10 +256,13 @@ class RadioModule extends ModuleInstance {
     if (!enabled || demod == null || count <= 0) return;
     final n = ifChain.process(count, iq);
     if (n <= 0) return;
+    final auto = squelchMode == SquelchMode.auto;
+    if (auto) autoSquelch.analyze(n, iq);
     final int need = 2 * math.max<int>(n, resamp.maxOutput(n));
     if (_afBuf.length < need) _afBuf = dsp.growBuffer(_afBuf, need, 0);
     int a = demod.process(n, iq, _afBuf);
     a = afChain.process(a, _afBuf);
+    if (auto) autoSquelch.gate(a, _afBuf, postProcEnabled ? audioSampleRate : demod.getAFSampleRate());
     audioFrames += a;
     stream.process(_afBuf, a);
   }
@@ -327,6 +350,7 @@ class RadioModule extends ModuleInstance {
     deempMode = demod.getDefaultDeemphasisMode();
     squelchMode = SquelchMode.off;
     squelchLevel = minSquelch;
+    autoSquelchOffset = 0.0;
     ctcssToneX10 = 670; // CTCSS_TONE_67Hz
     highPass = false;
 
@@ -336,6 +360,8 @@ class RadioModule extends ModuleInstance {
     fmIFPreset = IFNRPreset.voice;
     nbAllowed = demod.getNBAllowed();
     squelchAllowed = demod.getSquelchAllowed();
+    final autoDetector = autoSquelchDetectorFor(DemodID.fromId(selectedDemodID) ?? DemodID.wfm);
+    autoSquelchAllowed = autoDetector != null;
     highPassAllowed = demod.getHighPassAllowed();
     nbEnabled = false;
     nbLevel = 0.0;
@@ -356,6 +382,9 @@ class RadioModule extends ModuleInstance {
     }
     if (c['squelchLevel'] is num) {
       squelchLevel = (c['squelchLevel'] as num).toDouble();
+    }
+    if (c['squelchAutoOffset'] is num) {
+      autoSquelchOffset = (c['squelchAutoOffset'] as num).toDouble();
     }
     if (c['ctcssTone'] is num) {
       ctcssToneX10 = (c['ctcssTone'] as num).toInt();
@@ -397,6 +426,8 @@ class RadioModule extends ModuleInstance {
     }
 
     // Configure bandwidth
+    autoSquelch.configure(
+        detector: autoDetector ?? dsp.AutoSquelchDetector.level, sampleRate: ifSamplerate, bandwidth: bandwidth);
     setBandwidth(bandwidth);
 
     // Configure noise blanker
@@ -409,8 +440,9 @@ class RadioModule extends ModuleInstance {
     setFMIFNREnabled(fmIFNRAllowed ? fmIFNREnabled : false);
 
     // Configure squelch
-    setSquelchMode(squelchAllowed ? squelchMode : SquelchMode.off);
+    setSquelchMode(_squelchModeAllowed(squelchMode) ? squelchMode : SquelchMode.off);
     setSquelchLevel(squelchLevel);
+    setAutoSquelchOffset(autoSquelchOffset);
 
     // Configure AF chain
     if (postProcEnabled) {
@@ -448,6 +480,7 @@ class RadioModule extends ModuleInstance {
     }
     vfo?.setBandwidth(bandwidth);
     demod.setBandwidth(bandwidth);
+    autoSquelch.setBandwidth(bandwidth);
 
     config.acquire();
     demodConf(config, name, demod.getName())['bandwidth'] = bandwidth;
@@ -558,6 +591,9 @@ class RadioModule extends ModuleInstance {
     switch (mode) {
       case SquelchMode.power:
         ifChain.enableBlock(powerSquelch);
+      case SquelchMode.auto:
+        // App extension: not a chain block (processIF analyses the IF and gates the AF).
+        autoSquelch.reset();
       case SquelchMode.off:
       case SquelchMode.snr:
       case SquelchMode.ctcssMute:
@@ -586,6 +622,26 @@ class RadioModule extends ModuleInstance {
     demodConf(config, name, demod.getName())['squelchLevel'] = squelchLevel;
     config.release(true);
   }
+
+  /// App extension: is [mode] usable with the current demodulator?
+  bool _squelchModeAllowed(SquelchMode mode) => mode == SquelchMode.auto ? autoSquelchAllowed : squelchAllowed;
+
+  /// App extension: auto squelch threshold offset (dB, + = needs a stronger signal).
+  void setAutoSquelchOffset(double offset) {
+    autoSquelchOffset = offset.clamp(minAutoSquelchOffset, maxAutoSquelchOffset).toDouble();
+    autoSquelch.offsetDb = autoSquelchOffset;
+    final demod = selectedDemod;
+    if (demod == null) {
+      return;
+    }
+    config.acquire();
+    demodConf(config, name, demod.getName())['squelchAutoOffset'] = autoSquelchOffset;
+    config.release(true);
+  }
+
+  /// App extension: forget the auto squelch state (retune, gain change, new source): it
+  /// closes and the level squelch relearns the noise floor.
+  void resetAutoSquelch() => autoSquelch.reset();
 
   /// radio_module.h:735-744 (FMIF block not ported: flag stored and saved only).
   void setFMIFNREnabled(bool enabled) {
