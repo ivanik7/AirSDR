@@ -73,21 +73,23 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
                       icon: const Icon(Icons.close, size: 17),
                     )
                   : IconButton(
-                    // Real mute (separate from the volume slider in Settings); starts muted.
-                    key: const ValueKey('legacyMute'),
-                    tooltip: widget.scanner.userMuted
-                        ? 'Включить звук'
-                        : 'Выключить звук',
-                    onPressed: () => widget.scanner.active
-                        ? widget.scanner.setUserMuted(!widget.scanner.userMuted)
-                        : r.setMuted(!r.muted),
-                    icon: Icon(
-                      widget.scanner.userMuted
-                          ? Icons.volume_off
-                          : Icons.volume_up,
-                      size: 18,
+                      // Real mute (separate from the volume slider in Settings); starts muted.
+                      key: const ValueKey('legacyMute'),
+                      tooltip: widget.scanner.userMuted
+                          ? 'Включить звук'
+                          : 'Выключить звук',
+                      onPressed: () => widget.scanner.active
+                          ? widget.scanner.setUserMuted(
+                              !widget.scanner.userMuted,
+                            )
+                          : r.setMuted(!r.muted),
+                      icon: Icon(
+                        widget.scanner.userMuted
+                            ? Icons.volume_off
+                            : Icons.volume_up,
+                        size: 18,
+                      ),
                     ),
-                  ),
             ),
           ),
           // Status: never wider than the screen (cover display is ~344 dp).
@@ -219,8 +221,14 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
                               columns: cols,
                               historyRows: 64,
                             );
-                            final plot = (box.maxHeight * 0.48).clamp(0.0, 66.0);
-                            final scale = (box.maxHeight - plot).clamp(0.0, 20.0);
+                            final plot = (box.maxHeight * 0.48).clamp(
+                              0.0,
+                              66.0,
+                            );
+                            final scale = (box.maxHeight - plot).clamp(
+                              0.0,
+                              20.0,
+                            );
                             return Column(
                               children: [
                                 SizedBox(
@@ -295,11 +303,15 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
               ),
             ),
           ),
-          ChannelsSection(
-            controller: widget.channels,
-            scanner: widget.scanner,
-            radio: r,
-            meter: widget.meter,
+          Padding(
+            // Same side margins as the spectrum panel above.
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: ChannelsSection(
+              controller: widget.channels,
+              scanner: widget.scanner,
+              radio: r,
+              meter: widget.meter,
+            ),
           ),
           const SizedBox(height: 2),
           for (final row in const [
@@ -387,11 +399,8 @@ class _FixedFrequencyRow extends StatelessWidget {
           textScaler: scaler,
           textDirection: TextDirection.ltr,
         )..layout();
-        final available =
-            (box.maxWidth - unitPainter.width - trailingWidth - 1).clamp(
-              1.0,
-              double.infinity,
-            );
+        final available = (box.maxWidth - unitPainter.width - trailingWidth - 1)
+            .clamp(1.0, double.infinity);
         final sample = TextPainter(
           text: TextSpan(
             text: '8' * maxChars,
