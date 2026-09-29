@@ -114,8 +114,11 @@ void main() {
         expect(fontSize(), size, reason: why);
         expect(textHeight(), height, reason: why);
         // Never clipped: the text fits inside the field.
-        expect(tester.getRect(freq).right,
-            lessThanOrEqualTo(fieldRect!.right + 0.01), reason: why);
+        expect(
+          tester.getRect(freq).right,
+          lessThanOrEqualTo(fieldRect!.right + 0.01),
+          reason: why,
+        );
       }
 
       for (final hz in [7100000, 145500000, 1090000000, 5999993750]) {

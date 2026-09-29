@@ -308,32 +308,37 @@ class _ChannelsSectionState extends State<ChannelsSection> {
             height: 34,
             child: Row(
               children: [
-                Flexible(
-                  child: Text(
-                    'КАНАЛЫ · ${all.length}',
-                    key: const ValueKey('channelsHeader'),
-                    maxLines: 1,
-                    softWrap: false,
-                    overflow: TextOverflow.ellipsis,
-                    style: plex(size: 12, color: LegacyColors.muted),
+                Expanded(
+                  child: Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          'КАНАЛЫ · ${all.length}',
+                          key: const ValueKey('channelsHeader'),
+                          maxLines: 1,
+                          softWrap: false,
+                          overflow: TextOverflow.ellipsis,
+                          style: plex(size: 12, color: LegacyColors.muted),
+                        ),
+                      ),
+                      if (widget.scanner.active) ...[
+                        const SizedBox(width: 6),
+                        Flexible(
+                          flex: 2,
+                          child: Text(
+                            receiving == null
+                                ? 'Скан…'
+                                : 'Приём: ${widget.controller.displayName(receiving)}',
+                            key: const ValueKey('channelScanStatus'),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: plex(size: 11, color: LegacyColors.accent),
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
                 ),
-                const SizedBox(width: 6),
-                if (widget.scanner.active)
-                  Expanded(
-                    flex: 2,
-                    child: Text(
-                      receiving == null
-                          ? 'Скан…'
-                          : 'Приём: ${widget.controller.displayName(receiving)}',
-                      key: const ValueKey('channelScanStatus'),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: plex(size: 11, color: LegacyColors.accent),
-                    ),
-                  )
-                else
-                  const Spacer(),
                 TextButton(
                   key: const ValueKey('channelAdd'),
                   onPressed: widget.controller.add,

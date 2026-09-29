@@ -361,9 +361,16 @@ void main() {
     await tester.tap(find.text('Сохранить как пресет'));
     await tester.pumpAndSettle();
     final field = find.byKey(const ValueKey('presetName'));
-    expect(tester.widget<EditableText>(
-      find.descendant(of: field, matching: find.byType(EditableText)),
-    ).controller.text, 'NFM 99.9125', reason: 'prefilled with channel name');
+    expect(
+      tester
+          .widget<EditableText>(
+            find.descendant(of: field, matching: find.byType(EditableText)),
+          )
+          .controller
+          .text,
+      'NFM 99.9125',
+      reason: 'prefilled with channel name',
+    );
     // Empty name: validation error, dialog stays, nothing saved.
     await tester.enterText(field, '   ');
     await tester.tap(find.byKey(const ValueKey('presetNameSave')));
@@ -506,6 +513,26 @@ void main() {
     return r.left >= row.left - 0.5 && r.right <= row.right + 0.5;
   }
 
+  testWidgets('channels block is aligned with the spectrum panel', (
+    tester,
+  ) async {
+    final env = await _pump(tester, seed: _seed3);
+    await _showChannels(tester);
+    final panel = tester.getRect(
+      find.byKey(const ValueKey('legacySpectrumDrag')),
+    );
+    final header = tester.getRect(find.byKey(const ValueKey('channelsHeader')));
+    final row = rowRect(tester);
+    final scan = tester.getRect(
+      find.byKey(const ValueKey('channelScanToggle')),
+    );
+    expect(header.left, closeTo(panel.left, 0.5));
+    expect(row.left, closeTo(panel.left, 0.5));
+    expect(row.right, closeTo(panel.right, 0.5));
+    expect(scan.right, closeTo(panel.right, 0.5), reason: 'no gap at the end');
+    await _dispose(tester, env);
+  });
+
   for (final n in [5, 12]) {
     testWidgets('$n channels: one horizontal row, + канал always there', (
       tester,
@@ -526,9 +553,7 @@ void main() {
         AxisDirection.right,
       );
       // All tiles are in one row.
-      final firstTop = tester.getRect(
-        tileOf(env.channels.activeId!),
-      ).top;
+      final firstTop = tester.getRect(tileOf(env.channels.activeId!)).top;
       for (final c in env.channels.channels) {
         if (tileOf(c.id).evaluate().isNotEmpty) {
           expect(tester.getRect(tileOf(c.id)).top, firstTop);
