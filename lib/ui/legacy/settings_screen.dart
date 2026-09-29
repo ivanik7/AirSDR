@@ -76,6 +76,18 @@ class SettingsScreen extends StatelessWidget {
             ),
           ),
           _row(
+            'Приём',
+            r.running
+                ? 'Активен · ${formatMhz(r.tunedFrequency)} MHz'
+                : 'Остановлен',
+            trailing: FilledButton.icon(
+              key: const ValueKey('legacyStartStop'),
+              onPressed: () => r.running ? r.stop() : receiver.start(),
+              icon: Icon(r.running ? Icons.stop : Icons.play_arrow),
+              label: Text(r.running ? 'Стоп' : 'Старт'),
+            ),
+          ),
+          _row(
             'Устройство',
             d?.name ?? 'Не найдено',
             trailing: IconButton(
@@ -85,7 +97,7 @@ class SettingsScreen extends StatelessWidget {
             ),
           ),
           _row(
-            'USB параметры',
+            'Параметры устройства',
             'Bias-T · PPM · sample rate · direct sampling',
             trailing: TextButton(
               onPressed: () => showSourceSettingsSheet(context, r),
@@ -117,6 +129,36 @@ class SettingsScreen extends StatelessWidget {
                 ],
               ),
             ),
+          if (!r.running &&
+              (r.linkState == DeviceLinkState.permissionDenied ||
+                  r.linkState == DeviceLinkState.failed))
+            _row(
+              'Подключение USB',
+              'Нет доступа к устройству',
+              trailing: TextButton(
+                key: const ValueKey('legacyRetryUsb'),
+                onPressed: r.retryDevice,
+                child: const Text('Повторить'),
+              ),
+            ),
+          if (r.lastError != null)
+            _row(
+              'Ошибка',
+              r.lastError!,
+              trailing: IconButton(
+                onPressed: r.clearError,
+                icon: const Icon(Icons.close),
+              ),
+            ),
+          _row(
+            'Статус',
+            'Диагностика приёма',
+            trailing: TextButton(
+              key: const ValueKey('legacyShowStatus'),
+              onPressed: () => _showStatus(context),
+              child: const Text('Показать'),
+            ),
+          ),
           _section('ПАРАМЕТРЫ ПРИЁМНИКА'),
           if (bands case final b?)
             ListenableBuilder(
@@ -147,53 +189,11 @@ class SettingsScreen extends StatelessWidget {
             g == null || r.agc ? null : r.setGain,
             '${r.gain.toStringAsFixed(1)} ${g?.unit ?? 'dB'}',
           ),
-          _slider(
-            'Громкость',
-            r.volume,
-            0,
-            1,
-            r.setVolume,
-            '${(r.volume * 100).round()}%',
-          ),
           Padding(
             padding: const EdgeInsets.only(bottom: 7),
             child: SquelchControls(controller: r),
           ),
           if (spectrum case final s?) ..._waterfallLevels(s),
-          _section('СОСТОЯНИЕ'),
-          if (!r.running &&
-              (r.linkState == DeviceLinkState.permissionDenied ||
-                  r.linkState == DeviceLinkState.failed))
-            _row(
-              'Подключение USB',
-              'Нет доступа к устройству',
-              trailing: TextButton(
-                key: const ValueKey('legacyRetryUsb'),
-                onPressed: r.retryDevice,
-                child: const Text('Повторить'),
-              ),
-            ),
-          _row(
-            'Приём',
-            r.running
-                ? 'Активен · ${formatMhz(r.tunedFrequency)} MHz'
-                : 'Остановлен',
-            trailing: TextButton(
-              onPressed: () => r.running ? r.stop() : receiver.start(),
-              child: Text(r.running ? 'Стоп' : 'Старт'),
-            ),
-          ),
-          if (r.lastError != null)
-            _row(
-              'Ошибка',
-              r.lastError!,
-              trailing: IconButton(
-                onPressed: r.clearError,
-                icon: const Icon(Icons.close),
-              ),
-            ),
-          for (final entry in r.stats.entries)
-            _row(entry.key, '${entry.value}'),
           _section('ПОЗЖЕ'),
           _row('Запись · rtl_tcp · уведомления', 'Недоступно в текущем движке'),
           _row('Сканирование каналов', 'Недоступно · работает один VFO'),
@@ -202,8 +202,46 @@ class SettingsScreen extends StatelessWidget {
     },
   );
 
+  void _showStatus(BuildContext context) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (sheetContext) => DraggableScrollableSheet(
+        expand: false,
+        initialChildSize: 0.65,
+        minChildSize: 0.3,
+        maxChildSize: 0.9,
+        builder: (context, scrollController) => SafeArea(
+          top: false,
+          child: ListenableBuilder(
+            listenable: controller,
+            builder: (context, _) => ListView(
+              controller: scrollController,
+              padding: const EdgeInsets.fromLTRB(14, 8, 14, 18),
+              children: [
+                Row(
+                  children: [
+                    Expanded(child: Text('Статус', style: plex(size: 20))),
+                    IconButton(
+                      key: const ValueKey('legacyCloseStatus'),
+                      tooltip: 'Закрыть',
+                      onPressed: () => Navigator.pop(sheetContext),
+                      icon: const Icon(Icons.close),
+                    ),
+                  ],
+                ),
+                for (final entry in controller.stats.entries)
+                  _row(entry.key, '${entry.value}'),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   /// Waterfall/spectrum levels: Auto (auto_levels.dart) or manual Max/Min.
-  /// In Auto the sliders show the automatic levels and are disabled.
+  /// Manual controls are absent while Auto is active.
   List<Widget> _waterfallLevels(SdrUiState s) {
     final auto = s.autoLevels;
     final floor = s.autoNoiseFloor;
@@ -223,24 +261,26 @@ class SettingsScreen extends StatelessWidget {
           onChanged: s.setAutoLevels,
         ),
       ),
-      _slider(
-        'Max',
-        s.fftMax,
-        -150,
-        0,
-        auto ? null : (v) => s.setLevels(s.fftMin, v),
-        '${s.fftMax.round()} dB',
-        key: const ValueKey('legacyFftMax'),
-      ),
-      _slider(
-        'Min',
-        s.fftMin,
-        -160,
-        -10,
-        auto ? null : (v) => s.setLevels(v, s.fftMax),
-        '${s.fftMin.round()} dB',
-        key: const ValueKey('legacyFftMin'),
-      ),
+      if (!auto) ...[
+        _slider(
+          'Max',
+          s.fftMax,
+          -150,
+          0,
+          (v) => s.setLevels(s.fftMin, v),
+          '${s.fftMax.round()} dB',
+          key: const ValueKey('legacyFftMax'),
+        ),
+        _slider(
+          'Min',
+          s.fftMin,
+          -160,
+          -10,
+          (v) => s.setLevels(v, s.fftMax),
+          '${s.fftMin.round()} dB',
+          key: const ValueKey('legacyFftMin'),
+        ),
+      ],
     ];
   }
 

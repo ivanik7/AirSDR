@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Receive screen: explicit mute/unmute button (separate from the volume slider), device link
+// Receive screen: explicit mute/unmute button (independent of the full app volume), device link
 // status line and the retry button after a refused USB permission (task t_3cfa7a1d).
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -56,7 +56,7 @@ void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
   testWidgets(
-    'mute button toggles mute only; volume slider value is untouched',
+    'mute button toggles mute only; underlying volume is untouched',
     (tester) async {
       final (radio, favorites) = await _pump(tester);
       radio.setVolume(0.7);
@@ -122,9 +122,7 @@ void main() {
       await tester.pump();
       await tester.scrollUntilVisible(retry, 170,
           scrollable: find.byType(Scrollable).first);
-      // Leave the retry row above the fixed bottom tab bar (the bands row
-      // adds height to Settings and can put a barely-visible button there).
-      await tester.drag(find.byType(Scrollable).first, const Offset(0, -160));
+      await tester.ensureVisible(retry);
       await tester.pump();
       expect(retry, findsOneWidget);
       expect(tester.takeException(), isNull);

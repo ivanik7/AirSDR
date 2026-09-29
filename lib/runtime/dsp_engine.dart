@@ -112,6 +112,9 @@ class DspEngine {
     }
     // Every session starts muted: a persisted `muted: false` is deliberately not restored.
     core.sigpath.sinkManager.getStream('Radio')?.setMuted(true);
+    // The app volume is no longer adjustable in Settings. Replace any old low
+    // persisted value before reception so Android's media buttons own loudness.
+    core.sigpath.sinkManager.setStreamVolume('Radio', 1.0);
     _updateAudio();
     radio.stream.bindStream(_audioTapHandler);
     // Auto squelch open/close reaches the UI at once, not only with the periodic stats.

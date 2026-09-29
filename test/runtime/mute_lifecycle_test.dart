@@ -98,8 +98,8 @@ void main() {
         );
         expect(
           second.stateMap()['volume'],
-          closeTo(0.4, 1e-9),
-          reason: 'volume itself is persisted',
+          closeTo(1.0, 1e-9),
+          reason: 'a hidden persisted volume must not leave audio quiet',
         );
       } finally {
         await second.shutdown();

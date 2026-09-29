@@ -583,8 +583,8 @@ void main() {
       expect(c2.lastState['muted'], isTrue);
       expect(
         c2.volume,
-        closeTo(0.6, 1e-9),
-        reason: 'volume is persisted, mute is not',
+        closeTo(1.0, 1e-9),
+        reason: 'volume resets to full, mute remains per session',
       );
     },
   );
