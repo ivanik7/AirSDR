@@ -86,7 +86,7 @@ class SpectrumPainter extends CustomPainter {
     canvas.drawRect(area, Paint()..color = Colors.black);
     if (size.width < 2 || size.height < 2) return;
     final wf = state.waterfall;
-    final vp = state.viewport;
+    final vp = state.displayViewport;
     final fftMin = state.fftMin, fftMax = state.fftMax;
     final vertRange = fftMax - fftMin;
     final fftHeight = size.height;
@@ -117,7 +117,7 @@ class SpectrumPainter extends CustomPainter {
     }
 
     // VFO passband + reference line (drawVFOs)
-    paintVfo(canvas, area, vp, state.vfo);
+    paintVfo(canvas, area, vp, state.displayVfo);
 
     // Data
     final data = wf.latestFFT;
@@ -186,7 +186,7 @@ class FrequencyScalePainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     canvas.drawRect(Offset.zero & size, Paint()..color = const Color(0xFF0F0F0F));
-    final vp = state.viewport;
+    final vp = state.displayViewport;
     if (size.width < 2) return;
     final labelW = fontSize * 0.6 * 7;
     final range = gridStep(vp.viewBandwidth, size.width, labelW);
@@ -236,7 +236,7 @@ class WaterfallPainter extends CustomPainter {
     }
     // SDR++ draws the VFO on the waterfall only on hover; touch has no hover,
     // so it is always drawn, more transparent.
-    paintVfo(canvas, area, state.viewport, state.vfo, rectColor: const Color(0x1EFFFFFF));
+    paintVfo(canvas, area, state.displayViewport, state.displayVfo, rectColor: const Color(0x1EFFFFFF));
   }
 
   @override
