@@ -224,11 +224,11 @@ void main() {
 
     test('+ channel copies the current frequency/mode and activates it', () {
       ctl.attach();
-      receiver.apply(145500000, DemodMode.nfm);
+      receiver.apply(125000000, DemodMode.am);
       final ch = ctl.add();
-      expect(ch.frequencyHz, 145500000);
-      expect(ch.mode, DemodMode.nfm);
-      expect(ch.name, 'Симплекс 2м', reason: 'named after a matching preset');
+      expect(ch.frequencyHz, 125000000);
+      expect(ch.mode, DemodMode.am);
+      expect(ch.name, 'Air Traffic', reason: 'named after a matching preset');
       expect(repo.activeId, ch.id);
       // The new slot is active, so retuning is written into it.
       receiver.tune(99100000);
@@ -301,38 +301,38 @@ void main() {
 
     test('display name: exact-frequency preset, else "<mode> <MHz>"', () {
       ctl.attach();
-      receiver.apply(145500000, DemodMode.nfm);
+      receiver.apply(433000000, DemodMode.nfm);
       final ch = ctl.add();
-      expect(ctl.displayName(repo.active!), 'Симплекс 2м');
-      // Retune of the active channel: no preset at 145.5125 -> auto name.
-      receiver.tune(145512500);
-      expect(repo.active!.frequencyHz, 145512500);
-      expect(ctl.displayName(repo.active!), 'NFM 145.5125');
+      expect(ctl.displayName(repo.active!), 'ISM Band');
+      // Retune of the active channel: no preset at 433.0125 -> auto name.
+      receiver.tune(433012500);
+      expect(repo.active!.frequencyHz, 433012500);
+      expect(ctl.displayName(repo.active!), 'NFM 433.0125');
       receiver.changeMode(DemodMode.am);
-      expect(ctl.displayName(repo.active!), 'AM 145.5125');
+      expect(ctl.displayName(repo.active!), 'AM 433.0125');
       // Preset added / renamed / deleted at that exact frequency.
       final p = favorites.add(
-        frequencyHz: 145512500,
+        frequencyHz: 433012500,
         name: 'Ретранслятор',
         mode: DemodMode.nfm,
-        category: 'VHF',
+        category: 'UHF',
       );
       expect(ctl.displayName(repo.active!), 'Ретранслятор');
-      favorites.edit(p.id, name: 'R1', mode: DemodMode.nfm, category: 'VHF');
+      favorites.edit(p.id, name: 'R1', mode: DemodMode.nfm, category: 'UHF');
       expect(ctl.displayName(repo.active!), 'R1');
       favorites.delete(p.id);
-      expect(ctl.displayName(repo.active!), 'AM 145.5125');
+      expect(ctl.displayName(repo.active!), 'AM 433.0125');
       // A 1 Hz difference is not the same frequency.
       expect(
         ctl.displayName(
           ReceiverChannel(
             id: 'x',
             name: 'x',
-            frequencyHz: 145500001,
+            frequencyHz: 433000001,
             mode: DemodMode.nfm,
           ),
         ),
-        'NFM 145.500001',
+        'NFM 433.000001',
       );
       expect(ch.id, repo.activeId);
     });
@@ -341,7 +341,7 @@ void main() {
       SharedPreferences.setMockInitialValues({
         ChannelsRepository.storageKey:
             '{"activeId":"ch-1","entries":['
-            '{"id":"ch-1","name":"Мой ручной","frequencyHz":118100000,"mode":"AM"},'
+            '{"id":"ch-1","name":"Мой ручной","frequencyHz":125000000,"mode":"AM"},'
             '{"id":"ch-2","name":"Ручное","frequencyHz":99000000,"mode":"WFM"}]}',
       });
       final stored = ChannelsRepository();
@@ -352,7 +352,7 @@ void main() {
         channels: stored,
         favorites: favorites,
       );
-      expect(stored.channels.map(c.displayName), ['Вышка / TWR', 'WFM 99.000']);
+      expect(stored.channels.map(c.displayName), ['Air Traffic', 'WFM 99.000']);
       stored.dispose();
     });
   });

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Favorites only: no receiver, DSP or background monitoring state.
 import 'dart:convert';
+import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -54,101 +55,63 @@ class Favorite {
   };
 }
 
-// Exact archive pool frequencies/names/categories, with stable IDs by original index.
+// Default presets offered once to every install. IDs are stable: a default
+// the user deleted is remembered in `seenDefaults` and never re-added.
 const builtInFavorites = <Favorite>[
   Favorite(
-    id: 'builtin-0',
-    frequencyHz: 145500000,
-    mode: DemodMode.nfm,
-    name: 'Симплекс 2м',
-    category: 'VHF',
-  ),
-  Favorite(
-    id: 'builtin-1',
-    frequencyHz: 433500000,
-    mode: DemodMode.nfm,
-    name: 'PMR вызов',
-    category: 'UHF',
-  ),
-  Favorite(
-    id: 'builtin-2',
-    frequencyHz: 118100000,
-    mode: DemodMode.am,
-    name: 'Вышка / TWR',
-    category: 'AIR',
-  ),
-  Favorite(
-    id: 'builtin-3',
-    frequencyHz: 121500000,
-    mode: DemodMode.am,
-    name: 'Guard 121.5',
-    category: 'AIR',
-  ),
-  Favorite(
-    id: 'builtin-4',
-    frequencyHz: 156800000,
-    mode: DemodMode.nfm,
-    name: 'Морской 16',
-    category: 'MAR',
-  ),
-  Favorite(
-    id: 'builtin-5',
-    frequencyHz: 101200000,
+    id: 'builtin-fm',
+    frequencyHz: 100000000,
     mode: DemodMode.wfm,
-    name: 'FM радио',
+    name: 'FM Radio',
     category: 'FM',
+    builtIn: true,
   ),
   Favorite(
-    id: 'builtin-6',
-    frequencyHz: 462562000,
-    mode: DemodMode.nfm,
-    name: 'GMRS 1',
-    category: 'UHF',
-  ),
-  Favorite(
-    id: 'builtin-7',
-    frequencyHz: 446006000,
-    mode: DemodMode.nfm,
-    name: 'PMR446 1',
-    category: 'UHF',
-  ),
-  Favorite(
-    id: 'builtin-8',
-    frequencyHz: 162550000,
-    mode: DemodMode.nfm,
-    name: 'Погода WX',
-    category: 'MAR',
-  ),
-  Favorite(
-    id: 'builtin-9',
-    frequencyHz: 131550000,
+    id: 'builtin-air',
+    frequencyHz: 125000000,
     mode: DemodMode.am,
-    name: 'ACARS',
+    name: 'Air Traffic',
     category: 'AIR',
-    enabled: false,
+    builtIn: true,
   ),
   Favorite(
-    id: 'builtin-10',
-    frequencyHz: 169000000,
-    mode: DemodMode.nfm,
-    name: 'Служебный',
-    category: 'VHF',
-    enabled: false,
-  ),
-  Favorite(
-    id: 'builtin-11',
-    frequencyHz: 88600000,
-    mode: DemodMode.wfm,
-    name: 'Радио 88.6',
-    category: 'FM',
-    enabled: false,
+    id: 'builtin-ism',
+    frequencyHz: 433000000,
+    mode: DemodMode.am,
+    name: 'ISM Band',
+    category: 'UHF',
+    builtIn: true,
   ),
 ];
+
+/// The 12-entry archive pool of storage v1 (`builtin-<index>`): name, mode,
+/// category as shipped. Used only to migrate old saves.
+const _legacyPool = <(String, DemodMode, String)>[
+  ('Симплекс 2м', DemodMode.nfm, 'VHF'),
+  ('PMR вызов', DemodMode.nfm, 'UHF'),
+  ('Вышка / TWR', DemodMode.am, 'AIR'),
+  ('Guard 121.5', DemodMode.am, 'AIR'),
+  ('Морской 16', DemodMode.nfm, 'MAR'),
+  ('FM радио', DemodMode.wfm, 'FM'),
+  ('GMRS 1', DemodMode.nfm, 'UHF'),
+  ('PMR446 1', DemodMode.nfm, 'UHF'),
+  ('Погода WX', DemodMode.nfm, 'MAR'),
+  ('ACARS', DemodMode.am, 'AIR'),
+  ('Служебный', DemodMode.nfm, 'VHF'),
+  ('Радио 88.6', DemodMode.wfm, 'FM'),
+];
+final _legacyId = RegExp(r'^builtin-(\d+)$');
+final _userId = RegExp(r'^user-(\d+)$');
 
 class FavoritesRepository extends ChangeNotifier {
   FavoritesRepository();
   static const storageKey = 'single_vfo_favorites_v1';
+
+  /// v1: 12 archive built-ins re-added on every load. v2: [builtInFavorites]
+  /// plus `seenDefaults` (defaults already offered, deleted ones included).
+  static const storageVersion = 2;
   final List<Favorite> _entries = [...builtInFavorites];
+  final Set<String> _seenDefaults = {for (final f in builtInFavorites) f.id};
   List<Favorite> get entries => List.unmodifiable(_entries);
   List<Favorite> filtered(String category) => List.unmodifiable(
     _entries.where((f) => category == 'Все' || f.category == category),
@@ -164,14 +127,22 @@ class FavoritesRepository extends ChangeNotifier {
       final encoded = prefs.getString(storageKey);
       if (encoded == null) return;
       final data = jsonDecode(encoded) as Map<String, dynamic>;
+      final version = (data['version'] as num?)?.toInt() ?? 1;
       final saved = data['entries'] as List;
+      var nextId = (data['nextId'] as num?)?.toInt() ?? 0;
+      for (final raw in saved) {
+        final id = (raw as Map<String, dynamic>)['id'];
+        final n = id is String ? _userId.firstMatch(id) : null;
+        if (n != null) nextId = max(nextId, int.parse(n.group(1)!) + 1);
+      }
       final parsed = <Favorite>[];
       for (final raw in saved) {
         final m = raw as Map<String, dynamic>;
-        final id = m['id'] as String;
+        var id = m['id'] as String;
         final hz = m['frequencyHz'] as int;
         final mode = DemodMode.values.firstWhere((v) => v.label == m['mode']);
         final category = m['category'] as String;
+        final name = m['name'] as String;
         if (!favoriteCategories.contains(category) ||
             category == 'Все' ||
             hz <= 0 ||
@@ -179,47 +150,83 @@ class FavoritesRepository extends ChangeNotifier {
             parsed.any((e) => e.id == id || e.frequencyHz == hz)) {
           continue;
         }
+        var builtIn = id.startsWith('builtin-');
+        final legacy = version < 2 ? _legacyId.firstMatch(id) : null;
+        if (legacy != null) {
+          // Old archive built-in: drop it unless the user edited its name,
+          // mode or category (the bookmark toggle is not an edit) — then it
+          // is the user's own preset now.
+          final i = int.parse(legacy.group(1)!);
+          if (i < _legacyPool.length &&
+              _legacyPool[i] == (name, mode, category)) {
+            continue;
+          }
+          id = 'user-${nextId++}';
+          builtIn = false;
+        }
         parsed.add(
           Favorite(
             id: id,
             frequencyHz: hz,
-            name: m['name'] as String,
+            name: name,
             mode: mode,
             category: category,
             enabled: m['enabled'] == true,
-            builtIn: id.startsWith('builtin-'),
+            builtIn: builtIn,
           ),
         );
       }
-      // Keep built-ins that were added in newer versions; preserve saved order.
-      for (final item in builtInFavorites) {
-        if (!parsed.any(
-          (e) => e.id == item.id || e.frequencyHz == item.frequencyHz,
-        )) {
-          parsed.add(item);
-        }
-      }
+      final seen = <String>{
+        if (version >= 2)
+          for (final s in (data['seenDefaults'] as List? ?? const []))
+            s as String,
+      };
+      // Offer each default exactly once, before the user's presets; skip it
+      // if the user already has that frequency. Deleted defaults stay seen.
+      final fresh = <Favorite>[
+        for (final item in builtInFavorites)
+          if (!seen.contains(item.id) &&
+              !parsed.any(
+                (e) => e.id == item.id || e.frequencyHz == item.frequencyHz,
+              ))
+            item,
+      ];
+      final migrated =
+          version < 2 ||
+          builtInFavorites.any((item) => !seen.contains(item.id));
+      seen.addAll(builtInFavorites.map((f) => f.id));
       if (_changed) return;
       _entries
         ..clear()
+        ..addAll(fresh)
         ..addAll(parsed);
-      _nextId = (data['nextId'] as num?)?.toInt() ?? 0;
+      _seenDefaults
+        ..clear()
+        ..addAll(seen);
+      _nextId = nextId;
+      if (migrated) _write();
       notifyListeners();
     } catch (_) {
-      // Corrupt data must not destroy the original built-in pool.
+      // Corrupt data must not destroy the default presets.
     }
   }
 
-  void _save() {
-    _changed = true;
+  void _write() {
     final encoded = jsonEncode({
+      'version': storageVersion,
       'nextId': _nextId,
+      'seenDefaults': _seenDefaults.toList(),
       'entries': _entries.map((e) => e.toJson()).toList(),
     });
     _pending = _pending.then((_) async {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(storageKey, encoded);
     });
+  }
+
+  void _save() {
+    _changed = true;
+    _write();
     notifyListeners();
   }
 
@@ -275,9 +282,8 @@ class FavoritesRepository extends ChangeNotifier {
 
   void delete(String id) {
     final i = _entries.indexWhere((e) => e.id == id);
-    if (i < 0 || _entries[i].builtIn) {
-      throw ArgumentError.value(id, 'id', 'Built-in: toggle instead');
-    }
+    if (i < 0) throw ArgumentError.value(id, 'id');
+    // Built-in defaults are deletable too; `_seenDefaults` keeps them gone.
     _entries.removeAt(i);
     _save();
   }
