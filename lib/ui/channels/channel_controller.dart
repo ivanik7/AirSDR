@@ -8,6 +8,7 @@
 import '../favorites/favorites.dart';
 import '../legacy/centered_receiver.dart';
 import '../legacy/presets_screen.dart' show favoriteErrorText;
+import '../legacy/step_grid.dart' show formatMhz;
 import '../radio_controller.dart';
 import 'channels.dart';
 
@@ -105,19 +106,22 @@ class ChannelController {
     return _apply(c);
   }
 
+  /// Name shown for a slot. Channels have no names of their own: it is the
+  /// name of the preset at exactly the same frequency (Hz), otherwise
+  /// `<mode> <MHz>`. Stored names (older versions allowed renaming) are
+  /// ignored, so the rule also holds for migrated slots.
+  String displayName(ReceiverChannel c) =>
+      channelDisplayName(c.frequencyHz, c.mode, favorites.entries);
+
   /// "+ канал": a new slot with the current frequency/mode, made active.
   ReceiverChannel add() {
     cancelScan?.call();
     final hz = radio.tunedFrequency.round();
-    final preset = favorites.entries
-        .where((f) => f.frequencyHz == hz)
-        .firstOrNull;
     return channels.add(
       frequencyHz: hz,
       mode: radio.mode,
-      name:
-          preset?.name ??
-          '${radio.mode.label} ${(hz / 1000000).toStringAsFixed(3)}',
+      // Kept only for the storage format; the UI shows [displayName].
+      name: channelDisplayName(hz, radio.mode, favorites.entries),
     );
   }
 
@@ -137,22 +141,21 @@ class ChannelController {
     }
   }
 
-  void rename(String id, String name) => channels.rename(id, name);
-
   void move(String id, int toIndex) {
     cancelScan?.call();
     channels.move(id, toIndex);
   }
 
-  /// Saves a slot into the presets. Returns an error text or null.
-  String? saveAsPreset(String id) {
+  /// Saves a slot into the presets under [name] (default: the slot's shown
+  /// name). Returns an error text or null.
+  String? saveAsPreset(String id, {String? name}) {
     final i = channels.indexOf(id);
     if (i < 0) return 'канал не найден';
     final c = channels.channels[i];
     try {
       favorites.add(
         frequencyHz: c.frequencyHz,
-        name: c.name,
+        name: name ?? displayName(c),
         mode: c.mode,
         category: presetCategoryFor(c.frequencyHz, c.mode),
       );
@@ -172,6 +175,11 @@ class ChannelController {
     );
   }
 }
+
+/// See [ChannelController.displayName].
+String channelDisplayName(int hz, DemodMode mode, Iterable<Favorite> presets) =>
+    presets.where((f) => f.frequencyHz == hz).firstOrNull?.name ??
+    '${mode.label} ${formatMhz(hz)}';
 
 /// Preset category for a channel (the favorites list needs one).
 String presetCategoryFor(int hz, DemodMode mode) {

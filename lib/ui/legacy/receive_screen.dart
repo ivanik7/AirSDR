@@ -60,39 +60,19 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(12, 2, 8, 0),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Expanded(
-                  child: FittedBox(
-                    fit: BoxFit.scaleDown,
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      f.entry.isEmpty
-                          ? formatMhz(
-                              widget.spectrum.heldFrequency ?? r.tunedFrequency,
-                            )
-                          : f.entry,
-                      key: const ValueKey('legacyFrequency'),
-                      style: plex(
-                        size: 49,
-                        mono: true,
-                        color: f.entry.isEmpty
-                            ? LegacyColors.primary
-                            : LegacyColors.accent,
-                      ),
-                    ),
-                  ),
-                ),
-                Text(' MHz', style: plex(size: 12, color: LegacyColors.muted)),
-                if (f.entry.isNotEmpty)
-                  IconButton(
-                    tooltip: 'Очистить ввод',
-                    onPressed: () => key('CLR'),
-                    icon: const Icon(Icons.close, size: 17),
-                  )
-                else
-                  IconButton(
+            child: _FixedFrequencyRow(
+              key: const ValueKey('legacyFrequencyField'),
+              text: f.entry.isEmpty
+                  ? formatMhz(widget.spectrum.heldFrequency ?? r.tunedFrequency)
+                  : f.entry,
+              entering: f.entry.isNotEmpty,
+              trailing: f.entry.isNotEmpty
+                  ? IconButton(
+                      tooltip: 'Очистить ввод',
+                      onPressed: () => key('CLR'),
+                      icon: const Icon(Icons.close, size: 17),
+                    )
+                  : IconButton(
                     // Real mute (separate from the volume slider in Settings); starts muted.
                     key: const ValueKey('legacyMute'),
                     tooltip: widget.scanner.userMuted
@@ -108,7 +88,6 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
                       size: 18,
                     ),
                   ),
-              ],
             ),
           ),
           // Status: never wider than the screen (cover display is ~344 dp).
@@ -374,6 +353,97 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
       );
     },
   );
+}
+
+/// Frequency readout with a geometry that never depends on the text: the
+/// font size is chosen once for the available width so that the longest
+/// possible value (11 monospace characters — the keypad entry limit and
+/// more than any "MHz" readout) fits, and the height follows that size.
+/// Changing the value, typing digits or swapping mute ↔ clear does not move
+/// anything on the screen.
+class _FixedFrequencyRow extends StatelessWidget {
+  const _FixedFrequencyRow({
+    super.key,
+    required this.text,
+    required this.entering,
+    required this.trailing,
+  });
+  final String text;
+  final bool entering;
+  final Widget trailing;
+
+  static const maxChars = 11;
+  static const maxFontSize = 49.0;
+  static const trailingWidth = 48.0;
+
+  @override
+  Widget build(BuildContext context) {
+    final scaler = MediaQuery.textScalerOf(context);
+    final unit = Text(' MHz', style: plex(size: 12, color: LegacyColors.muted));
+    return LayoutBuilder(
+      builder: (context, box) {
+        final unitPainter = TextPainter(
+          text: TextSpan(text: ' MHz', style: plex(size: 12)),
+          textScaler: scaler,
+          textDirection: TextDirection.ltr,
+        )..layout();
+        final available =
+            (box.maxWidth - unitPainter.width - trailingWidth - 1).clamp(
+              1.0,
+              double.infinity,
+            );
+        final sample = TextPainter(
+          text: TextSpan(
+            text: '8' * maxChars,
+            style: plex(size: maxFontSize, mono: true),
+          ),
+          textScaler: scaler,
+          textDirection: TextDirection.ltr,
+        )..layout();
+        final size = sample.width <= available
+            ? maxFontSize
+            : (maxFontSize * available / sample.width).floorToDouble();
+        final style = plex(
+          size: size,
+          mono: true,
+          color: entering ? LegacyColors.accent : LegacyColors.primary,
+        );
+        final probe = TextPainter(
+          text: TextSpan(text: '8', style: style),
+          textScaler: scaler,
+          textDirection: TextDirection.ltr,
+        )..layout();
+        final height = probe.height.ceilToDouble();
+        probe.dispose();
+        unitPainter.dispose();
+        sample.dispose();
+        return SizedBox(
+          height: height < 48 ? 48 : height,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Expanded(
+                child: Text(
+                  text,
+                  key: const ValueKey('legacyFrequency'),
+                  maxLines: 1,
+                  softWrap: false,
+                  overflow: TextOverflow.clip,
+                  style: style,
+                ),
+              ),
+              Padding(padding: const EdgeInsets.only(bottom: 8), child: unit),
+              SizedBox(
+                width: trailingWidth,
+                height: 48,
+                child: Center(child: trailing),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
 }
 
 /// Status line text while not receiving (cover display: keep it short).

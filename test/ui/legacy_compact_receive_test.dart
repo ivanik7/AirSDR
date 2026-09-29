@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sdr_flutter/ui/channels/channels.dart';
@@ -77,6 +78,66 @@ void main() {
         channels.dispose();
       });
     }
+  }
+
+  for (final width in [344.0, 411.0]) {
+    testWidgets('frequency field has fixed geometry at $width dp', (
+      tester,
+    ) async {
+      final radio = DemoRadioController();
+      await radio.selectDevice(radio.devices[1]); // HackRF: 1 MHz … 6 GHz
+      final channels = ChannelsRepository();
+      await channels.load();
+      await pump(tester, radio, channels, Size(width, 882), 1);
+      final freq = find.byKey(const ValueKey('legacyFrequency'));
+      final field = find.byKey(const ValueKey('legacyFrequencyField'));
+      final mode = find.byKey(const ValueKey('legacyModeSelect'));
+      final spectrum = find.byKey(const ValueKey('legacySpectrumDrag'));
+      double? fontSize() =>
+          tester.renderObject<RenderParagraph>(freq).text.style!.fontSize;
+      double textHeight() => tester.getRect(freq).height;
+      Rect? fieldRect, modeRect, spectrumRect;
+      double? size, height;
+      void same(String why) {
+        expect(tester.takeException(), isNull);
+        if (fieldRect == null) {
+          fieldRect = tester.getRect(field);
+          modeRect = tester.getRect(mode);
+          spectrumRect = tester.getRect(spectrum);
+          size = fontSize();
+          height = textHeight();
+          return;
+        }
+        expect(tester.getRect(field), fieldRect, reason: why);
+        expect(tester.getRect(mode), modeRect, reason: why);
+        expect(tester.getRect(spectrum), spectrumRect, reason: why);
+        expect(fontSize(), size, reason: why);
+        expect(textHeight(), height, reason: why);
+        // Never clipped: the text fits inside the field.
+        expect(tester.getRect(freq).right,
+            lessThanOrEqualTo(fieldRect!.right + 0.01), reason: why);
+      }
+
+      for (final hz in [7100000, 145500000, 1090000000, 5999993750]) {
+        radio.setTuning(centerFrequency: hz.toDouble(), vfoOffset: 0);
+        await tester.pump();
+        same('$hz Hz');
+      }
+      // Partial keypad entry: mute → clear button, same geometry.
+      for (final k in ['1', '4', '5', '.', '5', '1', '2', '5', '0', '0', '0']) {
+        await tester.tap(find.byKey(ValueKey('key-$k')));
+        await tester.pump();
+        same('entry $k');
+      }
+      expect(find.byTooltip('Очистить ввод'), findsOneWidget);
+      await tester.tap(find.byTooltip('Очистить ввод'));
+      await tester.pump();
+      expect(find.byKey(const ValueKey('legacyMute')), findsOneWidget);
+      same('after clear');
+      await tester.pumpWidget(const SizedBox());
+      radio.dispose();
+      channels.dispose();
+    });
   }
 
   testWidgets('mode, step and digit entry share compact controls', (

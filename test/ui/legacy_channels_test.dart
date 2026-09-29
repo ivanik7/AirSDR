@@ -129,7 +129,7 @@ void main() {
         () => Future<void>.delayed(const Duration(milliseconds: 220)),
       );
       await tester.pump(const Duration(milliseconds: 25));
-      expect(find.text('Приём: Другой'), findsOneWidget);
+      expect(find.text('Приём: PMR вызов'), findsOneWidget);
       expect(
         tester.widget<Text>(find.byKey(const ValueKey('legacyFrequency'))).data,
         '145.500',
@@ -307,7 +307,7 @@ void main() {
     await tester.pump();
     await tester.longPress(find.byKey(ValueKey('channel-${air.id}')));
     await tester.pumpAndSettle();
-    expect(find.text('Переименовать'), findsOneWidget);
+    expect(find.text('Переименовать'), findsNothing);
     expect(find.text('Сохранить как пресет'), findsOneWidget);
     await tester.tap(find.text('Удалить'));
     await tester.pumpAndSettle();
@@ -322,41 +322,118 @@ void main() {
     await _dispose(tester, env);
   });
 
-  testWidgets('menu: rename and save as preset', (tester) async {
+  testWidgets('menu has no rename; save as preset asks for a name', (
+    tester,
+  ) async {
     final env = await _pump(tester, seed: _seed3);
     await _showChannels(tester);
     final c = env.channels.channels[2];
-    await tester.longPress(find.byKey(ValueKey('channel-${c.id}')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Переименовать'));
-    await tester.pumpAndSettle();
-    await tester.enterText(
-      find.byKey(const ValueKey('channelName')),
-      'Ретранс',
+    final tile = find.byKey(ValueKey('channel-${c.id}'));
+    // 145.500 is the built-in "Симплекс 2м": the tile shows the preset name.
+    expect(
+      find.descendant(of: tile, matching: find.text('Симплекс 2м')),
+      findsOneWidget,
     );
-    await tester.tap(find.byKey(const ValueKey('channelNameSave')));
+    await tester.longPress(tile);
     await tester.pumpAndSettle();
-    expect(env.channels.channels[2].name, 'Ретранс');
-
-    await tester.longPress(find.byKey(ValueKey('channel-${c.id}')));
-    await tester.pumpAndSettle();
+    expect(find.text('Переименовать'), findsNothing);
+    expect(find.byKey(const ValueKey('channelMenu-rename')), findsNothing);
+    expect(find.text('Сохранить как пресет'), findsOneWidget);
+    expect(find.text('Удалить'), findsOneWidget);
     await tester.tap(find.text('Сохранить как пресет'));
     await tester.pumpAndSettle();
-    // 145.500 is the built-in "Симплекс 2м": a readable duplicate reason.
+    // Duplicate frequency: readable reason, as before.
+    await tester.tap(find.byKey(const ValueKey('presetNameSave')));
+    await tester.pumpAndSettle();
     expect(find.textContaining('уже есть'), findsOneWidget);
-    // A free frequency is saved under the channel's name.
+
+    // A free frequency (no preset): auto name, then the dialog.
     env.radio.setTuning(centerFrequency: 99912500, vfoOffset: 0);
     await tester.pump();
     expect(env.channels.channels[2].frequencyHz, 99912500);
-    await tester.longPress(find.byKey(ValueKey('channel-${c.id}')));
+    expect(
+      find.descendant(of: tile, matching: find.text('NFM 99.9125')),
+      findsOneWidget,
+    );
+    final before = env.favorites.entries.length;
+    await tester.longPress(tile);
     await tester.pumpAndSettle();
     await tester.tap(find.text('Сохранить как пресет'));
     await tester.pumpAndSettle();
+    final field = find.byKey(const ValueKey('presetName'));
+    expect(tester.widget<EditableText>(
+      find.descendant(of: field, matching: find.byType(EditableText)),
+    ).controller.text, 'NFM 99.9125', reason: 'prefilled with channel name');
+    // Empty name: validation error, dialog stays, nothing saved.
+    await tester.enterText(field, '   ');
+    await tester.tap(find.byKey(const ValueKey('presetNameSave')));
+    await tester.pumpAndSettle();
+    expect(find.text('введите название'), findsOneWidget);
+    expect(field, findsOneWidget);
+    expect(env.favorites.entries.length, before);
+    // Cancel changes nothing.
+    await tester.tap(find.text('Отмена'));
+    await tester.pumpAndSettle();
+    expect(field, findsNothing);
+    expect(env.favorites.entries.length, before);
+    // Save under the typed name; the channel now shows the preset name.
+    await tester.longPress(tile);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Сохранить как пресет'));
+    await tester.pumpAndSettle();
+    await tester.enterText(field, 'Ретранс');
+    await tester.tap(find.byKey(const ValueKey('presetNameSave')));
+    await tester.pumpAndSettle();
     final saved = env.favorites.entries.last;
+    expect(env.favorites.entries.length, before + 1);
     expect(saved.name, 'Ретранс');
     expect(saved.frequencyHz, 99912500);
     expect(saved.mode, DemodMode.nfm);
     expect(find.text('Сохранено как пресет'), findsOneWidget);
+    expect(
+      find.descendant(of: tile, matching: find.text('Ретранс')),
+      findsOneWidget,
+    );
+    await _dispose(tester, env);
+  });
+
+  testWidgets('tile name follows keypad retune and preset deletion', (
+    tester,
+  ) async {
+    final env = await _pump(tester, seed: _seed3);
+    await _showChannels(tester);
+    final c = env.channels.active!;
+    final tile = find.byKey(ValueKey('channel-${c.id}'));
+    expect(
+      find.descendant(of: tile, matching: find.text('Симплекс 2м')),
+      findsOneWidget,
+    );
+    for (final k in ['1', '4', '5', '.', '6', 'OK']) {
+      await tester.tap(find.byKey(ValueKey('key-$k')));
+      await tester.pump();
+    }
+    expect(env.channels.active!.frequencyHz, 145600000);
+    expect(
+      find.descendant(of: tile, matching: find.text('NFM 145.600')),
+      findsOneWidget,
+    );
+    final p = env.favorites.add(
+      frequencyHz: 145600000,
+      name: 'Новый пресет',
+      mode: DemodMode.nfm,
+      category: 'VHF',
+    );
+    await tester.pump();
+    expect(
+      find.descendant(of: tile, matching: find.text('Новый пресет')),
+      findsOneWidget,
+    );
+    env.favorites.delete(p.id);
+    await tester.pump();
+    expect(
+      find.descendant(of: tile, matching: find.text('NFM 145.600')),
+      findsOneWidget,
+    );
     await _dispose(tester, env);
   });
 
@@ -368,7 +445,9 @@ void main() {
     final [a, b, c] = env.channels.channels;
     expect(env.channels.activeId, c.id);
     final from = tester.getCenter(find.byKey(ValueKey('channel-${c.id}')));
-    final to = tester.getCenter(find.byKey(ValueKey('channel-${a.id}')));
+    // a may be partly scrolled out on the left: aim at its visible part.
+    final aRect = tester.getRect(find.byKey(ValueKey('channel-${a.id}')));
+    final to = Offset(aRect.right - 20, aRect.center.dy);
     final gesture = await tester.startGesture(from);
     await tester.pump(kLongPressTimeout + const Duration(milliseconds: 50));
     await gesture.moveTo(from + const Offset(0, -10));
@@ -377,7 +456,7 @@ void main() {
     await tester.pump();
     await gesture.up();
     await tester.pumpAndSettle();
-    expect(find.text('Переименовать'), findsNothing, reason: 'no menu');
+    expect(find.text('Сохранить как пресет'), findsNothing, reason: 'no menu');
     expect(env.channels.channels.map((e) => e.id), [c.id, a.id, b.id]);
     expect(env.channels.activeId, c.id);
     expect(env.radio.tunedFrequency, 145500000);
@@ -406,50 +485,196 @@ void main() {
     await _dispose(tester, env);
   });
 
-  testWidgets('many channels collapse to 4 tiles and expand; 344 dp OK', (
+  void seedMany(ChannelsRepository c, int n) {
+    for (var i = 0; i < n; i++) {
+      c.add(
+        frequencyHz: 1766000000 - i * 1000,
+        mode: DemodMode.values[i % DemodMode.values.length],
+        name: 'Очень длинное название канала номер $i для проверки',
+      );
+    }
+  }
+
+  Finder tileOf(String id) => find.byKey(ValueKey('channel-$id'));
+  Rect rowRect(WidgetTester tester) =>
+      tester.getRect(find.byKey(const ValueKey('channelsRow')));
+  bool fullyVisible(WidgetTester tester, String id) {
+    final f = tileOf(id);
+    if (f.evaluate().isEmpty) return false;
+    final r = tester.getRect(f);
+    final row = rowRect(tester);
+    return r.left >= row.left - 0.5 && r.right <= row.right + 0.5;
+  }
+
+  for (final n in [5, 12]) {
+    testWidgets('$n channels: one horizontal row, + канал always there', (
+      tester,
+    ) async {
+      final env = await _pump(tester, seed: (c) => seedMany(c, n));
+      await _showChannels(tester);
+      expect(tester.takeException(), isNull);
+      expect(find.text('КАНАЛЫ · $n'), findsOneWidget);
+      expect(find.byKey(const ValueKey('channelsExpand')), findsNothing);
+      expect(find.textContaining('Все каналы'), findsNothing);
+      final scrollables = find.descendant(
+        of: find.byKey(const ValueKey('channelsSection')),
+        matching: find.byType(Scrollable),
+      );
+      expect(scrollables, findsOneWidget);
+      expect(
+        tester.widget<Scrollable>(scrollables).axisDirection,
+        AxisDirection.right,
+      );
+      // All tiles are in one row.
+      final firstTop = tester.getRect(
+        tileOf(env.channels.activeId!),
+      ).top;
+      for (final c in env.channels.channels) {
+        if (tileOf(c.id).evaluate().isNotEmpty) {
+          expect(tester.getRect(tileOf(c.id)).top, firstTop);
+        }
+      }
+      // The (last-added) active channel was scrolled into view.
+      expect(fullyVisible(tester, env.channels.activeId!), isTrue);
+      final add = find.byKey(const ValueKey('channelAdd'));
+      expect(add.hitTestable(), findsOneWidget);
+      await tester.tap(add);
+      await tester.pumpAndSettle();
+      expect(env.channels.length, n + 1);
+      expect(find.text('КАНАЛЫ · ${n + 1}'), findsOneWidget);
+      expect(fullyVisible(tester, env.channels.activeId!), isTrue);
+      // Horizontal fling reveals the first channel again.
+      final first = env.channels.channels.first.id;
+      await tester.drag(scrollables, const Offset(4000, 0));
+      await tester.pumpAndSettle();
+      expect(fullyVisible(tester, first), isTrue);
+      expect(tester.takeException(), isNull);
+      await _dispose(tester, env);
+    });
+  }
+
+  testWidgets('channels block height does not depend on the channel count', (
+    tester,
+  ) async {
+    final heights = <double>[];
+    for (final n in [0, 1, 5, 12]) {
+      SharedPreferences.setMockInitialValues({});
+      final env = await _pump(
+        tester,
+        seed: (c) {
+          seedMany(c, n);
+          // Keep "no channels" really empty (first run would seed one).
+          if (n == 0) c.add(frequencyHz: 100000000, mode: DemodMode.wfm);
+        },
+      );
+      if (n == 0) {
+        env.channels.delete(env.channels.channels.single.id);
+        await tester.pump();
+        expect(env.channels.length, 0);
+      }
+      heights.add(
+        tester.getRect(find.byKey(const ValueKey('channelsSection'))).height,
+      );
+      expect(tester.takeException(), isNull);
+      await _dispose(tester, env);
+    }
+    expect(heights.toSet().length, 1, reason: '$heights');
+  });
+
+  testWidgets('active channel off-screen is scrolled into view on switch', (
+    tester,
+  ) async {
+    final env = await _pump(tester, seed: (c) => seedMany(c, 12));
+    await _showChannels(tester);
+    final first = env.channels.channels.first.id;
+    final last = env.channels.channels.last.id;
+    expect(fullyVisible(tester, last), isTrue);
+    expect(fullyVisible(tester, first), isFalse);
+    env.channels.activate(first); // e.g. restored / switched elsewhere
+    await tester.pumpAndSettle();
+    expect(fullyVisible(tester, first), isTrue);
+    await _dispose(tester, env);
+  });
+
+  testWidgets('scan: the channel being tuned is scrolled into view', (
+    tester,
+  ) async {
+    final radio = _ScanRadio();
+    final env = await _pump(
+      tester,
+      radioOverride: radio,
+      seed: (c) {
+        for (var i = 0; i < 10; i++) {
+          c.add(
+            frequencyHz: 433050000 + i * 25000,
+            mode: DemodMode.nfm,
+            name: 'К$i',
+          );
+        }
+        c.activate(c.channels.first.id);
+      },
+    );
+    await radio.start();
+    await _showChannels(tester);
+    final ids = env.channels.channels.map((c) => c.id).toList();
+    expect(fullyVisible(tester, ids.first), isTrue);
+    await tester.tap(find.byKey(const ValueKey('channelScanToggle')));
+    await tester.pump();
+    // Walk the scanner through closed channels until it reaches far ones.
+    for (var i = 0; i < 12; i++) {
+      radio.signal(false);
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 220)),
+      );
+      await tester.pump(const Duration(milliseconds: 25));
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.pump(const Duration(milliseconds: 300));
+      final tunedIndex = ids.indexOf(
+        env.channels.channels
+            .firstWhere((c) => c.frequencyHz == radio.tunedFrequency.round())
+            .id,
+      );
+      expect(fullyVisible(tester, ids[tunedIndex]), isTrue, reason: 'step $i');
+    }
+    await tester.tap(find.byKey(const ValueKey('channelScanToggle')));
+    await tester.pumpAndSettle();
+    await _dispose(tester, env);
+  });
+
+  testWidgets('reorder in the row with auto-scroll at the edge', (
     tester,
   ) async {
     final env = await _pump(
       tester,
       seed: (c) {
-        for (var i = 0; i < 7; i++) {
-          c.add(
-            frequencyHz: 1766000000 - i * 1000,
-            mode: DemodMode.values[i % DemodMode.values.length],
-            name: 'Очень длинное название канала номер $i для проверки',
-          );
-        }
+        seedMany(c, 10);
+        c.activate(c.channels.first.id);
       },
     );
     await _showChannels(tester);
-    expect(tester.takeException(), isNull);
-    expect(find.text('КАНАЛЫ · 7'), findsOneWidget);
-    expect(find.byKey(const ValueKey('channelAdd')), findsNothing);
-    expect(
-      find.byKey(ValueKey('channel-${env.channels.activeId}')),
-      findsOneWidget,
-      reason: 'the active receiver must remain visible while collapsed',
-    );
-    expect(
-      find.byWidgetPredicate(
-        (w) =>
-            w.key is ValueKey<String> &&
-            (w.key! as ValueKey<String>).value.startsWith('channel-ch-'),
-      ),
-      findsNWidgets(4),
-    );
-    await tester.tap(find.byKey(const ValueKey('channelsExpand')));
+    final ids = env.channels.channels.map((c) => c.id).toList();
+    final lastId = ids.last;
+    expect(fullyVisible(tester, ids.first), isTrue);
+    expect(fullyVisible(tester, lastId), isFalse, reason: 'far off-screen');
+    final from = tester.getCenter(tileOf(ids.first));
+    final row = rowRect(tester);
+    final gesture = await tester.startGesture(from);
+    await tester.pump(kLongPressTimeout + const Duration(milliseconds: 50));
+    await gesture.moveTo(from + const Offset(20, 0));
     await tester.pump();
-    expect(tester.takeException(), isNull);
-    expect(find.text('Свернуть ▲'), findsOneWidget);
-    await tester.scrollUntilVisible(
-      find.byKey(const ValueKey('channelAdd')),
-      100,
-      scrollable: find.descendant(
-        of: find.byKey(const ValueKey('channelsSection')),
-        matching: find.byType(Scrollable),
-      ).first,
-    );
+    // Hold at the right edge: the row scrolls by itself.
+    await gesture.moveTo(Offset(row.right - 4, from.dy));
+    for (var i = 0; i < 200; i++) {
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+    expect(fullyVisible(tester, lastId), isTrue, reason: 'auto-scrolled');
+    await gesture.moveTo(tester.getCenter(tileOf(lastId)));
+    await tester.pump();
+    await gesture.up();
+    await tester.pumpAndSettle();
+    expect(find.text('Сохранить как пресет'), findsNothing, reason: 'no menu');
+    expect(env.channels.channels.last.id, ids.first);
+    expect(env.channels.activeId, ids.first);
     expect(tester.takeException(), isNull);
     await _dispose(tester, env);
   });

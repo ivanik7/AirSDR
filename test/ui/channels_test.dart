@@ -91,7 +91,7 @@ void main() {
       repo.dispose();
     });
 
-    test('rename validates, corrupt storage does not crash', () async {
+    test('corrupt storage does not crash', () async {
       SharedPreferences.setMockInitialValues({
         ChannelsRepository.storageKey:
             '{"activeId":"ch-9","entries":[{"id":"ch-1","name":"x",'
@@ -102,9 +102,6 @@ void main() {
       await repo.load();
       expect(repo.channels.map((e) => e.id), ['ch-2']);
       expect(repo.activeId, 'ch-2', reason: 'unknown active -> first');
-      expect(() => repo.rename('ch-2', '  '), throwsArgumentError);
-      repo.rename('ch-2', ' Новое ');
-      expect(repo.channels.single.name, 'Новое');
       expect(repo.add(frequencyHz: 1, mode: DemodMode.am).id, isNot('ch-2'));
       repo.dispose();
     });
@@ -286,10 +283,77 @@ void main() {
       expect(ctl.saveAsPreset(ch.id), isNull);
       final f = favorites.entries.last;
       expect(f.frequencyHz, 99912500);
-      expect(f.name, 'Моё FM');
+      expect(f.name, 'WFM 99.9125', reason: 'shown name, not the stored one');
       expect(f.mode, DemodMode.wfm);
       expect(f.category, 'FM');
       expect(ctl.saveAsPreset(ch.id), contains('уже есть'));
+    });
+
+    test('save as preset uses the given name; the channel shows it', () {
+      ctl.attach();
+      final ch = repo.add(frequencyHz: 99912500, mode: DemodMode.wfm);
+      expect(ctl.displayName(ch), 'WFM 99.9125');
+      expect(ctl.saveAsPreset(ch.id, name: '  Моё радио '), isNull);
+      expect(favorites.entries.last.name, 'Моё радио');
+      expect(ctl.displayName(repo.active!), 'Моё радио');
+      expect(ctl.saveAsPreset(ch.id, name: ' '), isNotNull);
+    });
+
+    test('display name: exact-frequency preset, else "<mode> <MHz>"', () {
+      ctl.attach();
+      receiver.apply(145500000, DemodMode.nfm);
+      final ch = ctl.add();
+      expect(ctl.displayName(repo.active!), 'Симплекс 2м');
+      // Retune of the active channel: no preset at 145.5125 -> auto name.
+      receiver.tune(145512500);
+      expect(repo.active!.frequencyHz, 145512500);
+      expect(ctl.displayName(repo.active!), 'NFM 145.5125');
+      receiver.changeMode(DemodMode.am);
+      expect(ctl.displayName(repo.active!), 'AM 145.5125');
+      // Preset added / renamed / deleted at that exact frequency.
+      final p = favorites.add(
+        frequencyHz: 145512500,
+        name: 'Ретранслятор',
+        mode: DemodMode.nfm,
+        category: 'VHF',
+      );
+      expect(ctl.displayName(repo.active!), 'Ретранслятор');
+      favorites.edit(p.id, name: 'R1', mode: DemodMode.nfm, category: 'VHF');
+      expect(ctl.displayName(repo.active!), 'R1');
+      favorites.delete(p.id);
+      expect(ctl.displayName(repo.active!), 'AM 145.5125');
+      // A 1 Hz difference is not the same frequency.
+      expect(
+        ctl.displayName(
+          ReceiverChannel(
+            id: 'x',
+            name: 'x',
+            frequencyHz: 145500001,
+            mode: DemodMode.nfm,
+          ),
+        ),
+        'NFM 145.500001',
+      );
+      expect(ch.id, repo.activeId);
+    });
+
+    test('old manually named channels show the rule-based name', () async {
+      SharedPreferences.setMockInitialValues({
+        ChannelsRepository.storageKey:
+            '{"activeId":"ch-1","entries":['
+            '{"id":"ch-1","name":"Мой ручной","frequencyHz":118100000,"mode":"AM"},'
+            '{"id":"ch-2","name":"Ручное","frequencyHz":99000000,"mode":"WFM"}]}',
+      });
+      final stored = ChannelsRepository();
+      await stored.load();
+      final c = ChannelController(
+        radio: radio,
+        receiver: receiver,
+        channels: stored,
+        favorites: favorites,
+      );
+      expect(stored.channels.map(c.displayName), ['Вышка / TWR', 'WFM 99.000']);
+      stored.dispose();
     });
   });
 }
