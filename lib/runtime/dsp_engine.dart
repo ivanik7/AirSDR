@@ -276,9 +276,11 @@ class DspEngine {
         case DspCmd.setMode:
           setMode((m['mode'] as num).toInt());
         case DspCmd.setBandwidth:
+          _floorCache.clear();
           radio.setBandwidth((m['hz'] as num).toDouble());
           _sendState();
         case DspCmd.setSampleRate:
+          _floorCache.clear();
           _withSource(
             (s) => s.controls.setSampleRate(
               s.handler,
@@ -288,6 +290,7 @@ class DspEngine {
           radio.resetAutoSquelch();
           _sendState();
         case DspCmd.setGain:
+          _floorCache.clear();
           _withSource(
             (s) =>
                 s.controls.setGain(s.handler, (m['value'] as num).toDouble()),
@@ -296,12 +299,14 @@ class DspEngine {
           radio.resetAutoSquelch();
           _sendState();
         case DspCmd.setAgc:
+          _floorCache.clear();
           _withSource(
             (s) => s.controls.setAgc(s.handler, m['enabled'] as bool),
           );
           radio.resetAutoSquelch();
           _sendState();
         case DspCmd.sourceSetting:
+          _floorCache.clear();
           _withSource((s) {
             s.handler.applySetting(m['id'] as String, m['value']!);
             return true;
@@ -374,6 +379,7 @@ class DspEngine {
   }
 
   Future<void> selectSource(String id, Map<Object?, Object?> params) async {
+    _floorCache.clear();
     final wasRunning = _running;
     await _dropSource();
     final inst = registry.create(id, params, _ctx(++_sourceGen));
@@ -452,7 +458,10 @@ class DspEngine {
   void tune({double? center, double? offset}) {
     final locked = _source?.centerFrequencyLocked ?? false;
     var retuned = false;
+    var centerChanged = false;
     if (center != null && center != _centerFreq && !locked) {
+      _rememberFloor();
+      centerChanged = true;
       _centerFreq = center;
       core.sigpath.sourceManager.tune(center);
       coreConfig.acquire();
@@ -468,20 +477,53 @@ class DspEngine {
       coreConfig.release(true);
     }
     // New channel: the auto squelch relearns (level squelch: noise floor of the new channel).
-    if (retuned) radio.resetAutoSquelch();
+    if (retuned) {
+      _squelchEpoch++;
+      radio.resetAutoSquelch();
+      if (centerChanged) _restoreFloor();
+    }
+  }
+
+  int _squelchEpoch = 0;
+  final Map<(int, int, double), List<double>> _floorCache = {};
+
+  (int, int, double) get _floorKey =>
+      (_centerFreq.round(), radio.selectedDemodID, radio.bandwidth);
+
+  void _rememberFloor() {
+    final floor = radio.autoSquelch.floorSnapshot;
+    if (floor.isEmpty) return;
+    if (_floorCache.length >= 256 && !_floorCache.containsKey(_floorKey)) {
+      _floorCache.remove(_floorCache.keys.first);
+    }
+    _floorCache[_floorKey] = floor;
+  }
+
+  void _restoreFloor() {
+    final floor = _floorCache[_floorKey];
+    if (floor != null) radio.autoSquelch.restoreFloor(floor);
   }
 
   void setMode(int modeId) {
     final id = DemodID.fromId(modeId);
     if (id == null) throw ArgumentError('bad mode $modeId');
+    _rememberFloor();
+    _squelchEpoch++;
     radio.selectDemodByID(id);
+    _restoreFloor();
     _sendState();
   }
 
-  void setSquelch({bool? enabled, double? level, String? mode, double? autoOffset}) {
+  void setSquelch({
+    bool? enabled,
+    double? level,
+    String? mode,
+    double? autoOffset,
+  }) {
     final m = mode == null ? null : squelchModeKeys[mode];
     if (m != null) {
       radio.setSquelchMode(m);
+      if (m == SquelchMode.auto) _restoreFloor();
     } else if (enabled != null) {
       radio.setSquelchMode(enabled ? SquelchMode.power : SquelchMode.off);
     }
@@ -573,6 +615,8 @@ class DspEngine {
       'low': _centerFreq + low,
       'high': _centerFreq + high,
       'seq': _fftSeq,
+      'center': _centerFreq,
+      'epoch': _squelchEpoch,
     });
   }
 
@@ -623,6 +667,9 @@ class DspEngine {
     'audioDropped': audio.framesDropped,
     'audioOutput': audio.name,
     'squelch': ?squelchStatus(),
+    'squelchCenter': _centerFreq,
+    'squelchModeId': radio.selectedDemodID,
+    'squelchEpoch': _squelchEpoch,
     ...?_source?.stats?.call(),
   };
 
@@ -668,7 +715,11 @@ class DspEngine {
   }
 
   static String _squelchModeKey(SquelchMode m) =>
-      squelchModeKeys.entries.where((e) => e.value == m).map((e) => e.key).firstOrNull ?? 'off';
+      squelchModeKeys.entries
+          .where((e) => e.value == m)
+          .map((e) => e.key)
+          .firstOrNull ??
+      'off';
 
   static Map<String, Object?> settingToMap(SourceSetting s) => switch (s) {
     ChoiceSetting c => <String, Object?>{

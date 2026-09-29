@@ -25,6 +25,27 @@ class ChannelController {
 
   bool _attached = false;
   bool _applying = false;
+  bool _scanning = false;
+  bool _scanApplying = false;
+  void Function()? cancelScan;
+
+  bool get scanning => _scanning;
+  void setScanning(bool value) => _scanning = value;
+
+  /// Retune without activating or rewriting the selected slot.
+  bool scanTo(ReceiverChannel c) {
+    if (!_inRange(c.frequencyHz)) return false;
+    _scanApplying = true;
+    try {
+      return _apply(c);
+    } finally {
+      _scanApplying = false;
+    }
+  }
+
+  void manualChange() {
+    if (!_scanApplying) cancelScan?.call();
+  }
 
   /// True once the persisted active slot has been applied to the receiver;
   /// before that nothing is written back (the backend may still be loading
@@ -73,6 +94,7 @@ class ChannelController {
   /// Tap on a tile. Returns false when the slot cannot be tuned (out of the
   /// device range); then nothing changes.
   bool select(String id) {
+    cancelScan?.call();
     final i = channels.indexOf(id);
     if (i < 0) return false;
     final c = channels.channels[i];
@@ -85,6 +107,7 @@ class ChannelController {
 
   /// "+ канал": a new slot with the current frequency/mode, made active.
   ReceiverChannel add() {
+    cancelScan?.call();
     final hz = radio.tunedFrequency.round();
     final preset = favorites.entries
         .where((f) => f.frequencyHz == hz)
@@ -101,6 +124,7 @@ class ChannelController {
   /// Deletes a slot; if it was active, the neighbour becomes active and the
   /// receiver follows it. Without slots left the receiver stays where it is.
   void delete(String id) {
+    cancelScan?.call();
     final wasActive = channels.activeId == id;
     _applying = true;
     channels.delete(id);
@@ -115,7 +139,10 @@ class ChannelController {
 
   void rename(String id, String name) => channels.rename(id, name);
 
-  void move(String id, int toIndex) => channels.move(id, toIndex);
+  void move(String id, int toIndex) {
+    cancelScan?.call();
+    channels.move(id, toIndex);
+  }
 
   /// Saves a slot into the presets. Returns an error text or null.
   String? saveAsPreset(String id) {
@@ -137,7 +164,7 @@ class ChannelController {
 
   /// Receiver → active slot. Called on every radio notification.
   void onRadioChanged() {
-    if (!_attached || _applying || receiver.dragging) return;
+    if (!_attached || _applying || _scanning || receiver.dragging) return;
     if (radio.vfoOffset != 0) return; // not at rest yet (centering pending)
     channels.updateActive(
       frequencyHz: radio.tunedFrequency.round(),

@@ -6,6 +6,7 @@
 import 'package:flutter/material.dart';
 
 import '../channels/channel_controller.dart';
+import '../channels/channel_scanner.dart';
 import '../channels/channels.dart';
 import '../channels/signal_meter.dart';
 import '../radio_controller.dart';
@@ -16,10 +17,12 @@ class ChannelsSection extends StatefulWidget {
   const ChannelsSection({
     super.key,
     required this.controller,
+    required this.scanner,
     required this.radio,
     required this.meter,
   });
   final ChannelController controller;
+  final ChannelScanner scanner;
   final RadioController radio;
   final SignalMeter meter;
 
@@ -188,22 +191,33 @@ class _ChannelsSectionState extends State<ChannelsSection> {
 
   @override
   Widget build(BuildContext context) => ListenableBuilder(
-    listenable: repo,
+    listenable: Listenable.merge([repo, widget.scanner]),
     builder: (context, _) {
       final all = repo.channels;
       final more = all.length > ChannelsSection.collapsedTiles;
-      final activeIndex = repo.activeId == null
-          ? -1
-          : repo.indexOf(repo.activeId!);
+      final extra =
+          widget.scanner.active &&
+              widget.scanner.tunedChannelId != repo.activeId
+          ? 1
+          : 0;
       final visible = expanded || !more
           ? all
-          : [
-              ...all.take(ChannelsSection.collapsedTiles - 1),
-              // Keep the one live receiver visible even when its slot is
-              // beyond the collapsed portion of the ordered list.
-              all[activeIndex >= ChannelsSection.collapsedTiles
-                  ? activeIndex
-                  : ChannelsSection.collapsedTiles - 1],
+          : <ReceiverChannel>[
+              ...all
+                  .where(
+                    (c) =>
+                        c.id != repo.activeId &&
+                        c.id != widget.scanner.tunedChannelId,
+                  )
+                  .take(
+                    ChannelsSection.collapsedTiles -
+                        (repo.active == null ? 0 : 1) -
+                        extra,
+                  ),
+              if (repo.active != null) repo.active!,
+              if (widget.scanner.active &&
+                  widget.scanner.tunedChannelId != repo.activeId)
+                ...all.where((c) => c.id == widget.scanner.tunedChannelId),
             ];
       final showAdd = expanded || all.length < ChannelsSection.collapsedTiles;
       return Column(
@@ -229,8 +243,46 @@ class _ChannelsSectionState extends State<ChannelsSection> {
                     style: plex(size: 12, color: LegacyColors.accent),
                   ),
                 ),
+              const SizedBox(width: 4),
+              Tooltip(
+                message: widget.scanner.canStart || widget.scanner.active
+                    ? 'Последовательный приём каналов'
+                    : !widget.radio.running
+                    ? 'Сначала включите приёмник'
+                    : 'Выберите канал с авто-шумодавом; нужно минимум два (без WFM/RAW)',
+                child: TextButton(
+                  key: const ValueKey('channelScanToggle'),
+                  onPressed: widget.scanner.active
+                      ? () => widget.scanner.stop()
+                      : widget.scanner.canStart
+                      ? () => widget.scanner.start()
+                      : null,
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 5),
+                    minimumSize: const Size(48, 32),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  child: Text(
+                    widget.scanner.active ? 'Стоп скан' : 'Скан',
+                    style: plex(size: 12, color: LegacyColors.accent),
+                  ),
+                ),
+              ),
             ],
           ),
+          if (widget.scanner.active)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 5),
+              child: Text(
+                widget.scanner.receivingChannelId == null
+                    ? 'Скан…'
+                    : 'Приём: ${all.firstWhere((c) => c.id == widget.scanner.receivingChannelId).name}',
+                key: const ValueKey('channelScanStatus'),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: plex(size: 11, color: LegacyColors.accent),
+              ),
+            ),
           const SizedBox(height: 7),
           GridView.count(
             crossAxisCount: 2,
@@ -246,6 +298,11 @@ class _ChannelsSectionState extends State<ChannelsSection> {
                   key: ValueKey('channel-${c.id}'),
                   channel: c,
                   active: c.id == repo.activeId,
+                  tuned: widget.scanner.active
+                      ? c.id == widget.scanner.tunedChannelId
+                      : c.id == repo.activeId,
+                  receiving: c.id == widget.scanner.receivingChannelId,
+                  scanning: widget.scanner.active,
                   radio: widget.radio,
                   meter: widget.meter,
                   onTap: () => _select(c),
@@ -296,6 +353,9 @@ class _ChannelTile extends StatefulWidget {
     super.key,
     required this.channel,
     required this.active,
+    required this.tuned,
+    required this.receiving,
+    required this.scanning,
     required this.radio,
     required this.meter,
     required this.onTap,
@@ -304,6 +364,9 @@ class _ChannelTile extends StatefulWidget {
   });
   final ReceiverChannel channel;
   final bool active;
+  final bool tuned;
+  final bool receiving;
+  final bool scanning;
   final RadioController radio;
   final SignalMeter meter;
   final VoidCallback onTap;
@@ -367,18 +430,23 @@ class _ChannelTileState extends State<_ChannelTile> {
   Widget _body({bool highlight = false, bool target = false}) {
     final c = widget.channel;
     final active = widget.active;
+    final receiving = widget.receiving;
     return Container(
       padding: const EdgeInsets.fromLTRB(11, 8, 11, 8),
       decoration: BoxDecoration(
-        color: active ? const Color(0xFF1A2114) : LegacyColors.card,
+        color: receiving
+            ? const Color(0xFF34491B)
+            : active
+            ? const Color(0xFF1A2114)
+            : LegacyColors.card,
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
           color: target
               ? LegacyColors.primary
-              : active || highlight
+              : receiving || active || highlight
               ? LegacyColors.accent
               : Colors.transparent,
-          width: active ? 1.5 : 1,
+          width: receiving || active ? 1.5 : 1,
         ),
       ),
       child: Column(
@@ -404,7 +472,12 @@ class _ChannelTileState extends State<_ChannelTile> {
                   ),
                 ),
               ),
-              if (active) _Led(radio: widget.radio),
+              if (widget.tuned)
+                _Led(
+                  radio: widget.radio,
+                  receiving: receiving,
+                  on: !widget.scanning || receiving,
+                ),
             ],
           ),
           const SizedBox(height: 2),
@@ -427,13 +500,25 @@ class _ChannelTileState extends State<_ChannelTile> {
                   color: active ? LegacyColors.accent : LegacyColors.muted,
                 ),
               ),
+              if (widget.scanning && c.mode.params.autoSquelch == null)
+                const Tooltip(
+                  message: 'Не сканируется: нет авто-шумодава',
+                  child: Padding(
+                    padding: EdgeInsets.only(left: 3),
+                    child: Icon(
+                      Icons.block,
+                      size: 12,
+                      color: LegacyColors.muted,
+                    ),
+                  ),
+                ),
             ],
           ),
           const SizedBox(height: 6),
           // Level only for the channel actually being received.
           SizedBox(
             height: 4,
-            child: active
+            child: widget.tuned
                 ? _LevelBar(meter: widget.meter)
                 : const SizedBox.shrink(),
           ),
@@ -445,19 +530,23 @@ class _ChannelTileState extends State<_ChannelTile> {
 
 /// On while the receiver is running on this (active) channel.
 class _Led extends StatelessWidget {
-  const _Led({required this.radio});
+  const _Led({required this.radio, required this.receiving, required this.on});
   final RadioController radio;
+  final bool receiving;
+  final bool on;
   @override
   Widget build(BuildContext context) {
-    final on = radio.running;
+    final lit = on && radio.running;
     return Container(
       key: const ValueKey('channelLed'),
       width: 7,
       height: 7,
       decoration: BoxDecoration(
-        color: on ? LegacyColors.accent : const Color(0xFF2A3037),
+        color: lit
+            ? (receiving ? LegacyColors.primary : LegacyColors.accent)
+            : const Color(0xFF2A3037),
         shape: BoxShape.circle,
-        boxShadow: on
+        boxShadow: lit
             ? [
                 BoxShadow(
                   color: LegacyColors.accent.withValues(alpha: 0.75),

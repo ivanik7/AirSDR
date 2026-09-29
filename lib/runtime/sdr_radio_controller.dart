@@ -29,6 +29,7 @@
 // lib/main.dart is NOT switched here (the integrator does it).
 import 'dart:async';
 import 'dart:isolate';
+import 'dart:math' as math;
 
 import '../ui/radio_controller.dart';
 import '../sdrpp/modules/sources/synth_source.dart';
@@ -211,6 +212,7 @@ class SdrRadioController extends RadioController {
 
   /// Latest stats / state from the DSP isolate (diagnostics, tests).
   Map<Object?, Object?> lastStats = const <Object?, Object?>{};
+  int _minSquelchEpoch = 0;
   Map<Object?, Object?> lastState = const <Object?, Object?>{};
 
   /// Completes when the DSP isolate is up and the device list is loaded.
@@ -257,6 +259,12 @@ class SdrRadioController extends RadioController {
     switch (m[DspMsg.evt]) {
       case DspEvt.fft:
         if (!_rows.hasListener) return;
+        final epoch = (m['epoch'] as num?)?.toInt();
+        if (m['center'] != _centerFrequency ||
+            epoch == null ||
+            epoch < _minSquelchEpoch) {
+          return;
+        }
         final data = (m['data'] as TransferableTypedData)
             .materialize()
             .asFloat32List();
@@ -772,6 +780,13 @@ class SdrRadioController extends RadioController {
   void setTuning({required double centerFrequency, required double vfoOffset}) {
     final msg = <String, Object?>{DspMsg.cmd: DspCmd.tune, 'offset': vfoOffset};
     if (!_centerLocked && centerFrequency != _centerFrequency) {
+      _minSquelchEpoch =
+          math.max(
+            (lastStats['squelchEpoch'] as num?)?.toInt() ?? 0,
+            _minSquelchEpoch,
+          ) +
+          1;
+      lastStats = Map<Object?, Object?>.of(lastStats)..remove('squelch');
       _centerFrequency = centerFrequency;
       msg['center'] = centerFrequency;
     }
@@ -790,11 +805,19 @@ class SdrRadioController extends RadioController {
   @override
   void setMode(DemodMode mode) {
     if (mode == _mode) return;
+    _minSquelchEpoch =
+        math.max(
+          (lastStats['squelchEpoch'] as num?)?.toInt() ?? 0,
+          _minSquelchEpoch,
+        ) +
+        1;
+    lastStats = Map<Object?, Object?>.of(lastStats)..remove('squelch');
     _mode = mode;
     _bandwidth = mode
         .params
         .defaultBandwidth; // corrected by the DSP state (saved per mode)
-    _autoSquelchAllowed = mode.params.autoSquelch != null; // idem (squelch mode per mode)
+    _autoSquelchAllowed =
+        mode.params.autoSquelch != null; // idem (squelch mode per mode)
     _fire(<String, Object?>{DspMsg.cmd: DspCmd.setMode, 'mode': mode.id});
     _notify();
   }
@@ -919,7 +942,10 @@ class SdrRadioController extends RadioController {
   @override
   void setAutoSquelchOffset(double db) {
     _autoSquelchOffset = db
-        .clamp(RadioController.minAutoSquelchOffset, RadioController.maxAutoSquelchOffset)
+        .clamp(
+          RadioController.minAutoSquelchOffset,
+          RadioController.maxAutoSquelchOffset,
+        )
         .toDouble();
     _fire(<String, Object?>{
       DspMsg.cmd: DspCmd.setSquelch,
@@ -931,6 +957,14 @@ class SdrRadioController extends RadioController {
   @override
   AutoSquelchStatus? get autoSquelchStatus {
     if (!_running || _squelchType != SquelchType.auto) return null;
+    if ((lastStats['squelchEpoch'] as num?)?.toInt() case final int epoch
+        when epoch < _minSquelchEpoch) {
+      return null;
+    }
+    if (lastStats['squelchCenter'] != _centerFrequency ||
+        lastStats['squelchModeId'] != _mode.id) {
+      return null;
+    }
     final s = lastStats['squelch'];
     if (s is! Map) return null;
     return AutoSquelchStatus(

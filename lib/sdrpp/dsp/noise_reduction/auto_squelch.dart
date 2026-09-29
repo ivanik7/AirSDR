@@ -240,6 +240,21 @@ class AutoSquelch {
     return s[i];
   }
 
+  /// Retain the measured floor of a scanned channel across visits. Filter and
+  /// audio state deliberately stay reset; only clean noise segments survive.
+  List<double> get floorSnapshot => _detector == AutoSquelchDetector.level
+      ? List<double>.of(_segments)
+      : const [];
+
+  void restoreFloor(List<double> segments) {
+    if (_detector != AutoSquelchDetector.level || _open) return;
+    _segments
+      ..clear()
+      ..addAll(
+        segments.where((v) => v.isFinite).take(AutoSquelchTuning.floorSegments),
+      );
+  }
+
   /// Close threshold in the units of [metricDb] (open = threshold + hysteresis); null while
   /// the level squelch is still learning its floor.
   double? get thresholdDb {
@@ -260,15 +275,29 @@ class AutoSquelch {
     _bw = bandwidth;
     double coef(double ms) => 1 - math.exp(-1000.0 / (ms * _sr));
     _nAtt = coef(AutoSquelchTuning.noiseSmoothMs);
-    _lAtt = coef(math.max(
+    _lAtt = coef(
+      math.max(
         AutoSquelchTuning.levelSmoothMs,
-        math.min(AutoSquelchTuning.levelSmoothMaxMs, 1000 * AutoSquelchTuning.levelSmoothBwProduct / _bw)));
+        math.min(
+          AutoSquelchTuning.levelSmoothMaxMs,
+          1000 * AutoSquelchTuning.levelSmoothBwProduct / _bw,
+        ),
+      ),
+    );
     _hangSamples = (AutoSquelchTuning.hangMs * _sr / 1000).round();
-    _segLen = math.max(1, (AutoSquelchTuning.floorSegmentMs * _sr / 1000).round());
+    _segLen = math.max(
+      1,
+      (AutoSquelchTuning.floorSegmentMs * _sr / 1000).round(),
+    );
     _freezeSamples = (AutoSquelchTuning.floorFreezeMs * _sr / 1000).round();
     // Butterworth 4th order = two biquads, Q = 1/(2·cos(π/8)), 1/(2·cos(3π/8)).
     final fc = math.min(
-        math.min(AutoSquelchTuning.noiseHighPassHz, AutoSquelchTuning.noiseHighPassBwRatio * _bw), 0.45 * _sr);
+      math.min(
+        AutoSquelchTuning.noiseHighPassHz,
+        AutoSquelchTuning.noiseHighPassBwRatio * _bw,
+      ),
+      0.45 * _sr,
+    );
     _hp1 = _Biquad.highPass(fc, _sr, 0.54119610);
     _hp2 = _Biquad.highPass(fc, _sr, 1.30656296);
     _noiseRef = noiseReference(_bw, _sr);
@@ -296,12 +325,13 @@ class AutoSquelch {
     _segSum = 0;
     _segClean = true;
     _openSamples = 0;
-    _settleLeft = ((_detector == AutoSquelchDetector.noise
-                ? AutoSquelchTuning.noiseSettleMs
-                : AutoSquelchTuning.floorSettleMs) *
-            _sr /
-            1000)
-        .round();
+    _settleLeft =
+        ((_detector == AutoSquelchDetector.noise
+                    ? AutoSquelchTuning.noiseSettleMs
+                    : AutoSquelchTuning.floorSettleMs) *
+                _sr /
+                1000)
+            .round();
     _segments.clear();
     if (wasOpen) {
       transitions++;
@@ -406,7 +436,9 @@ class AutoSquelch {
           _settleLeft -= _segCount;
         } else if ((_segClean && !_open) || stuck) {
           _segments.add(_db(_segSum / _segCount));
-          if (_segments.length > AutoSquelchTuning.floorSegments) _segments.removeAt(0);
+          if (_segments.length > AutoSquelchTuning.floorSegments) {
+            _segments.removeAt(0);
+          }
         }
         _segCount = 0;
         _segSum = 0;

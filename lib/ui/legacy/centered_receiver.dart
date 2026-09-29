@@ -15,6 +15,7 @@ import 'step_grid.dart';
 class CenteredReceiver {
   CenteredReceiver(this.radio);
   final RadioController radio;
+  void Function()? onManualChange;
   String entry = '';
   static const steps = <int>[5000, 6250, 12500, 25000, 100000];
   static const stepStorageKey = 'receiver_step_hz_v1';
@@ -71,12 +72,16 @@ class CenteredReceiver {
 
   /// Selects one of [steps] and immediately moves the receiver onto its grid.
   void setStepHz(int hz) {
+    onManualChange?.call();
     final i = steps.indexOf(hz);
     if (i < 0) throw ArgumentError.value(hz, 'step');
     _setStepIndex(i);
   }
 
-  void cycleStep() => _setStepIndex((stepIndex + 1) % steps.length);
+  void cycleStep() {
+    onManualChange?.call();
+    _setStepIndex((stepIndex + 1) % steps.length);
+  }
 
   void _setStepIndex(int i) {
     stepIndex = i;
@@ -92,6 +97,7 @@ class CenteredReceiver {
   }
 
   void beginDrag() {
+    onManualChange?.call();
     if (_dragging) return;
     _dragging = true;
     _dragRaw = radio.tunedFrequency.round();
@@ -183,6 +189,7 @@ class CenteredReceiver {
   /// Tunes to [hz] rounded to the nearest grid node. Throws [ArgumentError]
   /// for a frequency outside the device range.
   void tune(double hz) {
+    onManualChange?.call();
     final min = radio.selectedDevice?.minFrequency ?? 1;
     final max = radio.selectedDevice?.maxFrequency ?? 999999999999;
     if (!hz.isFinite || hz < min || hz > max || hz <= 0) {
@@ -192,15 +199,18 @@ class CenteredReceiver {
   }
 
   /// ◀ ▶: the neighbour grid node, not "current + step" (118.180 → 118.200).
-  void nudge(int direction) => _tuneExact(
-    stepFrom(
-      radio.tunedFrequency.round(),
-      stepHz,
-      direction,
-      min: _min,
-      max: _max,
-    ),
-  );
+  void nudge(int direction) {
+    onManualChange?.call();
+    _tuneExact(
+      stepFrom(
+        radio.tunedFrequency.round(),
+        stepHz,
+        direction,
+        min: _min,
+        max: _max,
+      ),
+    );
+  }
 
   void apply(int hz, DemodMode mode) {
     tune(hz.toDouble());
@@ -208,6 +218,7 @@ class CenteredReceiver {
   }
 
   void changeMode(DemodMode mode) {
+    onManualChange?.call();
     radio.setMode(mode);
     resetOffset();
   }

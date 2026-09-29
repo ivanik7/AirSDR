@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 
 import '../channels/channel_controller.dart';
+import '../channels/channel_scanner.dart';
 import '../channels/signal_meter.dart';
 import '../device_dropdown.dart';
 import '../favorites/favorites.dart';
@@ -22,6 +23,7 @@ class ReceiveScreen extends StatefulWidget {
     required this.spectrum,
     required this.favorites,
     required this.channels,
+    required this.scanner,
     required this.meter,
   });
   final RadioController controller;
@@ -29,6 +31,7 @@ class ReceiveScreen extends StatefulWidget {
   final SdrUiState spectrum;
   final FavoritesRepository favorites;
   final ChannelController channels;
+  final ChannelScanner scanner;
   final SignalMeter meter;
   @override
   State<ReceiveScreen> createState() => _ReceiveScreenState();
@@ -107,7 +110,11 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
                   fit: BoxFit.scaleDown,
                   alignment: Alignment.centerLeft,
                   child: Text(
-                    f.entry.isEmpty ? formatMhz(r.tunedFrequency) : f.entry,
+                    f.entry.isEmpty
+                        ? formatMhz(
+                            widget.spectrum.heldFrequency ?? r.tunedFrequency,
+                          )
+                        : f.entry,
                     key: const ValueKey('legacyFrequency'),
                     style: plex(
                       size: 49,
@@ -128,10 +135,12 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
               IconButton(
                 // Real mute (separate from the volume slider in Settings); starts muted.
                 key: const ValueKey('legacyMute'),
-                tooltip: r.muted ? 'Включить звук' : 'Выключить звук',
-                onPressed: () => r.setMuted(!r.muted),
+                tooltip: widget.scanner.userMuted ? 'Включить звук' : 'Выключить звук',
+                onPressed: () => widget.scanner.active
+                    ? widget.scanner.setUserMuted(!widget.scanner.userMuted)
+                    : r.setMuted(!r.muted),
                 icon: Icon(
-                  r.muted ? Icons.volume_off : Icons.volume_up,
+                  widget.scanner.userMuted ? Icons.volume_off : Icons.volume_up,
                   size: 18,
                 ),
               ),
@@ -271,7 +280,11 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
                             children: [
                               Positioned(
                                 left: widget.spectrum.displayViewport
-                                    .freqToX(r.tunedFrequency, box.maxWidth)
+                                    .freqToX(
+                                      widget.spectrum.heldFrequency ??
+                                          r.tunedFrequency,
+                                      box.maxWidth,
+                                    )
                                     .clamp(0.0, box.maxWidth - 2),
                                 top: 0,
                                 bottom: 0,
@@ -355,6 +368,7 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
           ),
           ChannelsSection(
             controller: widget.channels,
+            scanner: widget.scanner,
             radio: r,
             meter: widget.meter,
           ),

@@ -75,6 +75,28 @@ class SdrUiState extends ChangeNotifier {
   /// the physical LO. FFT rows still carry their absolute frequency spans.
   final bool centerDisplayOnVfo;
   final FftViewport _centeredViewport;
+  double? _heldFrequency;
+  double? get heldFrequency => _heldFrequency;
+  final Stopwatch _retuneClock = Stopwatch()..start();
+
+  /// While scanning, keep the displayed spectrum on the selected channel.
+  /// Rows from the other channels never enter the waterfall history.
+  void holdDisplayAt(double? frequency) {
+    if (_heldFrequency == frequency) return;
+    _heldFrequency = frequency;
+    _retuneClock
+      ..reset()
+      ..start();
+    if (frequency != null) {
+      _centeredViewport.setCenterFrequency(frequency);
+      waterfall.clear();
+    } else {
+      _centeredViewport.setCenterFrequency(radio.tunedFrequency);
+    }
+    waterfall.setView(displayViewport.lowerFreq, displayViewport.upperFreq);
+    notifyListeners();
+  }
+
   FftViewport get displayViewport =>
       centerDisplayOnVfo ? _centeredViewport : viewport;
   WaterfallVfo get displayVfo => centerDisplayOnVfo
@@ -177,6 +199,9 @@ class SdrUiState extends ChangeNotifier {
     }
     if (radio.centerFrequency != viewport.centerFreq) {
       viewport.setCenterFrequency(radio.centerFrequency);
+      _retuneClock
+        ..reset()
+        ..start();
       viewChanged = true;
     }
     if (radio.mode != _lastMode) {
@@ -192,6 +217,7 @@ class SdrUiState extends ChangeNotifier {
     if (radio.bandwidth != vfo.bandwidth) vfo.setBandwidth(radio.bandwidth);
     if (radio.vfoOffset != vfo.generalOffset) vfo.setOffset(radio.vfoOffset);
     if (centerDisplayOnVfo &&
+        _heldFrequency == null &&
         _centeredViewport.centerFreq != radio.tunedFrequency) {
       _centeredViewport.setCenterFrequency(radio.tunedFrequency);
       viewChanged = true;
@@ -220,6 +246,14 @@ class SdrUiState extends ChangeNotifier {
   }
 
   void _onRow(FftRow row) {
+    final held = _heldFrequency;
+    if (held != null &&
+        (radio.centerFrequency != held ||
+            _retuneClock.elapsed < const Duration(milliseconds: 180) ||
+            ((row.lowFreq + row.highFreq) / 2 - held).abs() >
+                (row.highFreq - row.lowFreq) * 0.05)) {
+      return;
+    }
     waterfall.pushRow(row.db, row.lowFreq, row.highFreq);
     if (autoLevels &&
         _auto.addRow(row.db, row.lowFreq, row.highFreq, _clock())) {
