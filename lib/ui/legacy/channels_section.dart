@@ -193,9 +193,19 @@ class _ChannelsSectionState extends State<ChannelsSection> {
     builder: (context, _) {
       final all = repo.channels;
       final more = all.length > ChannelsSection.collapsedTiles;
+      final activeIndex = repo.activeId == null
+          ? -1
+          : repo.indexOf(repo.activeId!);
       final visible = expanded || !more
           ? all
-          : all.take(ChannelsSection.collapsedTiles).toList();
+          : [
+              ...all.take(ChannelsSection.collapsedTiles - 1),
+              // Keep the one live receiver visible even when its slot is
+              // beyond the collapsed portion of the ordered list.
+              all[activeIndex >= ChannelsSection.collapsedTiles
+                  ? activeIndex
+                  : ChannelsSection.collapsedTiles - 1],
+            ];
       final showAdd = expanded || all.length < ChannelsSection.collapsedTiles;
       return Column(
         key: const ValueKey('channelsSection'),

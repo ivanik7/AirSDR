@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter/gestures.dart' show kLongPressTimeout;
@@ -16,6 +17,17 @@ class _Env {
   final DemoRadioController radio;
   final FavoritesRepository favorites;
   final ChannelsRepository channels;
+}
+
+class _RowsRadio extends DemoRadioController {
+  final rows = StreamController<FftRow>.broadcast(sync: true);
+  @override
+  Stream<FftRow> get fftRows => rows.stream;
+  @override
+  void dispose() {
+    rows.close();
+    super.dispose();
+  }
 }
 
 Future<_Env> _pump(
@@ -263,6 +275,11 @@ void main() {
     expect(find.text('КАНАЛЫ · 7'), findsOneWidget);
     expect(find.byKey(const ValueKey('channelAdd')), findsNothing);
     expect(
+      find.byKey(ValueKey('channel-${env.channels.activeId}')),
+      findsOneWidget,
+      reason: 'the active receiver must remain visible while collapsed',
+    );
+    expect(
       find.byWidgetPredicate(
         (w) =>
             w.key is ValueKey<String> &&
@@ -293,5 +310,28 @@ void main() {
     expect(vfoSignalInfo(Float32List(0), 0, 100, 50, 10), isNull);
     // Passband off the row: no reading.
     expect(vfoSignalInfo(db, 0, 100, 500, 10), isNull);
+  });
+
+  test('signal meter clears the old channel reading on retune', () async {
+    final radio = _RowsRadio();
+    final meter = SignalMeter(radio);
+    radio.setMode(DemodMode.nfm);
+    await radio.start();
+    final center = radio.centerFrequency;
+    final db = Float32List(100)..fillRange(0, 100, -100);
+    db[50] = -40;
+    radio.rows.add(
+      FftRow(db: db, lowFreq: center - 50000, highFreq: center + 50000),
+    );
+    expect(meter.value, isNotNull);
+    radio.setTuning(centerFrequency: center + 1000000, vfoOffset: 0);
+    expect(
+      meter.value,
+      isNull,
+      reason: 'old level must not appear on a new channel',
+    );
+    meter.dispose();
+    await radio.stop();
+    radio.dispose();
   });
 }

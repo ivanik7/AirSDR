@@ -62,17 +62,34 @@ SignalInfo? vfoSignalInfo(
 /// Live level of the tuned channel; null while stopped / no data.
 class SignalMeter extends ValueNotifier<SignalInfo?> {
   SignalMeter(this.radio) : super(null) {
+    _center = radio.centerFrequency;
+    _offset = radio.vfoCenterOffset;
+    _mode = radio.mode;
+    _bandwidth = radio.bandwidth;
     _sub = radio.fftRows.listen(_onRow);
     radio.addListener(_onRadio);
   }
   final RadioController radio;
   late final StreamSubscription<FftRow> _sub;
+  late double _center;
+  late double _offset;
+  late double _bandwidth;
+  late DemodMode _mode;
 
   /// SDR++ `snrSmoothingAlpha/Beta` = 0.5.
   static const smoothing = 0.5;
 
   void _onRadio() {
-    if (!radio.running && value != null) value = null;
+    final changed =
+        _center != radio.centerFrequency ||
+        _offset != radio.vfoCenterOffset ||
+        _mode != radio.mode ||
+        _bandwidth != radio.bandwidth;
+    _center = radio.centerFrequency;
+    _offset = radio.vfoCenterOffset;
+    _mode = radio.mode;
+    _bandwidth = radio.bandwidth;
+    if ((!radio.running || changed) && value != null) value = null;
   }
 
   void _onRow(FftRow row) {
