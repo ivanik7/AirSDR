@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import 'package:flutter/material.dart';
 
+import '../auto_levels.dart';
 import '../radio_controller.dart';
+import '../sdr_ui_state.dart';
 import '../source_settings.dart';
 import 'centered_receiver.dart';
 import 'step_grid.dart';
@@ -12,13 +14,17 @@ class SettingsScreen extends StatelessWidget {
     super.key,
     required this.controller,
     required this.receiver,
+    this.spectrum,
   });
   final RadioController controller;
   final CenteredReceiver receiver;
 
+  /// Waterfall levels (Max/Min + Auto); the section is hidden without it.
+  final SdrUiState? spectrum;
+
   @override
   Widget build(BuildContext context) => ListenableBuilder(
-    listenable: controller,
+    listenable: Listenable.merge([controller, ?spectrum]),
     builder: (context, _) {
       final r = controller;
       final d = r.selectedDevice;
@@ -123,6 +129,7 @@ class SettingsScreen extends StatelessWidget {
                 : null,
             '${r.squelchLevel.toStringAsFixed(0)} dB',
           ),
+          if (spectrum case final s?) ..._waterfallLevels(s),
           _section('СОСТОЯНИЕ'),
           _row(
             'Приём',
@@ -152,6 +159,48 @@ class SettingsScreen extends StatelessWidget {
       );
     },
   );
+
+  /// Waterfall/spectrum levels: Auto (auto_levels.dart) or manual Max/Min.
+  /// In Auto the sliders show the automatic levels and are disabled.
+  List<Widget> _waterfallLevels(SdrUiState s) {
+    final auto = s.autoLevels;
+    final floor = s.autoNoiseFloor;
+    return [
+      _section('ВОДОПАД'),
+      _row(
+        'Авто-контраст',
+        auto
+            ? (floor == null
+                  ? 'Шум и пики за ${AutoLevelTuning.window.inSeconds} с · ждёт спектр'
+                  : 'Шум ${floor.round()} dB · пик ${s.autoPeak!.round()} dB '
+                        'за ${AutoLevelTuning.window.inSeconds} с')
+            : 'Выкл. · уровни задаются вручную',
+        trailing: Switch(
+          key: const ValueKey('legacyAutoLevels'),
+          value: auto,
+          onChanged: s.setAutoLevels,
+        ),
+      ),
+      _slider(
+        'Max',
+        s.fftMax,
+        -150,
+        0,
+        auto ? null : (v) => s.setLevels(s.fftMin, v),
+        '${s.fftMax.round()} dB',
+        key: const ValueKey('legacyFftMax'),
+      ),
+      _slider(
+        'Min',
+        s.fftMin,
+        -160,
+        -10,
+        auto ? null : (v) => s.setLevels(v, s.fftMax),
+        '${s.fftMin.round()} dB',
+        key: const ValueKey('legacyFftMin'),
+      ),
+    ];
+  }
 
   Widget _section(String text) => Padding(
     padding: const EdgeInsets.fromLTRB(4, 15, 4, 8),
@@ -193,8 +242,9 @@ class SettingsScreen extends StatelessWidget {
     double min,
     double max,
     ValueChanged<double>? change,
-    String formatted,
-  ) => Padding(
+    String formatted, {
+    Key? key,
+  }) => Padding(
     padding: const EdgeInsets.only(bottom: 7),
     child: legacyCard(
       child: Column(
@@ -210,6 +260,7 @@ class SettingsScreen extends StatelessWidget {
             ],
           ),
           Slider(
+            key: key,
             value: value.clamp(min, max),
             min: min,
             max: max,

@@ -54,6 +54,7 @@ class _LegacyAppShellState extends State<LegacyAppShell> {
     radioReady = widget.controller is! SdrRadioController;
     receiver = CenteredReceiver(widget.controller);
     spectrum = SdrUiState(widget.controller, centerDisplayOnVfo: true);
+    spectrum.loadSettings();
     favorites = widget.favorites ?? FavoritesRepository();
     ownFavorites = widget.favorites == null;
     channelSlots = widget.channels ?? ChannelsRepository();
@@ -171,6 +172,7 @@ class _LegacyAppShellState extends State<LegacyAppShell> {
                 SettingsScreen(
                   controller: widget.controller,
                   receiver: receiver,
+                  spectrum: spectrum,
                 ),
               ],
             ),

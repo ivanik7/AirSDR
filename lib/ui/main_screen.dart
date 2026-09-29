@@ -11,6 +11,7 @@
 
 import 'package:flutter/material.dart';
 
+import 'auto_levels.dart';
 import 'colormaps.dart';
 import 'device_dropdown.dart';
 import 'frequency_select.dart';
@@ -40,6 +41,7 @@ class _MainScreenState extends State<MainScreen> {
   void initState() {
     super.initState();
     _ui = SdrUiState(widget.controller);
+    _ui.loadSettings();
     widget.controller.addListener(_onController);
   }
 
@@ -51,6 +53,7 @@ class _MainScreenState extends State<MainScreen> {
       widget.controller.addListener(_onController);
       _ui.dispose();
       _ui = SdrUiState(widget.controller);
+      _ui.loadSettings();
     }
   }
 
@@ -415,22 +418,7 @@ class _ControlsPanel extends StatelessWidget {
           max: 1,
           onChanged: ui.setZoomSlider,
         ),
-        _LabeledSlider(
-          label: 'Max',
-          valueText: '${ui.fftMax.round()} dB',
-          value: ui.fftMax,
-          min: -150,
-          max: 0,
-          onChanged: (v) => ui.setLevels(ui.fftMin, v),
-        ),
-        _LabeledSlider(
-          label: 'Min',
-          valueText: '${ui.fftMin.round()} dB',
-          value: ui.fftMin,
-          min: -160,
-          max: -10,
-          onChanged: (v) => ui.setLevels(v, ui.fftMax),
-        ),
+        ..._levelControls(ui),
       ],
       if (dev != null)
         _SampleRateRow(ui: ui),
@@ -454,27 +442,54 @@ class _ControlsPanel extends StatelessWidget {
                 style: Theme.of(context).textTheme.labelSmall),
             children: [
               ...sliders.sublist(2),
-              _LabeledSlider(
-                label: 'Max',
-                valueText: '${ui.fftMax.round()} dB',
-                value: ui.fftMax,
-                min: -150,
-                max: 0,
-                onChanged: (v) => ui.setLevels(ui.fftMin, v),
-              ),
-              _LabeledSlider(
-                label: 'Min',
-                valueText: '${ui.fftMin.round()} dB',
-                value: ui.fftMin,
-                min: -160,
-                max: -10,
-                onChanged: (v) => ui.setLevels(v, ui.fftMax),
-              ),
+              ..._levelControls(ui),
             ],
           ),
         ],
       ),
     );
+  }
+
+  /// Max/Min sliders (main_window.cpp:633-663) + automatic mode. In Auto the
+  /// sliders show the automatic levels and are disabled; turning Auto off
+  /// keeps the current levels for manual adjustment.
+  static List<Widget> _levelControls(SdrUiState ui) {
+    final auto = ui.autoLevels;
+    return <Widget>[
+      _LabeledSlider(
+        key: const ValueKey<String>('fftMaxSlider'),
+        label: 'Max',
+        valueText: '${ui.fftMax.round()} dB',
+        value: ui.fftMax,
+        min: -150,
+        max: 0,
+        onChanged: auto ? null : (v) => ui.setLevels(ui.fftMin, v),
+        trailing: Tooltip(
+          message: 'Авто Max/Min: шум и пики за последние '
+              '${AutoLevelTuning.window.inSeconds} с',
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Checkbox(
+                key: const ValueKey<String>('autoLevels'),
+                value: auto,
+                onChanged: (v) => ui.setAutoLevels(v ?? false),
+              ),
+              const Text('Авто'),
+            ],
+          ),
+        ),
+      ),
+      _LabeledSlider(
+        key: const ValueKey<String>('fftMinSlider'),
+        label: 'Min',
+        valueText: '${ui.fftMin.round()} dB',
+        value: ui.fftMin,
+        min: -160,
+        max: -10,
+        onChanged: auto ? null : (v) => ui.setLevels(v, ui.fftMax),
+      ),
+    ];
   }
 
   static double _roundBw(double v) => v >= 10000 ? (v / 100).roundToDouble() * 100 : v.roundToDouble();
