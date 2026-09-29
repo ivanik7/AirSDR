@@ -68,19 +68,27 @@ class _LegacyAppShellState extends State<LegacyAppShell> {
     final radio = widget.controller;
     final slots = channelSlots;
     final bound = channels;
+    final boundReceiver = receiver;
+    // The step (= frequency grid) is persisted; snapping waits for it.
+    final stepLoaded = receiver.loadStep();
     // The production controller loads persisted LO/offset asynchronously.
     // Recenter only after ready, not before its first persisted state arrives.
     final Future<void> radioLoaded;
     if (radio case final SdrRadioController real) {
-      radioLoaded = real.ready.then((_) {
+      radioLoaded = Future.wait([real.ready, stepLoaded]).then((_) {
         if (mounted && identical(widget.controller, real)) {
           radioReady = true;
           receiver.resetOffset();
         }
       });
     } else {
-      radioLoaded = Future.value();
       receiver.resetOffset();
+      radioLoaded = stepLoaded.then((_) {
+        if (mounted && identical(receiver, boundReceiver)) {
+          receiver.resetOffset();
+          setState(() {});
+        }
+      });
     }
     favorites.load();
     // The active channel drives the receiver only once both the radio's own
@@ -95,7 +103,8 @@ class _LegacyAppShellState extends State<LegacyAppShell> {
   }
 
   void _radioChanged() {
-    if (radioReady && !receiver.dragging && widget.controller.vfoOffset != 0) {
+    // Resting receiver: LO centered on the VFO and on the step grid.
+    if (radioReady && !receiver.dragging && receiver.needsRecenter) {
       receiver.resetOffset();
       return;
     }
