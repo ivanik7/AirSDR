@@ -9,6 +9,7 @@
 //   * scroll-wheel / arrow tuning (lines 553-609)     → [step]
 //   * Zoom slider (lines 619-631)                     → [setZoomSlider]; pinch → [zoomAround]
 //   * Max/Min sliders (lines 633-663)                 → [setLevels]
+//     plus an automatic mode (no SDR++ equivalent)    → [setAutoLevels], auto_levels.dart
 // and of core::setInputSampleRate (core.cpp:41-57)    → sample-rate change handling.
 //
 // SdrUiState owns the display state (FftViewport = LO + view, WaterfallVfo,
@@ -19,7 +20,9 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
+import 'auto_levels.dart';
 import 'colormaps.dart';
 import 'radio_controller.dart';
 import 'tuner.dart';
@@ -32,7 +35,9 @@ class SdrUiState extends ChangeNotifier {
     WaterfallModel? waterfall,
     this.tuningMode = TuningMode.normal,
     this.centerDisplayOnVfo = false,
-  }) : waterfall = waterfall ?? WaterfallModel(),
+    Duration Function()? clock,
+  }) : _clock = clock ?? _monotonicClock(),
+       waterfall = waterfall ?? WaterfallModel(),
        viewport = FftViewport(
          centerFreq: radio.centerFrequency,
          bandwidth: radio.sampleRate,
@@ -53,6 +58,10 @@ class SdrUiState extends ChangeNotifier {
     );
     _lastSampleRate = radio.sampleRate;
     _lastMode = radio.mode;
+    _lastGain = radio.gain;
+    _lastCenter = radio.centerFrequency;
+    _lastAgc = radio.agc;
+    _lastDeviceId = radio.selectedDevice?.id;
     this.waterfall.setLevels(fftMin, fftMax);
     radio.addListener(_onRadio);
     _rowsSub = radio.fftRows.listen(_onRow);
@@ -83,6 +92,74 @@ class SdrUiState extends ChangeNotifier {
   /// SDR++ defaults (core.cpp:116-163): min −120, max 0.
   double fftMin = -120;
   double fftMax = 0;
+
+  // ---- Automatic levels ------------------------------------------------------
+
+  static const autoLevelsStorageKey = 'waterfall_auto_levels_v1';
+
+  /// Automatic Max/Min (auto_levels.dart). While on, the Max/Min sliders show
+  /// the automatic values and are disabled; switching it off keeps the current
+  /// levels as the manual starting point.
+  bool autoLevels = false;
+  bool _autoLevelsChanged = false;
+  final AutoLevels _auto = AutoLevels();
+  final Duration Function() _clock;
+  late double _lastGain;
+  late double _lastCenter;
+  late bool _lastAgc;
+  String? _lastDeviceId;
+  bool _disposed = false;
+
+  static Duration Function() _monotonicClock() {
+    final sw = Stopwatch()..start();
+    return () => sw.elapsed;
+  }
+
+  /// Window statistics of the automatic mode (null until a valid row).
+  double? get autoNoiseFloor => _auto.floor;
+  double? get autoPeak => _auto.peak;
+
+  /// Toggles automatic levels and persists the choice.
+  void setAutoLevels(bool on) {
+    _autoLevelsChanged = true;
+    _setAuto(on);
+    unawaited(
+      SharedPreferences.getInstance()
+          .then((p) => p.setBool(autoLevelsStorageKey, on))
+          .then((_) {}, onError: (_) {}),
+    );
+  }
+
+  void _setAuto(bool on) {
+    if (autoLevels == on) return;
+    autoLevels = on;
+    // A fresh start: the first row snaps the levels.
+    _auto
+      ..reset()
+      ..min = null
+      ..max = null;
+    if (!_disposed) notifyListeners();
+  }
+
+  /// Restores the persisted auto flag. A choice made before the load wins.
+  Future<void> loadSettings() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final v = prefs.getBool(autoLevelsStorageKey);
+      if (v != null && !_autoLevelsChanged && !_disposed) _setAuto(v);
+    } catch (_) {
+      // No storage (tests without the plugin): keep the default.
+    }
+  }
+
+  void _applyAuto() {
+    final lo = _auto.min, hi = _auto.max;
+    if (lo == null || hi == null) return;
+    const d = AutoLevelTuning.deadbandDb;
+    if ((lo - fftMin).abs() < d && (hi - fftMax).abs() < d) return;
+    _applyLevels(lo, hi);
+    notifyListeners();
+  }
 
   /// Data columns requested from the radio (pixels of the FFT row).
   int get columns => waterfall.width;
@@ -122,6 +199,21 @@ class SdrUiState extends ChangeNotifier {
     if (radio.running != _lastRunning) {
       _lastRunning = radio.running;
       if (radio.running) waterfall.clear();
+      _auto.reset();
+    }
+    // Auto levels belong to one spectrum: a retune, another source or gain
+    // restarts the window (span changes of the rows are caught in AutoLevels).
+    final devId = radio.selectedDevice?.id;
+    if (viewChanged ||
+        radio.centerFrequency != _lastCenter ||
+        radio.gain != _lastGain ||
+        radio.agc != _lastAgc ||
+        devId != _lastDeviceId) {
+      _lastCenter = radio.centerFrequency;
+      _lastGain = radio.gain;
+      _lastAgc = radio.agc;
+      _lastDeviceId = devId;
+      _auto.reset();
     }
     if (viewChanged) _pushView();
     notifyListeners();
@@ -129,6 +221,10 @@ class SdrUiState extends ChangeNotifier {
 
   void _onRow(FftRow row) {
     waterfall.pushRow(row.db, row.lowFreq, row.highFreq);
+    if (autoLevels &&
+        _auto.addRow(row.db, row.lowFreq, row.highFreq, _clock())) {
+      _applyAuto();
+    }
   }
 
   // ---- UI → radio ----------------------------------------------------------
@@ -222,11 +318,17 @@ class SdrUiState extends ChangeNotifier {
   );
 
   /// Max/Min sliders (main_window.cpp:633-663): fftMax ≥ fftMin + 10.
+  /// In [autoLevels] mode the next FFT row overrides these values (the UI
+  /// disables the sliders then).
   void setLevels(double min, double max) {
+    _applyLevels(min, max);
+    notifyListeners();
+  }
+
+  void _applyLevels(double min, double max) {
     fftMin = math.min(min, max - 10);
     fftMax = math.max(max, fftMin + 10);
     waterfall.setLevels(fftMin, fftMax);
-    notifyListeners();
   }
 
   void setColorMap(ColorMapDef map) {
@@ -250,6 +352,7 @@ class SdrUiState extends ChangeNotifier {
 
   @override
   void dispose() {
+    _disposed = true;
     radio.removeListener(_onRadio);
     _rowsSub.cancel();
     waterfall.dispose();
