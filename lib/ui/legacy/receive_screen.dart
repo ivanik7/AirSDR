@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../channels/channel_controller.dart';
 import '../channels/signal_meter.dart';
+import '../device_dropdown.dart';
 import '../favorites/favorites.dart';
 import '../radio_controller.dart';
 import '../sdr_ui_state.dart';
@@ -69,7 +70,7 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
                 child: DropdownButton<SdrDeviceInfo>(
                   key: const ValueKey('legacyDevice'),
                   isExpanded: true,
-                  value: r.selectedDevice,
+                  value: dropdownDeviceValue(r),
                   hint: const Text('Нет устройства'),
                   items: [
                     for (final d in r.devices)
@@ -124,10 +125,12 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
                 icon: const Icon(Icons.close, size: 17),
               ),
               IconButton(
-                tooltip: 'Без звука',
-                onPressed: () => r.setVolume(r.volume == 0 ? 1 : 0),
+                // Real mute (separate from the volume slider in Settings); starts muted.
+                key: const ValueKey('legacyMute'),
+                tooltip: r.muted ? 'Включить звук' : 'Выключить звук',
+                onPressed: () => r.setMuted(!r.muted),
                 icon: Icon(
-                  r.volume == 0 ? Icons.volume_off : Icons.volume_up,
+                  r.muted ? Icons.volume_off : Icons.volume_up,
                   size: 18,
                 ),
               ),
@@ -145,7 +148,7 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  r.running ? compactStatsLine(r) : 'приём остановлен',
+                  r.running ? compactStatsLine(r) : linkStatusText(r.linkState),
                   key: const ValueKey('legacyStats'),
                   maxLines: 1,
                   softWrap: false,
@@ -154,6 +157,16 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
                   style: plex(mono: true, size: 10, color: LegacyColors.muted),
                 ),
               ),
+              if (!r.running &&
+                  (r.linkState == DeviceLinkState.permissionDenied ||
+                      r.linkState == DeviceLinkState.failed))
+                IconButton(
+                  key: const ValueKey('legacyRetryUsb'),
+                  tooltip: 'Повторить подключение USB',
+                  visualDensity: VisualDensity.compact,
+                  onPressed: r.retryDevice,
+                  icon: const Icon(Icons.usb, size: 18),
+                ),
             ],
           ),
           if (r.lastError != null)
@@ -256,7 +269,7 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
                           builder: (context, box) => Stack(
                             children: [
                               Positioned(
-                                left: widget.spectrum.viewport
+                                left: widget.spectrum.displayViewport
                                     .freqToX(r.tunedFrequency, box.maxWidth)
                                     .clamp(0.0, box.maxWidth - 2),
                                 top: 0,
@@ -411,6 +424,18 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
     ),
   );
 }
+
+/// Status line text while not receiving (cover display: keep it short).
+String linkStatusText(DeviceLinkState s) => switch (s) {
+  DeviceLinkState.idle => 'приём остановлен',
+  DeviceLinkState.waiting => 'ожидание USB SDR',
+  DeviceLinkState.connecting => 'подключение…',
+  DeviceLinkState.receiving => 'приём',
+  DeviceLinkState.permissionDenied => 'нет разрешения USB',
+  DeviceLinkState.disconnected => 'устройство отключено, ожидание',
+  DeviceLinkState.stoppedByUser => 'приём остановлен',
+  DeviceLinkState.failed => 'ошибка подключения',
+};
 
 /// Short receive-screen stats: "2.40 MS/s · USB drops 99 · audio drops 0".
 /// The full list lives in Settings; this line is always ellipsized.

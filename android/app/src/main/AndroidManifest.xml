@@ -2,10 +2,21 @@
     <!-- USB OTG host (RTL-SDR / HackRF / Airspy). required=false so the app also
          installs on emulators / devices without host mode (lib/usb/, UsbSdrPlugin.kt). -->
     <uses-feature android:name="android.hardware.usb.host" android:required="false" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <application
         android:label="SDR Flutter"
-        android:name="${applicationName}"
+        android:name=".SdrApplication"
         android:icon="@mipmap/ic_launcher">
+        <!-- The live demodulated radio audio is media playback; USB is controlled via
+             UsbManager permission, not a connectedDevice FGS prerequisite (synth/file
+             sources also use this service). Dart DSP runs in the retained engine. -->
+        <service android:name=".ReceptionService"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback"
+            android:stopWithTask="false" />
         <activity
             android:name=".MainActivity"
             android:exported="true"

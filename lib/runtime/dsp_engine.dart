@@ -47,15 +47,21 @@ class DspEngineOptions {
 }
 
 class DspEngine {
-  DspEngine(this.emit, {this.options = const DspEngineOptions(), SourceRegistry? registry, AudioOutput? audioOutput})
-      : registry = registry ?? SourceRegistry.withBuiltins() {
+  DspEngine(
+    this.emit, {
+    this.options = const DspEngineOptions(),
+    SourceRegistry? registry,
+    AudioOutput? audioOutput,
+  }) : registry = registry ?? SourceRegistry.withBuiltins() {
     final dir = options.configDir;
     coreConfig = ConfigManager();
     radioConfig = ConfigManager();
     // RadioModuleFactory.init() calls radioConfig.setPath(configPath), so the
     // radio config path must be passed to the factory (setting it here alone
     // was overwritten with null → mode/bandwidth/squelch never persisted).
-    final radioConfigPath = dir == null ? null : '$dir${Platform.pathSeparator}radio_config.json';
+    final radioConfigPath = dir == null
+        ? null
+        : '$dir${Platform.pathSeparator}radio_config.json';
     if (dir != null) {
       coreConfig.setPath('$dir${Platform.pathSeparator}config.json');
     }
@@ -80,31 +86,51 @@ class DspEngine {
       _sendState();
     });
 
-    // Audio sink provider
+    // Delay registering the native sink: RadioModule starts its stream in its
+    // constructor. It must see only the None sink until we stop it below, otherwise
+    // Android opens AAudio briefly before the cold-start mute takes effect.
     audio = audioOutput ?? _makeAudio(options.audio);
-    core.sigpath.sinkManager.registerSinkProvider('Audio', AudioOutputSink.provider(audio));
 
     // Radio module
-    radioFactory = RadioModuleFactory(core, config: radioConfig, configPath: radioConfigPath);
+    radioFactory = RadioModuleFactory(
+      core,
+      config: radioConfig,
+      configPath: radioConfigPath,
+    );
     core.moduleManager.loadModule(radioFactory);
     radioConfig.enableAutoSave();
     core.moduleManager.createInstance('Radio', 'radio');
     radio = core.moduleManager.instances['Radio']!.instance as RadioModule;
+    core.sigpath.sinkManager.stopStream('Radio');
+    core.sigpath.sinkManager.registerSinkProvider(
+      'Audio',
+      AudioOutputSink.provider(audio),
+    );
     if (core.sigpath.sinkManager.getStream('Radio')!.providerName == 'None') {
       core.sigpath.sinkManager.setStreamSink('Radio', 'Audio');
     }
-    // The radio module starts its stream during construction, before a source runs.
-    // Release Android playback until Start is pressed.
-    core.sigpath.sinkManager.stopStream('Radio');
+    // Every session starts muted: a persisted `muted: false` is deliberately not restored.
+    core.sigpath.sinkManager.getStream('Radio')?.setMuted(true);
+    _updateAudio();
     radio.stream.bindStream(_audioTapHandler);
     _ready = true;
 
     final vfoOffsets = coreConfig.conf['vfoOffsets'];
-    if (vfoOffsets is Map && vfoOffsets['Radio'] is num) {
-      radio.vfo?.setOffset((vfoOffsets['Radio'] as num).toDouble());
-    }
+    final savedOffset = vfoOffsets is Map && vfoOffsets['Radio'] is num
+        ? (vfoOffsets['Radio'] as num).toDouble()
+        : 0.0;
     final f = coreConfig.conf['frequency'];
-    _centerFreq = f is num ? f.toDouble() : 100e6;
+    // Migrate old offset-based sessions to the centered single-VFO UI: preserve
+    // the tuned frequency, not the old LO position. Do this before any USB source
+    // selection (selectSource can reset the VFO's offset in SourceManager).
+    _centerFreq = (f is num ? f.toDouble() : 100e6) + savedOffset;
+    radio.vfo?.setOffset(0);
+    if (savedOffset != 0) {
+      coreConfig.acquire();
+      coreConfig.conf['frequency'] = _centerFreq;
+      coreConfig.obj('vfoOffsets')['Radio'] = 0.0;
+      coreConfig.release(true);
+    }
     _viewBandwidth = fe.getEffectiveSamplerate();
   }
 
@@ -121,7 +147,9 @@ class DspEngine {
 
   SourceInstance? _source;
   String? _sourceId;
+  int _sourceGen = 0; // bumped per created source: late errors of a replaced source are ignored
   bool _running = false;
+  bool _muted = true;
   double _centerFreq = 100e6;
 
   // FFT output
@@ -141,6 +169,7 @@ class DspEngine {
   bool _ready = false;
 
   bool get running => _running;
+  bool get muted => _muted;
   double get centerFrequency => _centerFreq;
   SourceInstance? get source => _source;
   int get fftRowsSent => _fftSeq;
@@ -154,29 +183,34 @@ class DspEngine {
 
   void _log(String m) {}
 
-  SourceContext _ctx() => SourceContext(
-        core: core,
-        reportError: (m, {bool fatal = false}) {
-          _error(m, fatal: fatal);
-          if (fatal) scheduleMicrotask(_sourceStopped);
-        },
-        configLoad: (k) {
-          final v = coreConfig.conf['sources'];
-          if (v is Map && v[k] is Map) return Map<String, Object?>.from(v[k] as Map);
-          return null;
-        },
-        configSave: (k, c) {
-          coreConfig.acquire();
-          coreConfig.obj('sources')[k] = c;
-          coreConfig.release(true);
-        },
-      );
+  SourceContext _ctx(int gen) => SourceContext(
+    core: core,
+    reportError: (m, {bool fatal = false}) {
+      if (gen != _sourceGen) {
+        return; // a released/replaced source (e.g. the lost dongle)
+      }
+      _error(m, fatal: fatal);
+      if (fatal) scheduleMicrotask(_sourceStopped);
+    },
+    configLoad: (k) {
+      final v = coreConfig.conf['sources'];
+      if (v is Map && v[k] is Map) {
+        return Map<String, Object?>.from(v[k] as Map);
+      }
+      return null;
+    },
+    configSave: (k, c) {
+      coreConfig.acquire();
+      coreConfig.obj('sources')[k] = c;
+      coreConfig.release(true);
+    },
+  );
 
   /// The running source stopped itself (device lost): mirror stop() without calling into it.
   void _sourceStopped() {
     if (!_running) return;
     _running = false;
-    core.sigpath.sinkManager.stopStream('Radio');
+    _updateAudio();
     _fftWanted = false;
     _statsTimer?.cancel();
     _statsTimer = null;
@@ -185,8 +219,30 @@ class DspEngine {
     _sendState();
   }
 
+  /// The Android playback device is held only while a source runs AND the user unmuted
+  /// (docs/device-qa.md: AAudio must not stay `started` while idle or silent).
+  void _updateAudio() {
+    final sm = core.sigpath.sinkManager;
+    if (_running && !_muted) {
+      sm.startStream('Radio');
+    } else {
+      sm.stopStream('Radio');
+    }
+  }
+
+  void setMuted(bool muted) {
+    _muted = muted;
+    core.sigpath.sinkManager.getStream('Radio')?.setMuted(muted);
+    _updateAudio();
+    _sendState();
+  }
+
   void _error(String message, {bool fatal = false}) {
-    emit(<String, Object?>{DspMsg.evt: DspEvt.error, 'message': message, 'fatal': fatal});
+    emit(<String, Object?>{
+      DspMsg.evt: DspEvt.error,
+      'message': message,
+      'fatal': fatal,
+    });
   }
 
   // ---------------------------------------------------------------------------
@@ -200,26 +256,42 @@ class DspEngine {
     try {
       switch (cmd) {
         case DspCmd.selectSource:
-          await selectSource(m['id'] as String, (m['params'] as Map?)?.cast<Object?, Object?>() ?? const {});
+          await selectSource(
+            m['id'] as String,
+            (m['params'] as Map?)?.cast<Object?, Object?>() ?? const {},
+          );
         case DspCmd.start:
           await start();
         case DspCmd.stop:
           await stop();
         case DspCmd.tune:
-          tune(center: (m['center'] as num?)?.toDouble(), offset: (m['offset'] as num?)?.toDouble());
+          tune(
+            center: (m['center'] as num?)?.toDouble(),
+            offset: (m['offset'] as num?)?.toDouble(),
+          );
         case DspCmd.setMode:
           setMode((m['mode'] as num).toInt());
         case DspCmd.setBandwidth:
           radio.setBandwidth((m['hz'] as num).toDouble());
           _sendState();
         case DspCmd.setSampleRate:
-          _withSource((s) => s.controls.setSampleRate(s.handler, (m['hz'] as num).toDouble()));
+          _withSource(
+            (s) => s.controls.setSampleRate(
+              s.handler,
+              (m['hz'] as num).toDouble(),
+            ),
+          );
           _sendState();
         case DspCmd.setGain:
-          _withSource((s) => s.controls.setGain(s.handler, (m['value'] as num).toDouble()));
+          _withSource(
+            (s) =>
+                s.controls.setGain(s.handler, (m['value'] as num).toDouble()),
+          );
           _sendState();
         case DspCmd.setAgc:
-          _withSource((s) => s.controls.setAgc(s.handler, m['enabled'] as bool));
+          _withSource(
+            (s) => s.controls.setAgc(s.handler, m['enabled'] as bool),
+          );
           _sendState();
         case DspCmd.sourceSetting:
           _withSource((s) {
@@ -228,20 +300,32 @@ class DspEngine {
           });
           _sendState();
         case DspCmd.setVolume:
-          core.sigpath.sinkManager.setStreamVolume('Radio', (m['value'] as num).toDouble());
+          core.sigpath.sinkManager.setStreamVolume(
+            'Radio',
+            (m['value'] as num).toDouble(),
+          );
+        case DspCmd.setMuted:
+          setMuted(m['muted'] == true);
+        case DspCmd.releaseSource:
+          await releaseSource();
         case DspCmd.setSquelch:
-          setSquelch(enabled: m['enabled'] as bool?, level: (m['level'] as num?)?.toDouble());
+          setSquelch(
+            enabled: m['enabled'] as bool?,
+            level: (m['level'] as num?)?.toDouble(),
+          );
         case DspCmd.demodOption:
           radio.selectedDemod?.setOption(m['key'] as String, m['value']!);
           _sendState();
         case DspCmd.setFft:
           setFft(
-              width: (m['width'] as num?)?.toInt(),
-              viewOffset: (m['viewOffset'] as num?)?.toDouble(),
-              viewBandwidth: (m['viewBandwidth'] as num?)?.toDouble(),
-              size: (m['size'] as num?)?.toInt(),
-              rate: (m['rate'] as num?)?.toDouble(),
-              window: m['window'] as String?);
+            enabled: m['enabled'] as bool?,
+            width: (m['width'] as num?)?.toInt(),
+            viewOffset: (m['viewOffset'] as num?)?.toDouble(),
+            viewBandwidth: (m['viewBandwidth'] as num?)?.toDouble(),
+            size: (m['size'] as num?)?.toInt(),
+            rate: (m['rate'] as num?)?.toDouble(),
+            window: m['window'] as String?,
+          );
         case DspCmd.audioTap:
           _audioTap = m['enabled'] == true;
         case DspCmd.getState:
@@ -251,10 +335,21 @@ class DspEngine {
         default:
           throw ArgumentError('unknown command $cmd');
       }
-      if (req != null) emit(<String, Object?>{DspMsg.evt: DspEvt.ack, DspMsg.req: req, 'ok': true});
+      if (req != null) {
+        emit(<String, Object?>{
+          DspMsg.evt: DspEvt.ack,
+          DspMsg.req: req,
+          'ok': true,
+        });
+      }
     } catch (e) {
       if (req != null) {
-        emit(<String, Object?>{DspMsg.evt: DspEvt.ack, DspMsg.req: req, 'ok': false, 'error': '$e'});
+        emit(<String, Object?>{
+          DspMsg.evt: DspEvt.ack,
+          DspMsg.req: req,
+          'ok': false,
+          'error': '$e',
+        });
       } else {
         _error('$cmd: $e');
       }
@@ -268,15 +363,8 @@ class DspEngine {
 
   Future<void> selectSource(String id, Map<Object?, Object?> params) async {
     final wasRunning = _running;
-    if (_running) await stop();
-    final old = _source;
-    if (old != null) {
-      core.sigpath.sourceManager.unregisterSource(_sourceId!);
-      old.dispose?.call();
-      _source = null;
-      _sourceId = null;
-    }
-    final inst = registry.create(id, params, _ctx());
+    await _dropSource();
+    final inst = registry.create(id, params, _ctx(++_sourceGen));
     _source = inst;
     _sourceId = id;
     core.sigpath.sourceManager.registerSource(id, inst.handler);
@@ -286,6 +374,27 @@ class DspEngine {
     }
     _sendState();
     if (wasRunning) await start();
+  }
+
+  /// Stops (if needed) and disposes the current source; the engine then has no source.
+  Future<void> releaseSource() async {
+    await _dropSource();
+    _sendState();
+  }
+
+  Future<void> _dropSource() async {
+    if (_running) await stop();
+    final old = _source;
+    if (old == null) return;
+    _sourceGen++;
+    core.sigpath.sourceManager.unregisterSource(_sourceId!);
+    _source = null;
+    _sourceId = null;
+    try {
+      await old.dispose?.call();
+    } catch (e) {
+      _error('Source dispose failed: $e');
+    }
   }
 
   /// main_window.cpp:676-692.
@@ -301,9 +410,9 @@ class DspEngine {
       rethrow;
     }
     core.sigpath.sourceManager.tune(_centerFreq);
-    core.sigpath.sinkManager.startStream('Radio');
     _running = true;
-    _fftWanted = true;
+    _updateAudio();
+    _fftWanted = core.iqFrontEnd.fftEnabled;
     _statsTimer?.cancel();
     _statsTimer = Timer.periodic(options.statsInterval, (_) => _sendStats());
     _sendState();
@@ -315,8 +424,13 @@ class DspEngine {
     _fftWanted = false;
     _statsTimer?.cancel();
     _statsTimer = null;
-    await core.sigpath.sourceManager.stop();
-    core.sigpath.sinkManager.stopStream('Radio');
+    // Audio first: a source whose device vanished may throw from stop().
+    _updateAudio();
+    try {
+      await core.sigpath.sourceManager.stop();
+    } catch (e) {
+      _error('Source stop failed: $e');
+    }
     core.iqFrontEnd.flushInputBuffer();
     _sendStats();
     _sendState();
@@ -347,17 +461,33 @@ class DspEngine {
   }
 
   void setSquelch({bool? enabled, double? level}) {
-    if (enabled != null) radio.setSquelchMode(enabled ? SquelchMode.power : SquelchMode.off);
+    if (enabled != null) {
+      radio.setSquelchMode(enabled ? SquelchMode.power : SquelchMode.off);
+    }
     if (level != null) radio.setSquelchLevel(level);
   }
 
-  void setFft({int? width, double? viewOffset, double? viewBandwidth, int? size, double? rate, String? window}) {
+  void setFft({
+    bool? enabled,
+    int? width,
+    double? viewOffset,
+    double? viewBandwidth,
+    int? size,
+    double? rate,
+    String? window,
+  }) {
+    if (enabled != null) {
+      core.iqFrontEnd.fftEnabled = enabled;
+      _fftWanted = enabled && _running;
+    }
     if (width != null && width > 0) {
       _fftWidth = width;
       if (_row.length != width) _row = Float32List(width);
     }
     if (viewOffset != null) _viewOffset = viewOffset;
-    if (viewBandwidth != null && viewBandwidth > 0) _viewBandwidth = viewBandwidth;
+    if (viewBandwidth != null && viewBandwidth > 0) {
+      _viewBandwidth = viewBandwidth;
+    }
     final fe = core.iqFrontEnd;
     if (size != null && size != fe.fftSize && size >= 64) fe.setFFTSize(size);
     if (rate != null && rate != fe.fftRate && rate > 0) fe.setFFTRate(rate);
@@ -370,7 +500,9 @@ class DspEngine {
   Future<void> shutdown() async {
     if (_closed) return;
     await stop();
-    _source?.dispose?.call();
+    try {
+      await _source?.dispose?.call();
+    } catch (_) {}
     _closed = true;
     core.moduleManager.endAll(); // radio: disableAutoSave + save
     coreConfig.disableAutoSave();
@@ -392,7 +524,14 @@ class DspEngine {
   void _releaseFFT(int fftSize) {
     if (!_fftWanted || _fftWidth <= 0 || _fftRaw.length != fftSize) return;
     final sr = core.iqFrontEnd.getEffectiveSamplerate();
-    final (low, high) = computeRow(_fftRaw, fftSize, sr, _viewOffset, _viewBandwidth, _row);
+    final (low, high) = computeRow(
+      _fftRaw,
+      fftSize,
+      sr,
+      _viewOffset,
+      _viewBandwidth,
+      _row,
+    );
     _fftSeq++;
     emit(<String, Object?>{
       DspMsg.evt: DspEvt.fft,
@@ -406,7 +545,13 @@ class DspEngine {
   /// Decimates the visible part of a full-band dB row ([raw], [fftSize] bins covering
   /// [-sr/2, sr/2)) into [out]. Returns the covered (low, high) offsets from the LO.
   static (double, double) computeRow(
-      Float32List raw, int fftSize, double sr, double viewOffset, double viewBandwidth, Float32List out) {
+    Float32List raw,
+    int fftSize,
+    double sr,
+    double viewOffset,
+    double viewBandwidth,
+    Float32List out,
+  ) {
     // zoomWindow (waterfall.cpp:887-889), clamped to the band instead of doZoom's hack.
     final vbw = math.min(viewBandwidth, sr);
     final offsetRatio = viewOffset / (sr / 2.0);
@@ -429,20 +574,22 @@ class DspEngine {
     if (!_audioTap) return;
     emit(<String, Object?>{
       DspMsg.evt: DspEvt.audio,
-      'data': TransferableTypedData.fromList(<TypedData>[Float32List.sublistView(data, 0, 2 * count)]),
+      'data': TransferableTypedData.fromList(<TypedData>[
+        Float32List.sublistView(data, 0, 2 * count),
+      ]),
       'frames': count,
     });
   }
 
   Map<String, Object?> statsMap() => <String, Object?>{
-        'samplesIn': core.iqFrontEnd.samplesIn,
-        'audioFrames': radio.audioFrames,
-        'fftRows': _fftSeq,
-        'audioWritten': audio.framesWritten,
-        'audioDropped': audio.framesDropped,
-        'audioOutput': audio.name,
-        ...?_source?.stats?.call(),
-      };
+    'samplesIn': core.iqFrontEnd.samplesIn,
+    'audioFrames': radio.audioFrames,
+    'fftRows': _fftSeq,
+    'audioWritten': audio.framesWritten,
+    'audioDropped': audio.framesDropped,
+    'audioOutput': audio.name,
+    ...?_source?.stats?.call(),
+  };
 
   void _sendStats() {
     emit(<String, Object?>{DspMsg.evt: DspEvt.stats, ...statsMap()});
@@ -465,34 +612,45 @@ class DspEngine {
       'squelchEnabled': radio.squelchMode == SquelchMode.power,
       'squelchLevel': radio.squelchLevel,
       'volume': radio.stream.getVolume(),
+      'muted': _muted,
       'fftSize': core.iqFrontEnd.fftSize,
       'fftRate': core.iqFrontEnd.fftRate,
-      'demodOptions': <String, Object?>{for (final o in radio.selectedDemod?.options ?? const <DemodOption>[]) o.key: o.value},
-      'sourceSettings': src == null ? const <Object?>[] : src.handler.settings.map(settingToMap).toList(),
+      'demodOptions': <String, Object?>{
+        for (final o in radio.selectedDemod?.options ?? const <DemodOption>[])
+          o.key: o.value,
+      },
+      'sourceSettings': src == null
+          ? const <Object?>[]
+          : src.handler.settings.map(settingToMap).toList(),
       'gain': src?.controls.gainOf(src.handler),
       'agc': src?.controls.agcOf(src.handler),
     };
   }
 
   static Map<String, Object?> settingToMap(SourceSetting s) => switch (s) {
-        ChoiceSetting c => <String, Object?>{
-            'type': 'choice',
-            'id': c.id,
-            'label': c.label,
-            'options': c.options,
-            'selected': c.selected
-          },
-        SliderSetting sl => <String, Object?>{
-            'type': 'slider',
-            'id': sl.id,
-            'label': sl.label,
-            'min': sl.min,
-            'max': sl.max,
-            'step': sl.step,
-            'value': sl.value
-          },
-        BoolSetting b => <String, Object?>{'type': 'bool', 'id': b.id, 'label': b.label, 'value': b.value},
-      };
+    ChoiceSetting c => <String, Object?>{
+      'type': 'choice',
+      'id': c.id,
+      'label': c.label,
+      'options': c.options,
+      'selected': c.selected,
+    },
+    SliderSetting sl => <String, Object?>{
+      'type': 'slider',
+      'id': sl.id,
+      'label': sl.label,
+      'min': sl.min,
+      'max': sl.max,
+      'step': sl.step,
+      'value': sl.value,
+    },
+    BoolSetting b => <String, Object?>{
+      'type': 'bool',
+      'id': b.id,
+      'label': b.label,
+      'value': b.value,
+    },
+  };
 
   void _sendState() {
     if (_closed || !_ready) return;

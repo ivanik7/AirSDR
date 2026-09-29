@@ -4,6 +4,11 @@ import 'package:sdr_flutter/ui/demo_radio_controller.dart';
 import 'package:sdr_flutter/ui/favorites/favorites.dart';
 import 'package:sdr_flutter/ui/legacy/app_shell.dart';
 import 'package:sdr_flutter/ui/legacy/centered_receiver.dart';
+import 'package:sdr_flutter/ui/sdr_ui_state.dart';
+import 'package:sdr_flutter/ui/waterfall_model.dart';
+import 'package:sdr_flutter/ui/colormaps.dart';
+
+import 'dart:typed_data';
 
 class CountingRadio extends DemoRadioController {
   final centers = <double>[];
@@ -15,6 +20,86 @@ class CountingRadio extends DemoRadioController {
 }
 
 void main() {
+  testWidgets('continuous drag throttles LO, trails and cancels pending work', (
+    tester,
+  ) async {
+    final radio = CountingRadio();
+    final receiver = CenteredReceiver(radio);
+    receiver.beginDrag();
+    for (var i = 0; i < 10; i++) {
+      receiver.dragBy(1000);
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    expect(radio.centers, hasLength(4));
+    receiver.dragBy(1000);
+    receiver.endDrag();
+    expect(radio.centers, hasLength(5));
+    expect(radio.vfoOffset, 0);
+    await tester.pump(const Duration(seconds: 1));
+    expect(radio.centers, hasLength(5));
+    receiver.beginDrag();
+    await tester.pump(const Duration(seconds: 1));
+    expect(radio.centers, hasLength(5));
+    receiver.endDrag();
+    receiver.dispose();
+    radio.dispose();
+  });
+
+  testWidgets(
+    'edge shift restarts throttle and cancel suppresses trailing tune',
+    (tester) async {
+      final radio = CountingRadio();
+      final receiver = CenteredReceiver(radio);
+      receiver.beginDrag();
+      receiver.dragBy(radio.sampleRate / 2);
+      expect(radio.centers, hasLength(1));
+      receiver.dragBy(1000);
+      await tester.pump(const Duration(milliseconds: 249));
+      expect(radio.centers, hasLength(1));
+      receiver.endDrag();
+      expect(radio.centers, hasLength(2));
+      await tester.pump(const Duration(seconds: 1));
+      expect(radio.centers, hasLength(2));
+      receiver.dispose();
+      radio.dispose();
+    },
+  );
+
+  test(
+    'legacy display reprojects FFT and old waterfall rows in absolute Hz',
+    () {
+      final radio = CountingRadio();
+      final wf = WaterfallModel(width: 8, height: 2, autoSchedule: false);
+      final ui = SdrUiState(radio, waterfall: wf, centerDisplayOnVfo: true);
+      final center = radio.centerFrequency;
+      final span = radio.sampleRate;
+      wf.pushRow(
+        Float32List.fromList([-100, -100, -100, -100, 0, -100, -100, -100]),
+        center - span / 2,
+        center + span / 2,
+      );
+      wf.flush();
+      radio.setTuning(centerFrequency: center, vfoOffset: span / 4);
+      wf.flush();
+      expect(ui.displayViewport.freqToX(radio.tunedFrequency, 800), 400);
+      expect(ui.displayVfo.pixels(span, 800, 0).line, 400);
+      expect(wf.lowerFreq, radio.tunedFrequency - span / 2);
+      expect(
+        wf.latestFFT[2],
+        0,
+      ); // old peak at the original centre now moves left
+      expect(
+        wf.rgba[wf.head * 8 + 7],
+        kOpaqueBlack,
+      ); // outside the physical IQ band
+      expect(wf.rgba[wf.head * 8 + 2], wf.palette.last);
+      radio.setTuning(centerFrequency: center + span / 4, vfoOffset: 0);
+      wf.flush();
+      expect(wf.latestFFT[2], 0); // same RF peak after the LO catches up
+      ui.dispose();
+      radio.dispose();
+    },
+  );
   test(
     'drag moves DSP VFO without LO tuning; edge shifts half the IQ span',
     () {

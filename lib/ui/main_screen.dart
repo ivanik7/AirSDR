@@ -12,6 +12,7 @@
 import 'package:flutter/material.dart';
 
 import 'colormaps.dart';
+import 'device_dropdown.dart';
 import 'frequency_select.dart';
 import 'hrfreq.dart';
 import 'radio_controller.dart';
@@ -169,7 +170,7 @@ class _TopBar extends StatelessWidget {
             child: DropdownButton<SdrDeviceInfo>(
               key: const ValueKey<String>('deviceDropdown'),
               isExpanded: true,
-              value: r.selectedDevice,
+              value: dropdownDeviceValue(r),
               hint: const Text('No device'),
               // Source selection is disabled while running (gui/menus/source.cpp).
               onChanged: r.running ? null : (d) => d == null ? null : r.selectDevice(d),

@@ -19,11 +19,13 @@
 // are delivered on, the UI isolate.
 
 import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 
 import '../sdrpp/signal_path/source_handler.dart' show SourceSetting;
 
-export '../sdrpp/signal_path/source_handler.dart' show SourceSetting, ChoiceSetting, SliderSetting, BoolSetting;
+export '../sdrpp/signal_path/source_handler.dart'
+    show SourceSetting, ChoiceSetting, SliderSetting, BoolSetting;
 
 /// Demodulator modes. [id] is the SDR++ radio mode id
 /// (decoder_modules/radio/src/radio_interface.h: NFM=0, WFM=1, AM=2, DSB=3,
@@ -44,7 +46,10 @@ enum DemodMode {
   final int id;
   final String label;
 
-  static DemodMode fromId(int id) => DemodMode.values.firstWhere((m) => m.id == id, orElse: () => DemodMode.wfm);
+  static DemodMode fromId(int id) => DemodMode.values.firstWhere(
+    (m) => m.id == id,
+    orElse: () => DemodMode.wfm,
+  );
 
   /// Per-mode parameters (docs/02-sdrpp-dsp-radio.md §4.3).
   DemodParams get params => demodParams[this]!;
@@ -82,41 +87,91 @@ class DemodParams {
   final bool bandwidthLocked;
   final bool squelchAllowed;
 
-  double clampBandwidth(double bw) => bandwidthLocked ? defaultBandwidth : bw.clamp(minBandwidth, maxBandwidth).toDouble();
+  double clampBandwidth(double bw) => bandwidthLocked
+      ? defaultBandwidth
+      : bw.clamp(minBandwidth, maxBandwidth).toDouble();
 }
 
 /// docs/02 §4.3 table.
 const Map<DemodMode, DemodParams> demodParams = <DemodMode, DemodParams>{
   DemodMode.wfm: DemodParams(
-      ifSampleRate: 250000, defaultBandwidth: 150000, minBandwidth: 50000, maxBandwidth: 250000,
-      snapInterval: 100000, reference: VfoReference.center),
+    ifSampleRate: 250000,
+    defaultBandwidth: 150000,
+    minBandwidth: 50000,
+    maxBandwidth: 250000,
+    snapInterval: 100000,
+    reference: VfoReference.center,
+  ),
   DemodMode.nfm: DemodParams(
-      ifSampleRate: 50000, defaultBandwidth: 12500, minBandwidth: 1000, maxBandwidth: 50000,
-      snapInterval: 2500, reference: VfoReference.center),
+    ifSampleRate: 50000,
+    defaultBandwidth: 12500,
+    minBandwidth: 1000,
+    maxBandwidth: 50000,
+    snapInterval: 2500,
+    reference: VfoReference.center,
+  ),
   DemodMode.am: DemodParams(
-      ifSampleRate: 15000, defaultBandwidth: 10000, minBandwidth: 1000, maxBandwidth: 15000,
-      snapInterval: 1000, reference: VfoReference.center),
+    ifSampleRate: 15000,
+    defaultBandwidth: 10000,
+    minBandwidth: 1000,
+    maxBandwidth: 15000,
+    snapInterval: 1000,
+    reference: VfoReference.center,
+  ),
   DemodMode.usb: DemodParams(
-      ifSampleRate: 24000, defaultBandwidth: 2800, minBandwidth: 500, maxBandwidth: 12000,
-      snapInterval: 100, reference: VfoReference.lower),
+    ifSampleRate: 24000,
+    defaultBandwidth: 2800,
+    minBandwidth: 500,
+    maxBandwidth: 12000,
+    snapInterval: 100,
+    reference: VfoReference.lower,
+  ),
   DemodMode.lsb: DemodParams(
-      ifSampleRate: 24000, defaultBandwidth: 2800, minBandwidth: 500, maxBandwidth: 12000,
-      snapInterval: 100, reference: VfoReference.upper),
+    ifSampleRate: 24000,
+    defaultBandwidth: 2800,
+    minBandwidth: 500,
+    maxBandwidth: 12000,
+    snapInterval: 100,
+    reference: VfoReference.upper,
+  ),
   DemodMode.dsb: DemodParams(
-      ifSampleRate: 24000, defaultBandwidth: 4600, minBandwidth: 1000, maxBandwidth: 12000,
-      snapInterval: 100, reference: VfoReference.center),
+    ifSampleRate: 24000,
+    defaultBandwidth: 4600,
+    minBandwidth: 1000,
+    maxBandwidth: 12000,
+    snapInterval: 100,
+    reference: VfoReference.center,
+  ),
   DemodMode.cw: DemodParams(
-      ifSampleRate: 3000, defaultBandwidth: 200, minBandwidth: 50, maxBandwidth: 500,
-      snapInterval: 10, reference: VfoReference.center, squelchAllowed: false),
+    ifSampleRate: 3000,
+    defaultBandwidth: 200,
+    minBandwidth: 50,
+    maxBandwidth: 500,
+    snapInterval: 10,
+    reference: VfoReference.center,
+    squelchAllowed: false,
+  ),
   DemodMode.raw: DemodParams(
-      ifSampleRate: 48000, defaultBandwidth: 48000, minBandwidth: 48000, maxBandwidth: 48000,
-      snapInterval: 2500, reference: VfoReference.center, bandwidthLocked: true, squelchAllowed: false),
+    ifSampleRate: 48000,
+    defaultBandwidth: 48000,
+    minBandwidth: 48000,
+    maxBandwidth: 48000,
+    snapInterval: 2500,
+    reference: VfoReference.center,
+    bandwidthLocked: true,
+    squelchAllowed: false,
+  ),
 };
 
 /// Gain control description of a device (source-module specific in SDR++).
 @immutable
 class GainRange {
-  const GainRange({required this.min, required this.max, this.step = 0, this.unit = 'dB'});
+  const GainRange({
+    required this.min,
+    required this.max,
+    this.step = 0,
+    this.unit = 'dB',
+  });
   final double min;
   final double max;
 
@@ -174,13 +229,44 @@ class SdrDeviceInfo {
 /// re-projects such rows.
 @immutable
 class FftRow {
-  const FftRow({required this.db, required this.lowFreq, required this.highFreq});
+  const FftRow({
+    required this.db,
+    required this.lowFreq,
+    required this.highFreq,
+  });
   final Float32List db;
   final double lowFreq;
   final double highFreq;
 
   int get width => db.length;
   double get span => highFreq - lowFreq;
+}
+
+/// Connection state of the receive chain, for the status line (no SDR++ equivalent: SDR++ has
+/// no USB hot-plug). [receiving] whenever [RadioController.running].
+enum DeviceLinkState {
+  /// A device is selected but not running (manual mode, e.g. the synthetic source).
+  idle,
+
+  /// No supported USB SDR is connected; reception starts by itself when one is plugged in.
+  waiting,
+
+  /// Opening the device / waiting for the Android USB permission dialog.
+  connecting,
+
+  receiving,
+
+  /// The user refused USB access: no new request until retry or re-plug.
+  permissionDenied,
+
+  /// The device was unplugged / lost while receiving; waiting for it (or another) to come back.
+  disconnected,
+
+  /// The user pressed Stop: nothing restarts until Start or a new device connection.
+  stoppedByUser,
+
+  /// Opening or starting the device failed (see [RadioController.lastError]).
+  failed,
 }
 
 /// UI-facing radio controller.
@@ -331,4 +417,17 @@ abstract class RadioController extends ChangeNotifier {
 
   /// Clears [lastError] (after the UI has shown it).
   void clearError() {}
+
+  /// Audio mute, independent of [volume]. Every cold start is muted; a device re-connection
+  /// keeps the current state.
+  bool get muted => false;
+  void setMuted(bool muted) {}
+
+  /// Device connection state for the status line.
+  DeviceLinkState get linkState =>
+      running ? DeviceLinkState.receiving : DeviceLinkState.idle;
+
+  /// Retries the automatic connection after a refused permission / failed open (the user's
+  /// "retry" button). Does not override an explicit Stop.
+  Future<void> retryDevice() async {}
 }

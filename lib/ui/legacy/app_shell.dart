@@ -20,10 +20,12 @@ class LegacyAppShell extends StatefulWidget {
     required this.controller,
     this.favorites,
     this.channels,
+    this.openReceive,
   });
   final RadioController controller;
   final FavoritesRepository? favorites;
   final ChannelsRepository? channels;
+  final Listenable? openReceive;
   @override
   State<LegacyAppShell> createState() => _LegacyAppShellState();
 }
@@ -42,13 +44,16 @@ class _LegacyAppShellState extends State<LegacyAppShell> {
   @override
   void initState() {
     super.initState();
+    widget.openReceive?.addListener(_showReceive);
     _init();
   }
+
+  void _showReceive() => setState(() => tab = 0);
 
   void _init() {
     radioReady = widget.controller is! SdrRadioController;
     receiver = CenteredReceiver(widget.controller);
-    spectrum = SdrUiState(widget.controller);
+    spectrum = SdrUiState(widget.controller, centerDisplayOnVfo: true);
     favorites = widget.favorites ?? FavoritesRepository();
     ownFavorites = widget.favorites == null;
     channelSlots = widget.channels ?? ChannelsRepository();
@@ -101,12 +106,17 @@ class _LegacyAppShellState extends State<LegacyAppShell> {
   @override
   void didUpdateWidget(LegacyAppShell oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.openReceive != widget.openReceive) {
+      oldWidget.openReceive?.removeListener(_showReceive);
+      widget.openReceive?.addListener(_showReceive);
+    }
     if (oldWidget.controller == widget.controller &&
         oldWidget.favorites == widget.favorites &&
         oldWidget.channels == widget.channels) {
       return;
     }
     oldWidget.controller.removeListener(_radioChanged);
+    receiver.dispose();
     spectrum.dispose();
     meter.dispose();
     if (ownFavorites) favorites.dispose();
@@ -116,7 +126,9 @@ class _LegacyAppShellState extends State<LegacyAppShell> {
 
   @override
   void dispose() {
+    widget.openReceive?.removeListener(_showReceive);
     widget.controller.removeListener(_radioChanged);
+    receiver.dispose();
     spectrum.dispose();
     meter.dispose();
     if (ownFavorites) favorites.dispose();

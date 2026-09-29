@@ -36,6 +36,13 @@ abstract final class DspCmd {
   /// `{value: double}` 0..1 (SDR++ applies value²).
   static const setVolume = 'setVolume';
 
+  /// `{muted: bool}` — SDR++ SinkManager stream mute. The engine starts every session muted
+  /// (never restored from config) and holds no audio output device while muted.
+  static const setMuted = 'setMuted';
+
+  /// Stops and disposes the current source (device lost): nothing may touch its dead fd again.
+  static const releaseSource = 'releaseSource';
+
   /// `{enabled: bool?, level: double?}` — power squelch.
   static const setSquelch = 'setSquelch';
 
@@ -43,7 +50,7 @@ abstract final class DspCmd {
   static const demodOption = 'demodOption';
 
   /// `{width: int?, viewOffset: double?, viewBandwidth: double?, size: int?, rate: double?,
-  ///   window: String?}`.
+  ///   window: String?, enabled: bool?}`. Disabled in background (audio stays active).
   static const setFft = 'setFft';
 
   /// `{enabled: bool}` — also send audio blocks to the UI (tests, recording).

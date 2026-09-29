@@ -97,6 +97,8 @@ class IQFrontEnd {
 
   FFTAcquire? acquireFFTBuffer;
   FFTRelease? releaseFFTBuffer;
+  /// Skip reshaping/window/FFT altogether while the app is in the background.
+  bool fftEnabled = true;
 
   /// Wired by the core: IQFrontEnd::setDecimation calls `core::setInputSampleRate`
   /// (iq_frontend.cpp:121).
@@ -268,8 +270,8 @@ class IQFrontEnd {
     final n = preproc.process(count, work);
     if (n <= 0) return;
 
-    // Splitter: FFT branch
-    reshape.process(n, work);
+    // Splitter: FFT branch. Background reception keeps only the audio VFO path.
+    if (fftEnabled) reshape.process(n, work);
 
     // Splitter: raw IQ streams
     for (int i = 0; i < _iqStreams.length; i++) {
