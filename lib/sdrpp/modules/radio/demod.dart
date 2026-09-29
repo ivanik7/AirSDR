@@ -18,8 +18,10 @@ enum DeemphasisMode { mode22us, mode50us, mode75us, none }
 /// demod.h:15-20.
 enum IFNRPreset { noaaApt, voice, narrowBand, broadcast }
 
-/// demod.h:22-30.
-enum SquelchMode { off, power, snr, ctcssMute, ctcssDecode, dcsMute, dcsDecode }
+/// demod.h:22-30. [auto] is an app extension (not in SDR++): the automatic squelch of
+/// lib/sdrpp/dsp/noise_reduction/auto_squelch.dart; appended so the SDR++ values keep their
+/// positions.
+enum SquelchMode { off, power, snr, ctcssMute, ctcssDecode, dcsMute, dcsDecode, auto }
 
 /// radio_interface.h:3-16.
 abstract final class RadioIfaceCmd {

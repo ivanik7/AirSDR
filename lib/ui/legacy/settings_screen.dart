@@ -6,6 +6,7 @@ import '../radio_controller.dart';
 import '../sdr_ui_state.dart';
 import '../source_settings.dart';
 import 'centered_receiver.dart';
+import 'squelch_controls.dart';
 import 'step_grid.dart';
 import 'theme.dart';
 
@@ -109,25 +110,9 @@ class SettingsScreen extends StatelessWidget {
             r.setVolume,
             '${(r.volume * 100).round()}%',
           ),
-          _row(
-            'Шумодав',
-            'Порог ${r.squelchLevel.toStringAsFixed(0)} dB',
-            trailing: Switch(
-              value: r.squelchEnabled,
-              onChanged: r.mode.params.squelchAllowed
-                  ? r.setSquelchEnabled
-                  : null,
-            ),
-          ),
-          _slider(
-            'Порог шумодава',
-            r.squelchLevel,
-            -100,
-            0,
-            r.squelchEnabled && r.mode.params.squelchAllowed
-                ? r.setSquelchLevel
-                : null,
-            '${r.squelchLevel.toStringAsFixed(0)} dB',
+          Padding(
+            padding: const EdgeInsets.only(bottom: 7),
+            child: SquelchControls(controller: r),
           ),
           if (spectrum case final s?) ..._waterfallLevels(s),
           _section('СОСТОЯНИЕ'),

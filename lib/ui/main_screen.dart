@@ -398,7 +398,9 @@ class _ControlsPanel extends StatelessWidget {
       _LabeledSlider(
         key: const ValueKey<String>('squelchSlider'),
         label: 'SQL',
-        valueText: r.squelchEnabled ? '${r.squelchLevel.toStringAsFixed(0)} dB' : 'off',
+        valueText: r.squelchType == SquelchType.auto
+            ? 'auto'
+            : (r.squelchEnabled ? '${r.squelchLevel.toStringAsFixed(0)} dB' : 'off'),
         value: r.squelchLevel,
         min: -100,
         max: 0,

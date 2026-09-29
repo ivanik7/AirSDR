@@ -43,7 +43,11 @@ abstract final class DspCmd {
   /// Stops and disposes the current source (device lost): nothing may touch its dead fd again.
   static const releaseSource = 'releaseSource';
 
-  /// `{enabled: bool?, level: double?}` — power squelch.
+  /// `{enabled: bool?, level: double?, mode: String?, autoOffset: double?}` — squelch.
+  /// `enabled` switches the SDR++ power squelch on/off (legacy form); `mode` ('off' |
+  /// 'power' | 'auto') selects the mode and wins over `enabled`; `level` is the power
+  /// squelch level (dB), `autoOffset` the auto squelch threshold offset (dB). The auto
+  /// squelch is an app extension (lib/sdrpp/dsp/noise_reduction/auto_squelch.dart).
   static const setSquelch = 'setSquelch';
 
   /// `{key: String, value: Object}` — Demodulator.setOption (e.g. WFM stereo).
@@ -78,7 +82,8 @@ abstract final class DspEvt {
   /// `{message: String, fatal: bool}`.
   static const error = 'error';
 
-  /// `{samplesIn, audioFrames, fftRows, audioDropped, ...}` ~2×/s while running.
+  /// `{samplesIn, audioFrames, fftRows, audioDropped, ...}` ~2×/s while running; `squelch`
+  /// (a map `{open, metric, threshold, detector}`) while the auto squelch is active.
   static const stats = 'stats';
 
   /// `{data: TransferableTypedData (Float32 stereo interleaved), frames: int}` (audio tap).

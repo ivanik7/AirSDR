@@ -59,6 +59,39 @@ enum DemodMode {
 /// Port of `WaterfallVFO::REF_LOWER/REF_CENTER/REF_UPPER` (gui/widgets/waterfall.h:26-31).
 enum VfoReference { lower, center, upper }
 
+/// Squelch mode shown in the UI: off, SDR++ power squelch with a manual level, or the
+/// automatic squelch (app extension, lib/sdrpp/dsp/noise_reduction/auto_squelch.dart).
+enum SquelchType {
+  off('off'),
+  manual('power'),
+  auto('auto');
+
+  const SquelchType(this.key);
+
+  /// radio_config.json / protocol key.
+  final String key;
+
+  static SquelchType fromKey(Object? key) =>
+      SquelchType.values.firstWhere((m) => m.key == key, orElse: () => SquelchType.off);
+}
+
+/// Automatic squelch detector: noise squelch (FM) or level squelch (AM/SSB/CW).
+enum AutoSquelchKind { noise, level }
+
+/// Live state of the automatic squelch.
+@immutable
+class AutoSquelchStatus {
+  const AutoSquelchStatus({required this.open, this.metricDb, this.thresholdDb});
+
+  final bool open;
+
+  /// Noise squelch: discriminator quieting (dB); level squelch: channel power (dB).
+  final double? metricDb;
+
+  /// Current automatic threshold (same units); null while the noise floor is learnt.
+  final double? thresholdDb;
+}
+
 /// Per-demodulator constants (docs/02 §4.3, decoder_modules/radio/src/demodulators/*.h).
 @immutable
 class DemodParams {
@@ -71,6 +104,7 @@ class DemodParams {
     required this.reference,
     this.bandwidthLocked = false,
     this.squelchAllowed = true,
+    this.autoSquelch = AutoSquelchKind.level,
   });
 
   /// VFO output sample rate (Hz).
@@ -85,7 +119,12 @@ class DemodParams {
 
   /// True for RAW: bandwidth is the audio sample rate and cannot be changed.
   final bool bandwidthLocked;
+
+  /// SDR++ power (manual) squelch available (`Demodulator::getSquelchAllowed`).
   final bool squelchAllowed;
+
+  /// Automatic squelch detector of this mode (app extension; null = none).
+  final AutoSquelchKind? autoSquelch;
 
   double clampBandwidth(double bw) => bandwidthLocked
       ? defaultBandwidth
@@ -101,6 +140,7 @@ const Map<DemodMode, DemodParams> demodParams = <DemodMode, DemodParams>{
     maxBandwidth: 250000,
     snapInterval: 100000,
     reference: VfoReference.center,
+    autoSquelch: null,
   ),
   DemodMode.nfm: DemodParams(
     ifSampleRate: 50000,
@@ -109,6 +149,7 @@ const Map<DemodMode, DemodParams> demodParams = <DemodMode, DemodParams>{
     maxBandwidth: 50000,
     snapInterval: 2500,
     reference: VfoReference.center,
+    autoSquelch: AutoSquelchKind.noise,
   ),
   DemodMode.am: DemodParams(
     ifSampleRate: 15000,
@@ -160,6 +201,7 @@ const Map<DemodMode, DemodParams> demodParams = <DemodMode, DemodParams>{
     reference: VfoReference.center,
     bandwidthLocked: true,
     squelchAllowed: false,
+    autoSquelch: null,
   ),
 };
 
@@ -381,6 +423,30 @@ abstract class RadioController extends ChangeNotifier {
   /// Power squelch level, dB (SDR++ range −100..0).
   double get squelchLevel;
   void setSquelchLevel(double db);
+
+  // Automatic squelch (app extension). Defaults keep implementations without it working:
+  // the mode mirrors [squelchEnabled], Auto is not offered.
+
+  /// Off / manual (SDR++ power squelch, [squelchLevel]) / auto.
+  SquelchType get squelchType => squelchEnabled ? SquelchType.manual : SquelchType.off;
+  void setSquelchType(SquelchType type) {
+    if (type != SquelchType.auto) setSquelchEnabled(type == SquelchType.manual);
+  }
+
+  /// Whether [SquelchType.auto] can be selected for the current [mode].
+  bool get autoSquelchAvailable => false;
+
+  /// Auto squelch threshold offset (dB, the "sensitivity" slider): + = needs a stronger
+  /// signal, − = opens earlier; 0 = the automatic threshold.
+  double get autoSquelchOffset => 0;
+  void setAutoSquelchOffset(double db) {}
+
+  /// Range of [autoSquelchOffset].
+  static const double minAutoSquelchOffset = -10;
+  static const double maxAutoSquelchOffset = 20;
+
+  /// Live auto squelch state while [squelchType] is auto and receiving; else null.
+  AutoSquelchStatus? get autoSquelchStatus => null;
 
   // ---- FFT -----------------------------------------------------------------
 
