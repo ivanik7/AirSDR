@@ -1,6 +1,6 @@
-# SDR Flutter
+# AirSDR
 
-Android-приложение на Flutter: приёмник для USB SDR-донглов. Модули
+Карманный SDR-приёмник для Android с RTL-SDR и HackRF через USB OTG. Модули
 [SDR++](https://github.com/AlexandreRouma/SDRPlusPlus) портированы на Dart близко к оригиналу
 (1:1 по структуре), без C/NDK в собственном коде.
 

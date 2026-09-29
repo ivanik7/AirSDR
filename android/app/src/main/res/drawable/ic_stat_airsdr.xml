@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android status bar applies its own tint to this alpha-only broadcast silhouette. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="2"
+        android:strokeLineCap="round"
+        android:pathData="M8,7 Q4,12 8,17 M16,7 Q20,12 16,17 M5.5,4 Q-1,12 5.5,20 M18.5,4 Q25,12 18.5,20 M12,11 L12,19 M9,20 L15,20" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M12,5 A2.5,2.5 0,1 0,12.01 5 Z" />
+</vector>

@@ -51,7 +51,7 @@ class ReceptionService : Service() {
         super.onCreate()
         current = this
         val manager = getSystemService(NotificationManager::class.java)
-        manager.createNotificationChannel(NotificationChannel(CHANNEL, "Приём SDR",
+        manager.createNotificationChannel(NotificationChannel(CHANNEL, "Приём AirSDR",
             NotificationManager.IMPORTANCE_LOW).apply {
             description = "Активный радиоприём"
             setSound(null, null)
@@ -106,8 +106,8 @@ class ReceptionService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         val mhz = "%.3f".format(java.util.Locale.US, frequency / 1000000.0)
         return Notification.Builder(this, CHANNEL)
-            .setSmallIcon(R.mipmap.ic_launcher)
-            .setContentTitle("SDR Flutter")
+            .setSmallIcon(R.drawable.ic_stat_airsdr)
+            .setContentTitle("AirSDR")
             .setContentText("$mhz МГц · $mode")
             .setContentIntent(open)
             .addAction(Notification.Action.Builder(null, "Стоп", stop).build())
