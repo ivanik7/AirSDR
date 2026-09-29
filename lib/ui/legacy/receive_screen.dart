@@ -11,6 +11,7 @@ import '../source_settings.dart';
 import '../spectrum_waterfall.dart';
 import 'centered_receiver.dart';
 import 'channels_section.dart';
+import 'step_grid.dart';
 import 'theme.dart';
 
 class ReceiveScreen extends StatefulWidget {
@@ -53,7 +54,6 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
     builder: (context, _) {
       final r = widget.controller;
       final f = widget.receiver;
-      final mhz = r.tunedFrequency / 1000000;
       return ListView(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
         children: [
@@ -107,7 +107,8 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
                   fit: BoxFit.scaleDown,
                   alignment: Alignment.centerLeft,
                   child: Text(
-                    f.entry.isEmpty ? mhz.toStringAsFixed(3) : f.entry,
+                    f.entry.isEmpty ? formatMhz(r.tunedFrequency) : f.entry,
+                    key: const ValueKey('legacyFrequency'),
                     style: plex(
                       size: 49,
                       mono: true,
@@ -313,11 +314,8 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
                           20,
                         );
                         final direction = _rulerDrag < 0 ? 1 : -1;
-                        f.dragBy(
-                          steps *
-                              CenteredReceiver.steps[f.stepIndex] *
-                              direction,
-                        );
+                        // One ruler tick = one grid node.
+                        f.dragBy((steps * f.stepHz * direction).toDouble());
                         _rulerDrag -= _rulerDrag.sign * steps * 12;
                         setState(() {});
                       }
@@ -351,7 +349,7 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
           TextButton(
             onPressed: () => setState(f.cycleStep),
             child: Text(
-              'ШАГ ${(CenteredReceiver.steps[f.stepIndex] / 1000).toStringAsFixed(2)} кГц',
+              'ШАГ ${(f.stepHz / 1000).toStringAsFixed(2)} кГц',
               style: plex(size: 11, color: LegacyColors.muted),
             ),
           ),

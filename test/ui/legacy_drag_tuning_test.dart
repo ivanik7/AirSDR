@@ -4,6 +4,7 @@ import 'package:sdr_flutter/ui/demo_radio_controller.dart';
 import 'package:sdr_flutter/ui/favorites/favorites.dart';
 import 'package:sdr_flutter/ui/legacy/app_shell.dart';
 import 'package:sdr_flutter/ui/legacy/centered_receiver.dart';
+import 'package:sdr_flutter/ui/legacy/step_grid.dart';
 import 'package:sdr_flutter/ui/sdr_ui_state.dart';
 import 'package:sdr_flutter/ui/waterfall_model.dart';
 import 'package:sdr_flutter/ui/colormaps.dart';
@@ -27,11 +28,11 @@ void main() {
     final receiver = CenteredReceiver(radio);
     receiver.beginDrag();
     for (var i = 0; i < 10; i++) {
-      receiver.dragBy(1000);
+      receiver.dragBy(12500); // one node of the default 12.5 kHz grid
       await tester.pump(const Duration(milliseconds: 100));
     }
     expect(radio.centers, hasLength(4));
-    receiver.dragBy(1000);
+    receiver.dragBy(12500); // one node of the default 12.5 kHz grid
     receiver.endDrag();
     expect(radio.centers, hasLength(5));
     expect(radio.vfoOffset, 0);
@@ -114,11 +115,13 @@ void main() {
       expect(radio.vfoOffset, 25000);
       receiver.dragBy(span / 2);
       expect(radio.centers, [initial + span / 2]);
-      expect(radio.tunedFrequency, initial + span / 2 + 25000);
+      // The VFO stays on the 12.5 kHz step grid (task t_33f07c06).
+      final onGrid = snapToStep((initial + span / 2 + 25000).round(), 12500);
+      expect(radio.tunedFrequency, onGrid);
       receiver.endDrag();
       expect(radio.centerFrequency, radio.tunedFrequency);
       expect(radio.vfoOffset, 0);
-      expect(radio.centers.last, initial + span / 2 + 25000);
+      expect(radio.centers.last, onGrid);
       radio.dispose();
     },
   );
