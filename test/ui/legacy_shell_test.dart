@@ -50,12 +50,7 @@ void main() {
       ),
     );
 
-    // Bring the bottom of Receive into the list's lazy-build window.
-    await tester.scrollUntilVisible(
-      find.byKey(const ValueKey('key-1')),
-      180,
-      scrollable: find.byType(Scrollable).first,
-    );
+    expect(find.byKey(const ValueKey('key-1')), findsOneWidget);
     expect(
       find.descendant(
         of: find.byType(ReceiveScreen),
@@ -148,12 +143,15 @@ void main() {
         home: LegacyAppShell(controller: radio, favorites: favorites),
       ),
     );
+    await tester.tap(find.byKey(const ValueKey('legacyModeSelect')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('legacyMode-USB')));
     await tester.pump();
     expect(radio.mode.label, 'USB');
     expect(radio.vfoOffset, 0);
-    await tester.tap(find.byKey(const ValueKey('nudgeRight')));
+    await tester.tap(find.byKey(const ValueKey('legacyStep')));
     await tester.pump();
+    expect(find.textContaining('ШАГ 25.00'), findsOneWidget);
     expect(radio.centerFrequency, radio.tunedFrequency);
     radio.setTuning(centerFrequency: 90000000, vfoOffset: 3500);
     await tester.pump();
@@ -164,7 +162,7 @@ void main() {
     );
     final beforeRuler = radio.tunedFrequency;
     final gesture = await tester.startGesture(
-      tester.getCenter(find.byKey(const ValueKey('tuningRuler'))),
+      tester.getCenter(find.byKey(const ValueKey('legacySpectrumDrag'))),
     );
     await gesture.moveBy(
       const Offset(-24, 0),
@@ -201,18 +199,10 @@ void main() {
       expect(find.text('Пресеты'), findsOneWidget);
       expect(find.text('Настройки'), findsOneWidget);
       // The Приём tab now has real channel slots, not an inert "позже" card.
-      await tester.scrollUntilVisible(
-        find.byKey(const ValueKey('channelsSection')),
-        180,
-        scrollable: find.byType(Scrollable).first,
-      );
+      expect(find.byKey(const ValueKey('channelsSection')), findsOneWidget);
       expect(find.text('КАНАЛЫ · 1'), findsOneWidget);
       expect(find.text('+ канал · позже'), findsNothing);
-      await tester.scrollUntilVisible(
-        find.byKey(const ValueKey('key-1')),
-        180,
-        scrollable: find.byType(Scrollable).first,
-      );
+      expect(find.byKey(const ValueKey('key-1')), findsOneWidget);
       for (final key in ['1', '2', '1', '.', '5']) {
         await tester.tap(find.byKey(ValueKey('key-$key')));
         await tester.pump();

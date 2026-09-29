@@ -235,12 +235,16 @@ class _ChannelsSectionState extends State<ChannelsSection> {
                 ),
               ),
               if (more)
-                GestureDetector(
-                  key: const ValueKey('channelsExpand'),
-                  onTap: () => setState(() => expanded = !expanded),
-                  child: Text(
-                    expanded ? 'Свернуть ▲' : 'Все каналы (${all.length}) ▼',
-                    style: plex(size: 12, color: LegacyColors.accent),
+                Flexible(
+                  child: GestureDetector(
+                    key: const ValueKey('channelsExpand'),
+                    onTap: () => setState(() => expanded = !expanded),
+                    child: Text(
+                      expanded ? 'Свернуть ▲' : 'Все каналы (${all.length}) ▼',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: plex(size: 12, color: LegacyColors.accent),
+                    ),
                   ),
                 ),
               const SizedBox(width: 4),
@@ -283,56 +287,60 @@ class _ChannelsSectionState extends State<ChannelsSection> {
                 style: plex(size: 11, color: LegacyColors.accent),
               ),
             ),
-          const SizedBox(height: 7),
-          GridView.count(
-            crossAxisCount: 2,
-            mainAxisSpacing: 8,
-            crossAxisSpacing: 8,
-            childAspectRatio: 1.7,
-            shrinkWrap: true,
-            padding: EdgeInsets.zero,
-            physics: const NeverScrollableScrollPhysics(),
-            children: [
-              for (final c in visible)
-                _ChannelTile(
-                  key: ValueKey('channel-${c.id}'),
-                  channel: c,
-                  active: c.id == repo.activeId,
-                  tuned: widget.scanner.active
-                      ? c.id == widget.scanner.tunedChannelId
-                      : c.id == repo.activeId,
-                  receiving: c.id == widget.scanner.receivingChannelId,
-                  scanning: widget.scanner.active,
-                  radio: widget.radio,
-                  meter: widget.meter,
-                  onTap: () => _select(c),
-                  onMenu: (pos) => _menu(c, pos),
-                  onDropped: (draggedId) =>
-                      widget.controller.move(draggedId, repo.indexOf(c.id)),
-                ),
-              if (showAdd)
-                DragTarget<String>(
-                  onAcceptWithDetails: (d) =>
-                      widget.controller.move(d.data, repo.length - 1),
-                  builder: (context, candidates, _) => Material(
-                    color: candidates.isEmpty
-                        ? const Color(0xFF12161A)
-                        : LegacyColors.key,
-                    borderRadius: BorderRadius.circular(14),
-                    child: InkWell(
-                      key: const ValueKey('channelAdd'),
-                      borderRadius: BorderRadius.circular(14),
-                      onTap: _add,
-                      child: Center(
-                        child: Text(
-                          '+ канал',
-                          style: plex(size: 13, color: LegacyColors.accent),
+          const SizedBox(height: 2),
+          SizedBox(
+            height: MediaQuery.sizeOf(context).height < 700 ? 70 : 134,
+            child: LayoutBuilder(
+              builder: (context, box) => GridView.count(
+                crossAxisCount: 2,
+                mainAxisSpacing: 4,
+                crossAxisSpacing: 4,
+                childAspectRatio: ((box.maxWidth - 4) / 2) / 65,
+                padding: EdgeInsets.zero,
+                physics: null,
+                children: [
+                  for (final c in visible)
+                    _ChannelTile(
+                      key: ValueKey('channel-${c.id}'),
+                      channel: c,
+                      active: c.id == repo.activeId,
+                      tuned: widget.scanner.active
+                          ? c.id == widget.scanner.tunedChannelId
+                          : c.id == repo.activeId,
+                      receiving: c.id == widget.scanner.receivingChannelId,
+                      scanning: widget.scanner.active,
+                      radio: widget.radio,
+                      meter: widget.meter,
+                      onTap: () => _select(c),
+                      onMenu: (pos) => _menu(c, pos),
+                      onDropped: (draggedId) =>
+                          widget.controller.move(draggedId, repo.indexOf(c.id)),
+                    ),
+                  if (showAdd)
+                    DragTarget<String>(
+                      onAcceptWithDetails: (d) =>
+                          widget.controller.move(d.data, repo.length - 1),
+                      builder: (context, candidates, _) => Material(
+                        color: candidates.isEmpty
+                            ? const Color(0xFF12161A)
+                            : LegacyColors.key,
+                        borderRadius: BorderRadius.circular(14),
+                        child: InkWell(
+                          key: const ValueKey('channelAdd'),
+                          borderRadius: BorderRadius.circular(14),
+                          onTap: _add,
+                          child: Center(
+                            child: Text(
+                              '+ канал',
+                              style: plex(size: 13, color: LegacyColors.accent),
+                            ),
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                ),
-            ],
+                ],
+              ),
+            ),
           ),
           if (message != null)
             Padding(
@@ -432,7 +440,7 @@ class _ChannelTileState extends State<_ChannelTile> {
     final active = widget.active;
     final receiving = widget.receiving;
     return Container(
-      padding: const EdgeInsets.fromLTRB(11, 8, 11, 8),
+      padding: const EdgeInsets.fromLTRB(7, 3, 7, 3),
       decoration: BoxDecoration(
         color: receiving
             ? const Color(0xFF34491B)
@@ -514,7 +522,7 @@ class _ChannelTileState extends State<_ChannelTile> {
                 ),
             ],
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 2),
           // Level only for the channel actually being received.
           SizedBox(
             height: 4,

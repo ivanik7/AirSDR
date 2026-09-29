@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 
 import '../auto_levels.dart';
+import '../device_dropdown.dart';
 import '../radio_controller.dart';
 import '../sdr_ui_state.dart';
 import '../source_settings.dart';
@@ -43,6 +44,31 @@ class SettingsScreen extends StatelessWidget {
           ),
           const SizedBox(height: 14),
           _section('ПОДКЛЮЧЕНИЕ К SDR'),
+          _row(
+            'Выбрать устройство',
+            'Автоподключение при обнаружении SDR',
+            trailing: SizedBox(
+              width: 150,
+              child: DropdownButton<SdrDeviceInfo>(
+                key: const ValueKey('legacyDevice'),
+                isExpanded: true,
+                value: dropdownDeviceValue(r),
+                hint: const Text('Не найдено'),
+                items: [
+                  for (final device in r.devices)
+                    DropdownMenuItem(
+                      value: device,
+                      child: Text(device.name, overflow: TextOverflow.ellipsis),
+                    ),
+                ],
+                onChanged: r.running
+                    ? null
+                    : (device) {
+                        if (device != null) r.selectDevice(device);
+                      },
+              ),
+            ),
+          ),
           _row(
             'Устройство',
             d?.name ?? 'Не найдено',
@@ -116,6 +142,18 @@ class SettingsScreen extends StatelessWidget {
           ),
           if (spectrum case final s?) ..._waterfallLevels(s),
           _section('СОСТОЯНИЕ'),
+          if (!r.running &&
+              (r.linkState == DeviceLinkState.permissionDenied ||
+                  r.linkState == DeviceLinkState.failed))
+            _row(
+              'Подключение USB',
+              'Нет доступа к устройству',
+              trailing: TextButton(
+                key: const ValueKey('legacyRetryUsb'),
+                onPressed: r.retryDevice,
+                child: const Text('Повторить'),
+              ),
+            ),
           _row(
             'Приём',
             r.running

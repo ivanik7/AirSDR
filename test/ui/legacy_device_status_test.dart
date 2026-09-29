@@ -117,6 +117,11 @@ void main() {
       radio.set(DeviceLinkState.permissionDenied);
       await tester.pump();
       expect(tester.widget<Text>(status).data, 'нет разрешения USB');
+      expect(retry, findsNothing, reason: 'USB controls belong in Settings');
+      await tester.tap(find.byKey(const ValueKey('tab-2')));
+      await tester.pump();
+      await tester.scrollUntilVisible(retry, 170,
+          scrollable: find.byType(Scrollable).first);
       expect(retry, findsOneWidget);
       expect(tester.takeException(), isNull);
       await tester.tap(retry);
@@ -132,6 +137,8 @@ void main() {
       );
 
       await radio.start();
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('tab-0')));
       await tester.pump();
       expect(tester.widget<Text>(status).data, compactStatsLine(radio));
       expect(retry, findsNothing);

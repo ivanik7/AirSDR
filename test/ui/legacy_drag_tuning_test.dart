@@ -148,7 +148,7 @@ void main() {
   );
 
   testWidgets(
-    'ruler drag keeps offset until finger release, including shell listener',
+    'waterfall drag keeps offset until finger release, including shell listener',
     (tester) async {
       final radio = CountingRadio();
       final favorites = FavoritesRepository();
@@ -157,7 +157,8 @@ void main() {
           home: LegacyAppShell(controller: radio, favorites: favorites),
         ),
       );
-      final start = tester.getCenter(find.byKey(const ValueKey('tuningRuler')));
+      final bounds = tester.getRect(find.byKey(const ValueKey('legacySpectrumDrag')));
+      final start = Offset(bounds.center.dx, bounds.bottom - 8);
       final gesture = await tester.startGesture(start);
       await gesture.moveBy(const Offset(-40, 0));
       await gesture.moveBy(const Offset(-40, 0));

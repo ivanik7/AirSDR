@@ -88,11 +88,7 @@ Future<void> _dispose(WidgetTester tester, _Env env) async {
 }
 
 Future<void> _showChannels(WidgetTester tester) async {
-  await tester.scrollUntilVisible(
-    find.byKey(const ValueKey('channelsSection')),
-    200,
-    scrollable: find.byType(Scrollable).first,
-  );
+  expect(find.byKey(const ValueKey('channelsSection')), findsOneWidget);
   await tester.pumpAndSettle(); // let the scroll come to rest
 }
 
@@ -271,7 +267,7 @@ void main() {
     expect(env.radio.vfoOffset, 0);
     expect(env.radio.mode, DemodMode.wfm);
     // Mode chip changes only the active channel.
-    await tester.ensureVisible(find.byKey(const ValueKey('legacyMode-NFM')));
+    await tester.tap(find.byKey(const ValueKey('legacyModeSelect')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('legacyMode-NFM')));
     await tester.pump();
@@ -448,8 +444,11 @@ void main() {
     expect(find.text('Свернуть ▲'), findsOneWidget);
     await tester.scrollUntilVisible(
       find.byKey(const ValueKey('channelAdd')),
-      200,
-      scrollable: find.byType(Scrollable).first,
+      100,
+      scrollable: find.descendant(
+        of: find.byKey(const ValueKey('channelsSection')),
+        matching: find.byType(Scrollable),
+      ).first,
     );
     expect(tester.takeException(), isNull);
     await _dispose(tester, env);
