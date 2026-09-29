@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Original AirSDR artwork: radio mast and two broadcast wavefronts. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="#FFA8CF6A"
+        android:strokeWidth="4.5"
+        android:strokeLineCap="round"
+        android:pathData="M41,35 Q29,49 41,63 M67,35 Q79,49 67,63 M32,26 Q12,49 32,72 M76,26 Q96,49 76,72" />
+    <path
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="#FFE7E4DE"
+        android:strokeWidth="5"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M54,49 L54,74 M42,75 L66,75" />
+    <path
+        android:fillColor="#FFA8CF6A"
+        android:pathData="M54,35 A7,7 0,1 0,54.01 35 Z" />
+</vector>

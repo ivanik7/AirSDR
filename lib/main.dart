@@ -110,7 +110,7 @@ class _SdrAppState extends State<SdrApp> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'SDR Flutter',
+      title: 'AirSDR',
       debugShowCheckedModeBanner: false,
       theme: legacyTheme(),
       home: LegacyAppShell(
