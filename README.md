@@ -46,6 +46,10 @@ APK лежат в `build/app/outputs/flutter-apk/`. Release подписан deb
 
 ## Тесты
 
+Быстрый UI/synthetic smoke на headless Android-эмуляторе (без телефона и USB-SDR):
+[`docs/android-emulator.md`](docs/android-emulator.md). Аппаратный приём проверяется отдельно
+на телефоне с донглом.
+
 ```sh
 source ~/prj/env.sh
 flutter analyze
