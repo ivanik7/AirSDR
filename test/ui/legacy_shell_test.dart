@@ -3,6 +3,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sdr_flutter/ui/demo_radio_controller.dart';
 import 'package:sdr_flutter/ui/legacy/app_shell.dart';
+import 'package:sdr_flutter/ui/legacy/receive_screen.dart';
+import 'package:sdr_flutter/ui/legacy/squelch_controls.dart';
 import 'package:sdr_flutter/ui/legacy/theme.dart';
 import 'package:sdr_flutter/ui/favorites/favorites.dart';
 import 'package:sdr_flutter/ui/spectrum_waterfall.dart';
@@ -30,6 +32,46 @@ void main() {
       (spectrum.painter! as SpectrumPainter).plotLineColor,
       LegacyColors.accent,
     );
+
+    await tester.pumpWidget(const SizedBox());
+    radio.dispose();
+    favorites.dispose();
+  });
+
+  testWidgets('squelch controls live only in Settings, not Receive', (
+    tester,
+  ) async {
+    final radio = DemoRadioController();
+    final favorites = FavoritesRepository();
+    await favorites.load();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: LegacyAppShell(controller: radio, favorites: favorites),
+      ),
+    );
+
+    // Bring the bottom of Receive into the list's lazy-build window.
+    await tester.scrollUntilVisible(
+      find.byKey(const ValueKey('key-1')),
+      180,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(
+      find.descendant(
+        of: find.byType(ReceiveScreen),
+        matching: find.byType(SquelchControls, skipOffstage: false),
+      ),
+      findsNothing,
+    );
+    await tester.tap(find.byKey(const ValueKey('tab-2')));
+    await tester.pump();
+    await tester.scrollUntilVisible(
+      find.byKey(const ValueKey('squelchStatus')),
+      180,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(find.byType(SquelchControls), findsOneWidget);
+    expect(find.text('Авто'), findsOneWidget);
 
     await tester.pumpWidget(const SizedBox());
     radio.dispose();
