@@ -13,6 +13,7 @@ import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 
 import 'runtime/device_sources.dart';
+import 'runtime/background_reception.dart';
 import 'runtime/dsp_engine.dart';
 import 'runtime/sdr_radio_controller.dart';
 import 'ui/legacy/app_shell.dart';
@@ -52,10 +53,59 @@ SdrRadioController createRadioController({
   );
 }
 
-class SdrApp extends StatelessWidget {
+class SdrApp extends StatefulWidget {
   const SdrApp({super.key, required this.controller});
 
   final RadioController controller;
+
+  @override
+  State<SdrApp> createState() => _SdrAppState();
+}
+
+class _SdrAppState extends State<SdrApp> with WidgetsBindingObserver {
+  final ValueNotifier<int> _openReceive = ValueNotifier<int>(0);
+  late BackgroundReception _background;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _background = BackgroundReception(
+      widget.controller,
+      onOpenReceive: () => _openReceive.value++,
+    );
+  }
+
+  @override
+  void didUpdateWidget(SdrApp oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.controller != widget.controller) {
+      _background.dispose();
+      _background = BackgroundReception(
+        widget.controller,
+        onOpenReceive: () => _openReceive.value++,
+      );
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (widget.controller case final SdrRadioController real) {
+      if (state == AppLifecycleState.resumed) real.setFftVisible(true);
+      if (state == AppLifecycleState.paused ||
+          state == AppLifecycleState.hidden) {
+        real.setFftVisible(false);
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _background.dispose();
+    _openReceive.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -63,7 +113,10 @@ class SdrApp extends StatelessWidget {
       title: 'SDR Flutter',
       debugShowCheckedModeBanner: false,
       theme: legacyTheme(),
-      home: LegacyAppShell(controller: controller),
+      home: LegacyAppShell(
+        controller: widget.controller,
+        openReceive: _openReceive,
+      ),
     );
   }
 }

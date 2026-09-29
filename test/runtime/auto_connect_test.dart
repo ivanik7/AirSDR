@@ -426,6 +426,8 @@ void main() {
     await _until(() => c.running, reason: 'auto start');
     await c.stop();
     expect(c.linkState, DeviceLinkState.stoppedByUser);
+    expect(c.lastState['sourceId'], isNull, reason: 'Stop releases DSP source');
+    expect(plugin.closes, contains(_rtl['deviceName']), reason: 'Stop closes USB fd');
     await c.refreshDevices();
     plugin.otherEvent();
     await _settle();

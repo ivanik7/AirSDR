@@ -178,6 +178,10 @@ class SdrRadioController extends RadioController {
   /// must not start reception after the user pressed Stop.
   int _stopGen = 0;
   Future<void> _chain = Future<void>.value();
+  Future<void> _stopFuture = Future<void>.value();
+
+  /// Completes after the DSP source, audio and USB connection have been released.
+  Future<void> get whenStopped => _stopFuture;
   bool _muted = true;
 
   double _centerFrequency = 100000000;
@@ -273,7 +277,7 @@ class SdrRadioController extends RadioController {
           // the dead fd again and the next connection reopens the device.
           _running = false;
           if (!_userStopped) _link = DeviceLinkState.disconnected;
-          unawaited(_queue(_lostLocked));
+          _stopFuture = _queue(_lostLocked);
         }
         _notify();
     }
@@ -529,13 +533,19 @@ class SdrRadioController extends RadioController {
           _link == DeviceLinkState.disconnected;
       _device = null;
       _running = false;
+      final released = Completer<void>();
+      _stopFuture = released.future;
       if (!_userStopped) {
         _link = wasActive
             ? DeviceLinkState.disconnected
             : DeviceLinkState.waiting;
       }
       _notify();
-      await _releaseLocked();
+      try {
+        await _releaseLocked();
+      } finally {
+        released.complete();
+      }
     }
     _device ??= _defaultDevice();
     if (_device == null && _link == DeviceLinkState.idle) {
@@ -724,23 +734,19 @@ class SdrRadioController extends RadioController {
   }
 
   @override
-  Future<void> stop() async {
+  Future<void> stop() {
     // User Stop: also cancels a pending automatic start (permission dialog / opening).
     _userStopped = true;
     _stopGen++;
     _link = DeviceLinkState.stoppedByUser;
-    if (!_running) {
-      _notify();
-      return;
-    }
     _running = false;
-    _notify();
-    try {
-      await _cmd(<String, Object?>{DspMsg.cmd: DspCmd.stop});
-    } catch (e) {
-      _lastError = '$e';
+    _stopFuture = _queue(() async {
+      // releaseSource stops the DSP/audio first, then closes the USB fd.
+      await _releaseLocked();
       _notify();
-    }
+    });
+    _notify();
+    return _stopFuture;
   }
 
   // ---------------------------------------------------------------------------
@@ -891,6 +897,16 @@ class SdrRadioController extends RadioController {
   // ---------------------------------------------------------------------------
   // FFT
   // ---------------------------------------------------------------------------
+
+  /// Keep demodulation/audio running but skip the FFT branch when no Activity is visible.
+  void setFftVisible(bool visible) {
+    _ready.then(
+      (_) => _dsp?.send(<String, Object?>{
+        DspMsg.cmd: DspCmd.setFft,
+        'enabled': visible,
+      }),
+    );
+  }
 
   @override
   Stream<FftRow> get fftRows => _rows.stream;

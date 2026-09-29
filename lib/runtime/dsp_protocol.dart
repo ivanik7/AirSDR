@@ -50,7 +50,7 @@ abstract final class DspCmd {
   static const demodOption = 'demodOption';
 
   /// `{width: int?, viewOffset: double?, viewBandwidth: double?, size: int?, rate: double?,
-  ///   window: String?}`.
+  ///   window: String?, enabled: bool?}`. Disabled in background (audio stays active).
   static const setFft = 'setFft';
 
   /// `{enabled: bool}` — also send audio blocks to the UI (tests, recording).

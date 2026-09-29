@@ -83,7 +83,8 @@ tool/oracle/sources/build.sh      # пересобрать golden-трассы �
   2.4 MSPS идёт примерно в 8 раз быстрее реального времени на одном ядре Ryzen;
 - путь Impeller `decodeImageFromPixelsSync` для водопада.
 
-Не реализованы: FM IF NR, CTCSS, RDS-декодер, foreground service для фонового приёма.
+Не реализованы: FM IF NR, CTCSS, RDS-декодер. Фоновый приём через foreground service
+описан в `STATUS-background.md` (проверен на SM-F936B с RTL-SDR Blog V4; слышимость в фоне не подтверждена).
 
 ## Лицензия
 
