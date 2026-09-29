@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../radio_controller.dart';
 import '../source_settings.dart';
 import 'centered_receiver.dart';
+import 'step_grid.dart';
 import 'theme.dart';
 
 class SettingsScreen extends StatelessWidget {
@@ -126,7 +127,7 @@ class SettingsScreen extends StatelessWidget {
           _row(
             'Приём',
             r.running
-                ? 'Активен · ${(r.tunedFrequency / 1000000).toStringAsFixed(3)} MHz'
+                ? 'Активен · ${formatMhz(r.tunedFrequency)} MHz'
                 : 'Остановлен',
             trailing: TextButton(
               onPressed: () => r.running ? r.stop() : receiver.start(),

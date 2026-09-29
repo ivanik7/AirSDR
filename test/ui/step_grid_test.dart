@@ -306,4 +306,45 @@ void main() {
       expect(formatMhz(145512500), '145.5125');
     });
   });
+
+  testWidgets(
+    '6.25 kHz grid: main text and channel tile show the exact value',
+    (tester) async {
+      tester.view.physicalSize = const Size(400, 2400);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final radio = TunerRadio();
+      final favorites = FavoritesRepository();
+      await favorites.load();
+      radio.setTuning(centerFrequency: 118206250, vfoOffset: 0);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: LegacyAppShell(controller: radio, favorites: favorites),
+        ),
+      );
+      await tester.pump();
+      // Default 12.5 kHz: 118.20625 is a tie → 118.2125. 25 → 100 kHz lands on
+      // 118.200 (5 and 6.25 kHz keep it); ▶ on 6.25 kHz = 118.20625.
+      expect(radio.tunedFrequency, 118212500);
+      await tester.tap(find.textContaining('ШАГ'));
+      await tester.pump();
+      await tester.tap(find.textContaining('ШАГ'));
+      await tester.pump();
+      await tester.tap(find.textContaining('ШАГ'));
+      await tester.pump();
+      await tester.tap(find.textContaining('ШАГ'));
+      await tester.pump();
+      expect(find.text('ШАГ 6.25 кГц'), findsOneWidget);
+      expectOnGrid(radio, 6250, 118200000);
+      await tester.tap(find.byKey(const ValueKey('nudgeRight')));
+      await tester.pump();
+      expectOnGrid(radio, 6250, 118206250);
+      expect(shownFrequency(tester), '118.20625');
+      // The first-run channel slot follows the receiver.
+      expect(find.text('118.20625'), findsNWidgets(2));
+      await tester.pumpWidget(const SizedBox());
+      radio.dispose();
+      favorites.dispose();
+    },
+  );
 }
