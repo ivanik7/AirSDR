@@ -318,6 +318,7 @@ class DspEngine {
           _sendState();
         case DspCmd.setFft:
           setFft(
+            enabled: m['enabled'] as bool?,
             width: (m['width'] as num?)?.toInt(),
             viewOffset: (m['viewOffset'] as num?)?.toDouble(),
             viewBandwidth: (m['viewBandwidth'] as num?)?.toDouble(),
@@ -411,7 +412,7 @@ class DspEngine {
     core.sigpath.sourceManager.tune(_centerFreq);
     _running = true;
     _updateAudio();
-    _fftWanted = true;
+    _fftWanted = core.iqFrontEnd.fftEnabled;
     _statsTimer?.cancel();
     _statsTimer = Timer.periodic(options.statsInterval, (_) => _sendStats());
     _sendState();
@@ -467,6 +468,7 @@ class DspEngine {
   }
 
   void setFft({
+    bool? enabled,
     int? width,
     double? viewOffset,
     double? viewBandwidth,
@@ -474,6 +476,10 @@ class DspEngine {
     double? rate,
     String? window,
   }) {
+    if (enabled != null) {
+      core.iqFrontEnd.fftEnabled = enabled;
+      _fftWanted = enabled && _running;
+    }
     if (width != null && width > 0) {
       _fftWidth = width;
       if (_row.length != width) _row = Float32List(width);

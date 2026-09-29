@@ -12,9 +12,15 @@ import 'settings_screen.dart';
 import 'theme.dart';
 
 class LegacyAppShell extends StatefulWidget {
-  const LegacyAppShell({super.key, required this.controller, this.favorites});
+  const LegacyAppShell({
+    super.key,
+    required this.controller,
+    this.favorites,
+    this.openReceive,
+  });
   final RadioController controller;
   final FavoritesRepository? favorites;
+  final Listenable? openReceive;
   @override
   State<LegacyAppShell> createState() => _LegacyAppShellState();
 }
@@ -29,8 +35,11 @@ class _LegacyAppShellState extends State<LegacyAppShell> {
   @override
   void initState() {
     super.initState();
+    widget.openReceive?.addListener(_showReceive);
     _init();
   }
+
+  void _showReceive() => setState(() => tab = 0);
 
   void _init() {
     radioReady = widget.controller is! SdrRadioController;
@@ -65,6 +74,10 @@ class _LegacyAppShellState extends State<LegacyAppShell> {
   @override
   void didUpdateWidget(LegacyAppShell oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.openReceive != widget.openReceive) {
+      oldWidget.openReceive?.removeListener(_showReceive);
+      widget.openReceive?.addListener(_showReceive);
+    }
     if (oldWidget.controller == widget.controller &&
         oldWidget.favorites == widget.favorites) {
       return;
@@ -77,6 +90,7 @@ class _LegacyAppShellState extends State<LegacyAppShell> {
 
   @override
   void dispose() {
+    widget.openReceive?.removeListener(_showReceive);
     widget.controller.removeListener(_radioChanged);
     spectrum.dispose();
     if (ownFavorites) favorites.dispose();
