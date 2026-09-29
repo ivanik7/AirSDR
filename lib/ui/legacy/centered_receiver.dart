@@ -1,4 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
+import 'dart:async';
+
 import '../radio_controller.dart';
 
 /// The only tuning policy of the legacy-looking shell: ONE centered VFO.
@@ -12,7 +14,27 @@ class CenteredReceiver {
   bool _dragging = false;
   bool get dragging => _dragging;
 
-  void beginDrag() => _dragging = true;
+  static const dragTunePeriod = Duration(milliseconds: 250);
+  Timer? _dragTimer;
+
+  void beginDrag() {
+    if (_dragging) return;
+    _dragging = true;
+    _startDragTimer();
+  }
+
+  void _startDragTimer() {
+    _dragTimer?.cancel();
+    _dragTimer = Timer.periodic(dragTunePeriod, (_) {
+      if (radio.tunedFrequency != radio.centerFrequency) resetOffset();
+    });
+  }
+
+  void dispose() {
+    _dragTimer?.cancel();
+    _dragTimer = null;
+    _dragging = false;
+  }
 
   /// The IQ sample rate is the *physical* band, independent of FFT zoom.
   /// Leave half the demodulator bandwidth plus 5% of the IQ span at each edge.
@@ -42,12 +64,17 @@ class CenteredReceiver {
       }
       center = next;
     }
+    final edgeShift = center != radio.centerFrequency;
     radio.setTuning(centerFrequency: center, vfoOffset: target - center);
+    // An edge shift already tuned the LO; restart the throttle from it.
+    if (edgeShift) _startDragTimer();
   }
 
   void endDrag() {
     if (!_dragging) return;
     _dragging = false;
+    _dragTimer?.cancel();
+    _dragTimer = null;
     resetOffset();
   }
 

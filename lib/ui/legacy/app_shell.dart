@@ -44,7 +44,7 @@ class _LegacyAppShellState extends State<LegacyAppShell> {
   void _init() {
     radioReady = widget.controller is! SdrRadioController;
     receiver = CenteredReceiver(widget.controller);
-    spectrum = SdrUiState(widget.controller);
+    spectrum = SdrUiState(widget.controller, centerDisplayOnVfo: true);
     favorites = widget.favorites ?? FavoritesRepository();
     ownFavorites = widget.favorites == null;
     // The production controller loads persisted LO/offset asynchronously.
@@ -83,6 +83,7 @@ class _LegacyAppShellState extends State<LegacyAppShell> {
       return;
     }
     oldWidget.controller.removeListener(_radioChanged);
+    receiver.dispose();
     spectrum.dispose();
     if (ownFavorites) favorites.dispose();
     _init();
@@ -92,6 +93,7 @@ class _LegacyAppShellState extends State<LegacyAppShell> {
   void dispose() {
     widget.openReceive?.removeListener(_showReceive);
     widget.controller.removeListener(_radioChanged);
+    receiver.dispose();
     spectrum.dispose();
     if (ownFavorites) favorites.dispose();
     super.dispose();

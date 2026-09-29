@@ -27,9 +27,20 @@ import 'viewport.dart';
 import 'waterfall_model.dart';
 
 class SdrUiState extends ChangeNotifier {
-  SdrUiState(this.radio, {WaterfallModel? waterfall, this.tuningMode = TuningMode.normal})
-      : waterfall = waterfall ?? WaterfallModel(),
-        viewport = FftViewport(centerFreq: radio.centerFrequency, bandwidth: radio.sampleRate) {
+  SdrUiState(
+    this.radio, {
+    WaterfallModel? waterfall,
+    this.tuningMode = TuningMode.normal,
+    this.centerDisplayOnVfo = false,
+  }) : waterfall = waterfall ?? WaterfallModel(),
+       viewport = FftViewport(
+         centerFreq: radio.centerFrequency,
+         bandwidth: radio.sampleRate,
+       ),
+       _centeredViewport = FftViewport(
+         centerFreq: radio.tunedFrequency,
+         bandwidth: radio.sampleRate,
+       ) {
     final p = radio.mode.params;
     vfo = WaterfallVfo(
       reference: p.reference,
@@ -50,6 +61,16 @@ class SdrUiState extends ChangeNotifier {
 
   final RadioController radio;
   final FftViewport viewport;
+
+  /// Legacy display window centred on the selected frequency, independent of
+  /// the physical LO. FFT rows still carry their absolute frequency spans.
+  final bool centerDisplayOnVfo;
+  final FftViewport _centeredViewport;
+  FftViewport get displayViewport =>
+      centerDisplayOnVfo ? _centeredViewport : viewport;
+  WaterfallVfo get displayVfo => centerDisplayOnVfo
+      ? (WaterfallVfo(reference: vfo.reference, bandwidth: vfo.bandwidth))
+      : vfo;
   late final WaterfallVfo vfo;
   final WaterfallModel waterfall;
   TuningMode tuningMode;
@@ -73,6 +94,7 @@ class SdrUiState extends ChangeNotifier {
     if (radio.sampleRate != _lastSampleRate) {
       _lastSampleRate = radio.sampleRate;
       viewport.resetForSampleRate(radio.sampleRate);
+      _centeredViewport.resetForSampleRate(radio.sampleRate);
       viewport.squeezeVfo(vfo);
       viewChanged = true;
     }
@@ -92,6 +114,11 @@ class SdrUiState extends ChangeNotifier {
     }
     if (radio.bandwidth != vfo.bandwidth) vfo.setBandwidth(radio.bandwidth);
     if (radio.vfoOffset != vfo.generalOffset) vfo.setOffset(radio.vfoOffset);
+    if (centerDisplayOnVfo &&
+        _centeredViewport.centerFreq != radio.tunedFrequency) {
+      _centeredViewport.setCenterFrequency(radio.tunedFrequency);
+      viewChanged = true;
+    }
     if (radio.running != _lastRunning) {
       _lastRunning = radio.running;
       if (radio.running) waterfall.clear();
@@ -107,12 +134,18 @@ class SdrUiState extends ChangeNotifier {
   // ---- UI → radio ----------------------------------------------------------
 
   void _pushView() {
-    radio.setFftView(viewOffset: viewport.viewOffset, viewBandwidth: viewport.viewBandwidth);
-    waterfall.setView(viewport.lowerFreq, viewport.upperFreq);
+    radio.setFftView(
+      viewOffset: viewport.viewOffset,
+      viewBandwidth: viewport.viewBandwidth,
+    );
+    waterfall.setView(displayViewport.lowerFreq, displayViewport.upperFreq);
   }
 
   void _pushTuning() {
-    radio.setTuning(centerFrequency: viewport.centerFreq, vfoOffset: vfo.generalOffset);
+    radio.setTuning(
+      centerFrequency: viewport.centerFreq,
+      vfoOffset: vfo.generalOffset,
+    );
     _pushView();
     notifyListeners();
   }
@@ -142,7 +175,12 @@ class SdrUiState extends ChangeNotifier {
     if (off == null) return;
     vfo.setOffset(off);
     if (tuningMode == TuningMode.center) {
-      tune(TuningMode.center, viewport, vfo, viewport.centerFreq + vfo.generalOffset);
+      tune(
+        TuningMode.center,
+        viewport,
+        vfo,
+        viewport.centerFreq + vfo.generalOffset,
+      );
     }
     _pushTuning();
   }
@@ -170,13 +208,18 @@ class SdrUiState extends ChangeNotifier {
 
   /// Zoom slider 0..1 (main_window.cpp:619-631): quadratic, then centre the VFO.
   void setZoomSlider(double t) {
-    viewport.setViewBandwidth(zoomSliderToViewBandwidth(t, viewport.wholeBandwidth));
+    viewport.setViewBandwidth(
+      zoomSliderToViewBandwidth(t, viewport.wholeBandwidth),
+    );
     viewport.setViewOffset(vfo.centerOffset);
     _pushView();
     notifyListeners();
   }
 
-  double get zoomSlider => viewBandwidthToZoomSlider(viewport.viewBandwidth, viewport.wholeBandwidth);
+  double get zoomSlider => viewBandwidthToZoomSlider(
+    viewport.viewBandwidth,
+    viewport.wholeBandwidth,
+  );
 
   /// Max/Min sliders (main_window.cpp:633-663): fftMax ≥ fftMin + 10.
   void setLevels(double min, double max) {

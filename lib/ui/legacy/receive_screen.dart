@@ -262,7 +262,7 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
                           builder: (context, box) => Stack(
                             children: [
                               Positioned(
-                                left: widget.spectrum.viewport
+                                left: widget.spectrum.displayViewport
                                     .freqToX(r.tunedFrequency, box.maxWidth)
                                     .clamp(0.0, box.maxWidth - 2),
                                 top: 0,
