@@ -67,31 +67,33 @@ class SquelchControls extends StatelessWidget {
                   size: 15,
                   color: open ? LegacyColors.accent : LegacyColors.muted,
                 ),
-              const Spacer(),
-              SegmentedButton<SquelchType>(
-                key: const ValueKey('squelchType'),
-                showSelectedIcon: false,
-                style: const ButtonStyle(visualDensity: VisualDensity.compact),
-                segments: [
-                  ButtonSegment(
-                    value: SquelchType.off,
-                    label: Text('Выкл', style: plex(size: 11)),
-                  ),
-                  ButtonSegment(
-                    value: SquelchType.manual,
-                    enabled: manualOk,
-                    label: Text('Ручной', style: plex(size: 11)),
-                  ),
-                  ButtonSegment(
-                    value: SquelchType.auto,
-                    enabled: autoOk,
-                    label: Text('Авто', style: plex(size: 11)),
-                  ),
-                ],
-                selected: <SquelchType>{type},
-                onSelectionChanged: (s) => r.setSquelchType(s.first),
+            ],
+          ),
+          const SizedBox(height: 6),
+          // Own full-width row: fits the Fold cover screen (≈ 300 dp card width).
+          SegmentedButton<SquelchType>(
+            key: const ValueKey('squelchType'),
+            showSelectedIcon: false,
+            expandedInsets: EdgeInsets.zero,
+            style: const ButtonStyle(visualDensity: VisualDensity.compact),
+            segments: [
+              ButtonSegment(
+                value: SquelchType.off,
+                label: Text('Выкл', style: plex(size: 11)),
+              ),
+              ButtonSegment(
+                value: SquelchType.manual,
+                enabled: manualOk,
+                label: Text('Ручной', style: plex(size: 11)),
+              ),
+              ButtonSegment(
+                value: SquelchType.auto,
+                enabled: autoOk,
+                label: Text('Авто', style: plex(size: 11)),
               ),
             ],
+            selected: <SquelchType>{type},
+            onSelectionChanged: (s) => r.setSquelchType(s.first),
           ),
           const SizedBox(height: 4),
           Text(

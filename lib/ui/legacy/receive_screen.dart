@@ -354,13 +354,13 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
               style: plex(size: 11, color: LegacyColors.muted),
             ),
           ),
-          SquelchControls(controller: r, compact: true),
-          const SizedBox(height: 9),
           ChannelsSection(
             controller: widget.channels,
             radio: r,
             meter: widget.meter,
           ),
+          const SizedBox(height: 11),
+          SquelchControls(controller: r, compact: true),
           const SizedBox(height: 11),
           for (final row in const [
             ['1', '2', '3'],

@@ -96,4 +96,29 @@ void main() {
     await t.pump();
     expect(r.squelchType, SquelchType.auto);
   });
+
+  testWidgets('fits a 294 px card (Fold cover screen) without overflow in every mode', (t) async {
+    final r = _StatusRadio()..setMode(DemodMode.nfm);
+    await t.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Center(
+            child: SizedBox(
+              width: 294,
+              child: ListenableBuilder(
+                listenable: r,
+                builder: (_, _) => SquelchControls(controller: r, compact: true),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    for (final type in SquelchType.values) {
+      r.status = const AutoSquelchStatus(open: true, metricDb: -120, thresholdDb: -130);
+      r.setSquelchType(type);
+      await t.pump();
+      expect(t.takeException(), isNull, reason: '$type');
+    }
+  });
 }

@@ -118,6 +118,8 @@ void main() {
     expect(env.radio.vfoOffset, 0);
     expect(env.radio.mode, DemodMode.wfm);
     // Mode chip changes only the active channel.
+    await tester.ensureVisible(find.byKey(const ValueKey('legacyMode-NFM')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('legacyMode-NFM')));
     await tester.pump();
     expect(env.channels.channels[0].mode, DemodMode.nfm);
