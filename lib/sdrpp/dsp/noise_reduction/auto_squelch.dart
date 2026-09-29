@@ -63,6 +63,12 @@ abstract final class AutoSquelchTuning {
   /// power so that it is comparable with the floor, which is a percentile of mean powers).
   static const double levelSmoothMs = 20.0;
 
+  /// For narrow channels the smoother is lengthened to average ≥ ~40 independent noise
+  /// samples: τ ≥ [levelSmoothBwProduct] / bandwidth (CW 200 Hz → 100 ms), capped at
+  /// [levelSmoothMaxMs]. Otherwise the noise-power fluctuations reach the margin.
+  static const double levelSmoothBwProduct = 20.0;
+  static const double levelSmoothMaxMs = 400.0;
+
   /// Noise-floor tracker: segment length, window (number of segments) and percentile of
   /// the segments measured while the squelch is closed. The floor is frozen while open (a
   /// transmission must not become its own floor) for up to [floorFreezeMs]; the engine also
@@ -76,6 +82,14 @@ abstract final class AutoSquelchTuning {
 
   /// Segments needed before the floor is trusted (squelch stays closed meanwhile).
   static const int floorMinSegments = 4; // 200 ms
+
+  /// After [AutoSquelch.reset]/[AutoSquelch.configure] the detector stays closed and (level)
+  /// the first segments are not used for the floor: a new demodulator/bandwidth rebuilds the
+  /// VFO channel filter, whose history warms up for up to taps/rate (CW: ~1100 taps at
+  /// 3 kHz ≈ 0.4 s) with too little power. NFM's filter is ~300 taps at 50 kHz (6 ms), so
+  /// the noise squelch only waits for its HPF/smoother.
+  static const double floorSettleMs = 500.0;
+  static const double noiseSettleMs = 30.0;
 
   /// Threshold above the floor.
   static const double levelMarginDb = 6.0;
@@ -191,6 +205,7 @@ class AutoSquelch {
   bool _segClean = true;
   int _openSamples = 0;
   int _freezeSamples = 0;
+  int _settleLeft = 0;
   final List<double> _segments = <double>[];
 
   // gate
@@ -245,7 +260,9 @@ class AutoSquelch {
     _bw = bandwidth;
     double coef(double ms) => 1 - math.exp(-1000.0 / (ms * _sr));
     _nAtt = coef(AutoSquelchTuning.noiseSmoothMs);
-    _lAtt = coef(AutoSquelchTuning.levelSmoothMs);
+    _lAtt = coef(math.max(
+        AutoSquelchTuning.levelSmoothMs,
+        math.min(AutoSquelchTuning.levelSmoothMaxMs, 1000 * AutoSquelchTuning.levelSmoothBwProduct / _bw)));
     _hangSamples = (AutoSquelchTuning.hangMs * _sr / 1000).round();
     _segLen = math.max(1, (AutoSquelchTuning.floorSegmentMs * _sr / 1000).round());
     _freezeSamples = (AutoSquelchTuning.floorFreezeMs * _sr / 1000).round();
@@ -279,6 +296,12 @@ class AutoSquelch {
     _segSum = 0;
     _segClean = true;
     _openSamples = 0;
+    _settleLeft = ((_detector == AutoSquelchDetector.noise
+                ? AutoSquelchTuning.noiseSettleMs
+                : AutoSquelchTuning.floorSettleMs) *
+            _sr /
+            1000)
+        .round();
     _segments.clear();
     if (wasOpen) {
       transitions++;
@@ -335,16 +358,25 @@ class AutoSquelch {
     var k = 0;
     for (var i = 0; i < count; i++) {
       final re = iq[2 * i], im = iq[2 * i + 1];
-      // Discriminator: arg(x[n]·conj(x[n−1])), rad/sample.
-      final d = math.atan2(im * pr - re * pi, re * pr + im * pi);
+      // Exact zeros carry no phase (cold channel filter, blanked/stopped input): no update,
+      // otherwise the "silent" discriminator would read as full quieting and open.
+      if ((re != 0 || im != 0) && (pr != 0 || pi != 0)) {
+        // Discriminator: arg(x[n]·conj(x[n−1])), rad/sample.
+        final d = math.atan2(im * pr - re * pi, re * pr + im * pi);
+        final a = _hp2.process(_hp1.process(d)).abs();
+        n += a1 * (a - n);
+      }
       pr = re;
       pi = im;
-      final a = _hp2.process(_hp1.process(d)).abs();
-      n += a1 * (a - n);
       if (++k == step || i == count - 1) {
         _noise = n;
         final q = n > 0 ? 20 * math.log(_noiseRef / n) / math.ln10 : 99.0;
-        _decide(q, thresholdDb, k);
+        if (_settleLeft > 0) {
+          // Channel filter / HPF / smoother settling after a reset: stay closed.
+          _settleLeft -= k;
+        } else {
+          _decide(q, thresholdDb, k);
+        }
         k = 0;
       }
     }
@@ -370,7 +402,9 @@ class AutoSquelch {
       _segSum += x;
       if (++_segCount == _segLen) {
         final stuck = _open && _openSamples >= _freezeSamples;
-        if ((_segClean && !_open) || stuck) {
+        if (_settleLeft > 0) {
+          _settleLeft -= _segCount;
+        } else if ((_segClean && !_open) || stuck) {
           _segments.add(_db(_segSum / _segCount));
           if (_segments.length > AutoSquelchTuning.floorSegments) _segments.removeAt(0);
         }

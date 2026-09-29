@@ -8,6 +8,7 @@ import 'package:sdr_flutter/runtime/dsp_isolate.dart';
 import 'package:sdr_flutter/runtime/dsp_protocol.dart';
 import 'package:sdr_flutter/runtime/sdr_radio_controller.dart';
 import 'package:sdr_flutter/runtime/source_registry.dart';
+import 'package:sdr_flutter/sdrpp/dsp/noise_reduction/auto_squelch.dart' show AutoSquelchTuning;
 import 'package:sdr_flutter/ui/radio_controller.dart';
 
 import '../sdrpp/signal_path/harness.dart';
@@ -170,6 +171,25 @@ void main() {
     expect(c.squelchEnabled, isTrue);
     expect(c.squelchLevel, -60);
     expect((c.lastStats['audioFrames'] as num), greaterThan(0));
+    // Auto squelch (app extension) round-trips through the isolate and reports live status.
+    expect(c.squelchType, SquelchType.manual);
+    expect(c.autoSquelchAvailable, isTrue);
+    c.setSquelchType(SquelchType.auto);
+    c.setAutoSquelchOffset(2);
+    await Future<void>.delayed(const Duration(milliseconds: 1200));
+    expect(c.squelchType, SquelchType.auto);
+    expect(c.squelchEnabled, isFalse);
+    expect(c.autoSquelchOffset, 2);
+    final st = c.autoSquelchStatus;
+    expect(st, isNotNull);
+    expect(st!.thresholdDb, AutoSquelchTuning.noiseOpenDb + 2);
+    expect(c.stats.containsKey('squelch'), isFalse, reason: 'not dumped into the stats list');
+    c.setMode(DemodMode.wfm);
+    await Future<void>.delayed(const Duration(milliseconds: 300));
+    expect(c.autoSquelchAvailable, isFalse);
+    expect(c.squelchType, SquelchType.off);
+    c.setSquelchType(SquelchType.auto); // refused: no detector for WFM
+    expect(c.squelchType, SquelchType.off);
     await c.stop();
     expect(c.running, isFalse);
     await sub.cancel();
