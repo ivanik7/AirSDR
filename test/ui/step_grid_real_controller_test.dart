@@ -19,7 +19,6 @@ import 'package:sdr_flutter/runtime/sdr_radio_controller.dart';
 import 'package:sdr_flutter/ui/favorites/favorites.dart';
 import 'package:sdr_flutter/ui/legacy/app_shell.dart';
 import 'package:sdr_flutter/ui/legacy/centered_receiver.dart';
-import 'package:sdr_flutter/ui/radio_controller.dart';
 import 'package:sdr_flutter/usb/android_usb.dart';
 import 'package:sdr_flutter/usb/usb_device_provider.dart';
 
