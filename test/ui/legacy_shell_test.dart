@@ -122,11 +122,63 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('Удалить').last);
       await tester.pumpAndSettle();
+      expect(find.text('Удалить пресет?'), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('favoriteDeleteConfirm')));
+      await tester.pumpAndSettle();
       expect(favorites.entries.any((f) => f.id == id), isFalse);
       await favorites.flush();
       final reopened = FavoritesRepository();
       await reopened.load();
       expect(reopened.entries.any((f) => f.id == id), isFalse);
+      reopened.dispose();
+      await tester.pumpWidget(const SizedBox());
+      radio.dispose();
+      favorites.dispose();
+    },
+  );
+
+  testWidgets(
+    'built-in preset can be deleted from the menu with confirmation',
+    (tester) async {
+      final radio = DemoRadioController();
+      final favorites = FavoritesRepository();
+      await favorites.load();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: LegacyAppShell(controller: radio, favorites: favorites),
+        ),
+      );
+      await tester.tap(find.byKey(const ValueKey('tab-1')));
+      await tester.pump();
+      final fm = favorites.entries.firstWhere((f) => f.name == 'FM Radio');
+      expect(fm.builtIn, isTrue);
+      expect(find.text('FM Radio'), findsOneWidget);
+
+      // Cancel keeps it.
+      await tester.tap(find.byKey(ValueKey('favoriteMenu-${fm.id}')));
+      await tester.pumpAndSettle();
+      expect(find.text('Удалить'), findsOneWidget);
+      await tester.tap(find.text('Удалить'));
+      await tester.pumpAndSettle();
+      expect(find.text('Удалить пресет?'), findsOneWidget);
+      await tester.tap(find.text('Отмена'));
+      await tester.pumpAndSettle();
+      expect(favorites.entries.any((f) => f.id == fm.id), isTrue);
+      expect(find.text('FM Radio'), findsOneWidget);
+
+      // Confirm removes it from the list and from storage.
+      await tester.tap(find.byKey(ValueKey('favoriteMenu-${fm.id}')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Удалить'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('favoriteDeleteConfirm')));
+      await tester.pumpAndSettle();
+      expect(find.text('FM Radio'), findsNothing);
+      expect(favorites.entries.map((f) => f.name), ['Air Traffic', 'ISM Band']);
+      await favorites.flush();
+      final reopened = FavoritesRepository();
+      await reopened.load();
+      expect(reopened.entries.map((f) => f.name), ['Air Traffic', 'ISM Band']);
       reopened.dispose();
       await tester.pumpWidget(const SizedBox());
       radio.dispose();
@@ -213,10 +265,11 @@ void main() {
       expect(radio.vfoOffset, 0);
       await tester.tap(find.byKey(const ValueKey('tab-1')));
       await tester.pump();
-      expect(find.text('Симплекс 2м'), findsOneWidget);
-      await tester.tap(find.byKey(const ValueKey('apply-builtin-0')));
+      expect(find.text('Air Traffic'), findsOneWidget);
+      final air = favorites.entries.firstWhere((f) => f.name == 'Air Traffic');
+      await tester.tap(find.byKey(ValueKey('apply-${air.id}')));
       await tester.pump();
-      expect(radio.tunedFrequency, 145500000);
+      expect(radio.tunedFrequency, 125000000);
       expect(radio.vfoOffset, 0);
       await tester.tap(find.byKey(const ValueKey('tab-2')));
       await tester.pump();

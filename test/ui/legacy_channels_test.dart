@@ -63,6 +63,19 @@ Future<_Env> _pump(
   final radio = radioOverride ?? DemoRadioController();
   final favorites = FavoritesRepository();
   await favorites.load();
+  // Presets the channel tests name tiles after (explicit, not defaults).
+  favorites.add(
+    frequencyHz: 145500000,
+    name: 'Симплекс 2м',
+    mode: DemodMode.nfm,
+    category: 'VHF',
+  );
+  favorites.add(
+    frequencyHz: 433500000,
+    name: 'PMR вызов',
+    mode: DemodMode.nfm,
+    category: 'UHF',
+  );
   final channels = ChannelsRepository();
   await channels.load();
   seed?.call(channels);

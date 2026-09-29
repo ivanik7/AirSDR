@@ -132,6 +132,33 @@ class _PresetsScreenState extends State<PresetsScreen> {
     }
   }
 
+  /// Same for built-in and user presets: confirm, then delete for good.
+  Future<void> confirmDelete(Favorite f) async {
+    setState(() => message = null);
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Удалить пресет?'),
+        content: Text('${f.name} · ${formatMhz(f.frequencyHz)} MHz'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Отмена'),
+          ),
+          FilledButton(
+            key: const ValueKey('favoriteDeleteConfirm'),
+            style: FilledButton.styleFrom(backgroundColor: LegacyColors.danger),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Удалить'),
+          ),
+        ],
+      ),
+    );
+    if (ok == true && widget.favorites.entries.any((e) => e.id == f.id)) {
+      widget.favorites.delete(f.id);
+    }
+  }
+
   void apply(Favorite f) {
     try {
       widget.receiver.apply(f.frequencyHz, f.mode);
@@ -266,18 +293,14 @@ class _PresetsScreenState extends State<PresetsScreen> {
                         tooltip: 'Редактировать пресет',
                         onSelected: (action) {
                           if (action == 'edit') edit(f);
-                          if (action == 'delete') widget.favorites.delete(f.id);
+                          if (action == 'delete') confirmDelete(f);
                         },
-                        itemBuilder: (_) => [
-                          const PopupMenuItem(
-                            value: 'edit',
-                            child: Text('Изменить'),
+                        itemBuilder: (_) => const [
+                          PopupMenuItem(value: 'edit', child: Text('Изменить')),
+                          PopupMenuItem(
+                            value: 'delete',
+                            child: Text('Удалить'),
                           ),
-                          if (!f.builtIn)
-                            const PopupMenuItem(
-                              value: 'delete',
-                              child: Text('Удалить'),
-                            ),
                         ],
                       ),
                       FilledButton(
