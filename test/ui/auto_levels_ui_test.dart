@@ -100,7 +100,10 @@ void main() {
       expect(ui.autoPeak, isNull);
       rows(40, -95);
       expect(ui.autoPeak, lessThan(-75));
-      expect(ui.fftMax, closeTo(ui.autoNoiseFloor! + AutoLevelTuning.minRangeDb, 0.6));
+      expect(
+        ui.fftMax,
+        closeTo(ui.autoNoiseFloor! + AutoLevelTuning.minRangeDb, 0.6),
+      );
     });
 
     test('gain change restarts the window', () {
@@ -125,7 +128,10 @@ void main() {
       await Future<void>.delayed(Duration.zero);
       final prefs = await SharedPreferences.getInstance();
       expect(prefs.getBool(SdrUiState.autoLevelsStorageKey), isTrue);
-      final other = SdrUiState(radio, waterfall: WaterfallModel(autoSchedule: false));
+      final other = SdrUiState(
+        radio,
+        waterfall: WaterfallModel(autoSchedule: false),
+      );
       expect(other.autoLevels, isFalse);
       await other.loadSettings();
       expect(other.autoLevels, isTrue);
@@ -133,7 +139,7 @@ void main() {
     });
   });
 
-  testWidgets('MainScreen: Auto disables Max/Min sliders', (tester) async {
+  testWidgets('MainScreen: Auto removes Max/Min sliders', (tester) async {
     final radio = DemoRadioController();
     await tester.pumpWidget(MaterialApp(home: MainScreen(controller: radio)));
     await tester.pump();
@@ -143,37 +149,83 @@ void main() {
       await tester.pumpAndSettle();
     }
     Slider slider(String key) => tester.widget<Slider>(
-      find.descendant(of: find.byKey(ValueKey<String>(key)), matching: find.byType(Slider)),
+      find.descendant(
+        of: find.byKey(ValueKey<String>(key)),
+        matching: find.byType(Slider),
+      ),
     );
     expect(slider('fftMaxSlider').onChanged, isNotNull);
     await tester.tap(find.byKey(const ValueKey<String>('autoLevels')));
     await tester.pump();
-    expect(slider('fftMaxSlider').onChanged, isNull);
-    expect(slider('fftMinSlider').onChanged, isNull);
+    expect(find.byKey(const ValueKey('fftMaxSlider')), findsNothing);
+    expect(find.byKey(const ValueKey('fftMinSlider')), findsNothing);
+    await tester.tap(find.byKey(const ValueKey<String>('autoLevels')));
+    await tester.pump();
+    expect(slider('fftMaxSlider').onChanged, isNotNull);
+    expect(slider('fftMinSlider').onChanged, isNotNull);
     await tester.pumpWidget(const SizedBox());
     radio.dispose();
   });
 
-  testWidgets('legacy Settings: waterfall Auto switch disables Max/Min', (tester) async {
+  testWidgets('legacy Settings: waterfall Auto hides Max/Min', (tester) async {
     final radio = DemoRadioController();
-    await tester.pumpWidget(MaterialApp(home: LegacyAppShell(controller: radio)));
+    await tester.pumpWidget(
+      MaterialApp(home: LegacyAppShell(controller: radio)),
+    );
     await tester.pump();
     await tester.tap(find.byKey(const ValueKey('tab-2')));
     await tester.pump();
     final sw = find.byKey(const ValueKey('legacyAutoLevels'));
     final minSlider = find.byKey(const ValueKey('legacyFftMin'));
-    await tester.scrollUntilVisible(minSlider, 200, scrollable: find.byType(Scrollable).last);
+    await tester.scrollUntilVisible(
+      minSlider,
+      200,
+      scrollable: find.byType(Scrollable).last,
+    );
     await tester.pump();
-    expect(tester.widget<Slider>(find.byKey(const ValueKey('legacyFftMax'))).onChanged, isNotNull);
+    expect(
+      tester
+          .widget<Slider>(find.byKey(const ValueKey('legacyFftMax')))
+          .onChanged,
+      isNotNull,
+    );
     await tester.ensureVisible(sw);
     await tester.pump();
     await tester.tap(sw);
     await tester.pump();
     expect(tester.widget<Switch>(sw).value, isTrue);
-    expect(tester.widget<Slider>(find.byKey(const ValueKey('legacyFftMax'))).onChanged, isNull);
-    expect(tester.widget<Slider>(find.byKey(const ValueKey('legacyFftMin'))).onChanged, isNull);
+    expect(find.byKey(const ValueKey('legacyFftMax')), findsNothing);
+    expect(find.byKey(const ValueKey('legacyFftMin')), findsNothing);
+    await tester.tap(sw);
+    await tester.pump();
+    expect(
+      tester
+          .widget<Slider>(find.byKey(const ValueKey('legacyFftMax')))
+          .onChanged,
+      isNotNull,
+    );
+    expect(
+      tester
+          .widget<Slider>(find.byKey(const ValueKey('legacyFftMin')))
+          .onChanged,
+      isNotNull,
+    );
+    tester.widget<Slider>(find.byKey(const ValueKey('legacyFftMin')))
+        .onChanged!(-90);
+    await tester.pump();
+    expect(tester.widget<Slider>(find.byKey(const ValueKey('legacyFftMin'))).value, -90);
+    expect(
+      tester.widget<Slider>(find.byKey(const ValueKey('legacyFftMax'))).value,
+      greaterThanOrEqualTo(-80),
+    );
+    await tester.tap(sw);
+    await tester.pump();
+    expect(find.byKey(const ValueKey('legacyFftMin')), findsNothing);
+    await tester.tap(sw);
+    await tester.pump();
+    expect(tester.widget<Slider>(find.byKey(const ValueKey('legacyFftMin'))).value, -90);
     final prefs = await SharedPreferences.getInstance();
-    expect(prefs.getBool(SdrUiState.autoLevelsStorageKey), isTrue);
+    expect(prefs.getBool(SdrUiState.autoLevelsStorageKey), isFalse);
     await tester.pumpWidget(const SizedBox());
     radio.dispose();
   });

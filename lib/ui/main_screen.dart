@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
 // Main screen. Minimal Flutter counterpart of sdrpp/core/src/gui/main_window.cpp
-// (top bar: play/stop, volume, FrequencySelect, tuning mode; centre: waterfall;
+// (top bar: play/stop, FrequencySelect, tuning mode; centre: waterfall;
 // right: zoom/max/min) + the source menu (gui/menus/source.cpp: device selection
 // disabled while running, sample rate, gain) + the radio module menu
 // (decoder_modules/radio: mode, bandwidth, squelch). Layout per docs/03 §4.6.
@@ -34,7 +34,8 @@ class MainScreen extends StatefulWidget {
 
 class _MainScreenState extends State<MainScreen> {
   late SdrUiState _ui;
-  final GlobalKey<ScaffoldMessengerState> _messenger = GlobalKey<ScaffoldMessengerState>();
+  final GlobalKey<ScaffoldMessengerState> _messenger =
+      GlobalKey<ScaffoldMessengerState>();
   String? _shownError;
 
   @override
@@ -74,13 +75,19 @@ class _MainScreenState extends State<MainScreen> {
       final m = _messenger.currentState;
       if (m == null || !mounted) return;
       m.hideCurrentSnackBar();
-      m.showSnackBar(SnackBar(
-        key: const ValueKey<String>('errorSnack'),
-        content: Text(err),
-        backgroundColor: Colors.red.shade900,
-        duration: const Duration(seconds: 6),
-        action: SnackBarAction(label: 'OK', textColor: Colors.white, onPressed: widget.controller.clearError),
-      ));
+      m.showSnackBar(
+        SnackBar(
+          key: const ValueKey<String>('errorSnack'),
+          content: Text(err),
+          backgroundColor: Colors.red.shade900,
+          duration: const Duration(seconds: 6),
+          action: SnackBarAction(
+            label: 'OK',
+            textColor: Colors.white,
+            onPressed: widget.controller.clearError,
+          ),
+        ),
+      );
     });
   }
 
@@ -94,11 +101,15 @@ class _MainScreenState extends State<MainScreen> {
       body: SafeArea(
         child: ListenableBuilder(
           listenable: _ui,
-          builder: (context, _) => OrientationBuilder(builder: (context, orientation) {
-            final landscape = orientation == Orientation.landscape ||
-                MediaQuery.sizeOf(context).width > MediaQuery.sizeOf(context).height * 1.2;
-            return landscape ? _landscape(context) : _portrait(context);
-          }),
+          builder: (context, _) => OrientationBuilder(
+            builder: (context, orientation) {
+              final landscape =
+                  orientation == Orientation.landscape ||
+                  MediaQuery.sizeOf(context).width >
+                      MediaQuery.sizeOf(context).height * 1.2;
+              return landscape ? _landscape(context) : _portrait(context);
+            },
+          ),
         ),
       ),
     );
@@ -176,10 +187,15 @@ class _TopBar extends StatelessWidget {
               value: dropdownDeviceValue(r),
               hint: const Text('No device'),
               // Source selection is disabled while running (gui/menus/source.cpp).
-              onChanged: r.running ? null : (d) => d == null ? null : r.selectDevice(d),
+              onChanged: r.running
+                  ? null
+                  : (d) => d == null ? null : r.selectDevice(d),
               items: [
                 for (final d in devices)
-                  DropdownMenuItem<SdrDeviceInfo>(value: d, child: Text(d.name, overflow: TextOverflow.ellipsis)),
+                  DropdownMenuItem<SdrDeviceInfo>(
+                    value: d,
+                    child: Text(d.name, overflow: TextOverflow.ellipsis),
+                  ),
               ],
             ),
           ),
@@ -199,10 +215,22 @@ class _TopBar extends StatelessWidget {
             icon: const Icon(Icons.more_vert),
             itemBuilder: (context) => [
               for (final m in sdrppColorMaps)
-                CheckedPopupMenuItem<String>(value: 'cm:${m.id}', checked: ui.waterfall.colorMap.id == m.id, child: Text(m.name)),
+                CheckedPopupMenuItem<String>(
+                  value: 'cm:${m.id}',
+                  checked: ui.waterfall.colorMap.id == m.id,
+                  child: Text(m.name),
+                ),
               const PopupMenuDivider(),
-              CheckedPopupMenuItem<String>(value: 'hold', checked: ui.waterfall.fftHold, child: const Text('FFT hold')),
-              CheckedPopupMenuItem<String>(value: 'smooth', checked: ui.waterfall.fftSmoothing, child: const Text('FFT smoothing')),
+              CheckedPopupMenuItem<String>(
+                value: 'hold',
+                checked: ui.waterfall.fftHold,
+                child: const Text('FFT hold'),
+              ),
+              CheckedPopupMenuItem<String>(
+                value: 'smooth',
+                checked: ui.waterfall.fftSmoothing,
+                child: const Text('FFT smoothing'),
+              ),
             ],
             onSelected: (v) {
               if (v.startsWith('cm:')) {
@@ -264,7 +292,10 @@ class _FrequencyRow extends StatelessWidget {
             ],
             child: Padding(
               padding: const EdgeInsets.all(8),
-              child: Text(ui.tuningMode.label, style: Theme.of(context).textTheme.labelSmall),
+              child: Text(
+                ui.tuningMode.label,
+                style: Theme.of(context).textTheme.labelSmall,
+              ),
             ),
           ),
         ],
@@ -287,9 +318,13 @@ class _ModeSelector extends StatelessWidget {
       child: SegmentedButton<DemodMode>(
         key: const ValueKey<String>('modeSelector'),
         showSelectedIcon: false,
-        style: const ButtonStyle(visualDensity: VisualDensity.compact, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+        style: const ButtonStyle(
+          visualDensity: VisualDensity.compact,
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        ),
         segments: [
-          for (final m in DemodMode.values) ButtonSegment<DemodMode>(value: m, label: Text(m.label)),
+          for (final m in DemodMode.values)
+            ButtonSegment<DemodMode>(value: m, label: Text(m.label)),
         ],
         selected: {ui.radio.mode},
         onSelectionChanged: (s) => ui.radio.setMode(s.first),
@@ -339,7 +374,10 @@ class _LabeledSlider extends StatelessWidget {
               onChanged: (max > min) ? onChanged : null,
             ),
           ),
-          SizedBox(width: 64, child: Text(valueText, style: style, textAlign: TextAlign.right)),
+          SizedBox(
+            width: 64,
+            child: Text(valueText, style: style, textAlign: TextAlign.right),
+          ),
           ?trailing,
         ],
       ),
@@ -368,47 +406,54 @@ class _ControlsPanel extends StatelessWidget {
         value: r.bandwidth,
         min: p.minBandwidth,
         max: p.maxBandwidth,
-        onChanged: p.bandwidthLocked ? null : (v) => r.setBandwidth(_roundBw(v)),
+        onChanged: p.bandwidthLocked
+            ? null
+            : (v) => r.setBandwidth(_roundBw(v)),
       ),
       _LabeledSlider(
         key: const ValueKey<String>('gainSlider'),
         label: 'Gain',
-        valueText: r.agc ? 'AGC' : '${r.gain.toStringAsFixed(1)} ${g?.unit ?? 'dB'}',
+        valueText: r.agc
+            ? 'AGC'
+            : '${r.gain.toStringAsFixed(1)} ${g?.unit ?? 'dB'}',
         value: r.gain,
         min: g?.min ?? 0,
         max: g?.max ?? 1,
-        divisions: (g != null && g.step > 0) ? ((g.max - g.min) / g.step).round() : null,
+        divisions: (g != null && g.step > 0)
+            ? ((g.max - g.min) / g.step).round()
+            : null,
         onChanged: (g == null || r.agc) ? null : r.setGain,
         trailing: (dev?.hasAgc ?? false)
             ? Tooltip(
                 message: 'AGC',
-                child: Checkbox(key: const ValueKey<String>('agc'), value: r.agc, onChanged: (v) => r.setAgc(v ?? false)),
+                child: Checkbox(
+                  key: const ValueKey<String>('agc'),
+                  value: r.agc,
+                  onChanged: (v) => r.setAgc(v ?? false),
+                ),
               )
             : null,
-      ),
-      _LabeledSlider(
-        key: const ValueKey<String>('volumeSlider'),
-        label: 'Vol',
-        valueText: '${(r.volume * 100).round()}%',
-        value: r.volume,
-        min: 0,
-        max: 1,
-        onChanged: r.setVolume,
       ),
       _LabeledSlider(
         key: const ValueKey<String>('squelchSlider'),
         label: 'SQL',
         valueText: r.squelchType == SquelchType.auto
             ? 'auto'
-            : (r.squelchEnabled ? '${r.squelchLevel.toStringAsFixed(0)} dB' : 'off'),
+            : (r.squelchEnabled
+                  ? '${r.squelchLevel.toStringAsFixed(0)} dB'
+                  : 'off'),
         value: r.squelchLevel,
         min: -100,
         max: 0,
-        onChanged: (p.squelchAllowed && r.squelchEnabled) ? r.setSquelchLevel : null,
+        onChanged: (p.squelchAllowed && r.squelchEnabled)
+            ? r.setSquelchLevel
+            : null,
         trailing: Checkbox(
           key: const ValueKey<String>('squelchEnable'),
           value: r.squelchEnabled && p.squelchAllowed,
-          onChanged: p.squelchAllowed ? (v) => r.setSquelchEnabled(v ?? false) : null,
+          onChanged: p.squelchAllowed
+              ? (v) => r.setSquelchEnabled(v ?? false)
+              : null,
         ),
       ),
       if (!compact) ...[
@@ -422,11 +467,13 @@ class _ControlsPanel extends StatelessWidget {
         ),
         ..._levelControls(ui),
       ],
-      if (dev != null)
-        _SampleRateRow(ui: ui),
+      if (dev != null) _SampleRateRow(ui: ui),
     ];
     if (!compact) {
-      return Padding(padding: const EdgeInsets.symmetric(horizontal: 8), child: Column(children: sliders));
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+        child: Column(children: sliders),
+      );
     }
     // Portrait: bandwidth + gain always visible, the rest folded.
     return Padding(
@@ -440,61 +487,68 @@ class _ControlsPanel extends StatelessWidget {
             dense: true,
             visualDensity: VisualDensity.compact,
             tilePadding: EdgeInsets.zero,
-            title: Text('Volume ${(r.volume * 100).round()}% · SQL ${r.squelchEnabled ? '${r.squelchLevel.round()} dB' : 'off'}',
-                style: Theme.of(context).textTheme.labelSmall),
-            children: [
-              ...sliders.sublist(2),
-              ..._levelControls(ui),
-            ],
+            title: Text(
+              'SQL ${r.squelchEnabled ? '${r.squelchLevel.round()} dB' : 'off'}',
+              style: Theme.of(context).textTheme.labelSmall,
+            ),
+            children: [...sliders.sublist(2), ..._levelControls(ui)],
           ),
         ],
       ),
     );
   }
 
-  /// Max/Min sliders (main_window.cpp:633-663) + automatic mode. In Auto the
-  /// sliders show the automatic levels and are disabled; turning Auto off
-  /// keeps the current levels for manual adjustment.
+  /// Max/Min sliders (main_window.cpp:633-663) only in manual mode.
   static List<Widget> _levelControls(SdrUiState ui) {
     final auto = ui.autoLevels;
     return <Widget>[
-      _LabeledSlider(
-        key: const ValueKey<String>('fftMaxSlider'),
-        label: 'Max',
-        valueText: '${ui.fftMax.round()} dB',
-        value: ui.fftMax,
-        min: -150,
-        max: 0,
-        onChanged: auto ? null : (v) => ui.setLevels(ui.fftMin, v),
-        trailing: Tooltip(
-          message: 'Авто Max/Min: шум и пики за последние '
-              '${AutoLevelTuning.window.inSeconds} с',
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Checkbox(
-                key: const ValueKey<String>('autoLevels'),
-                value: auto,
-                onChanged: (v) => ui.setAutoLevels(v ?? false),
-              ),
-              const Text('Авто'),
-            ],
+      Row(
+        children: [
+          const Text('Водопад'),
+          const Spacer(),
+          Tooltip(
+            message:
+                'Авто Max/Min: шум и пики за последние '
+                '${AutoLevelTuning.window.inSeconds} с',
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Checkbox(
+                  key: const ValueKey<String>('autoLevels'),
+                  value: auto,
+                  onChanged: (v) => ui.setAutoLevels(v ?? false),
+                ),
+                const Text('Авто'),
+              ],
+            ),
           ),
+        ],
+      ),
+      if (!auto) ...[
+        _LabeledSlider(
+          key: const ValueKey<String>('fftMaxSlider'),
+          label: 'Max',
+          valueText: '${ui.fftMax.round()} dB',
+          value: ui.fftMax,
+          min: -150,
+          max: 0,
+          onChanged: (v) => ui.setLevels(ui.fftMin, v),
         ),
-      ),
-      _LabeledSlider(
-        key: const ValueKey<String>('fftMinSlider'),
-        label: 'Min',
-        valueText: '${ui.fftMin.round()} dB',
-        value: ui.fftMin,
-        min: -160,
-        max: -10,
-        onChanged: auto ? null : (v) => ui.setLevels(v, ui.fftMax),
-      ),
+        _LabeledSlider(
+          key: const ValueKey<String>('fftMinSlider'),
+          label: 'Min',
+          valueText: '${ui.fftMin.round()} dB',
+          value: ui.fftMin,
+          min: -160,
+          max: -10,
+          onChanged: (v) => ui.setLevels(v, ui.fftMax),
+        ),
+      ],
     ];
   }
 
-  static double _roundBw(double v) => v >= 10000 ? (v / 100).roundToDouble() * 100 : v.roundToDouble();
+  static double _roundBw(double v) =>
+      v >= 10000 ? (v / 100).roundToDouble() * 100 : v.roundToDouble();
 }
 
 class _SampleRateRow extends StatelessWidget {
@@ -517,9 +571,15 @@ class _SampleRateRow extends StatelessWidget {
               isExpanded: true,
               isDense: true,
               value: rates.contains(r.sampleRate) ? r.sampleRate : null,
-              onChanged: r.running ? null : (v) => v == null ? null : r.setSampleRate(v),
+              onChanged: r.running
+                  ? null
+                  : (v) => v == null ? null : r.setSampleRate(v),
               items: [
-                for (final s in rates) DropdownMenuItem<double>(value: s, child: Text(hrfreqToString(s), style: style)),
+                for (final s in rates)
+                  DropdownMenuItem<double>(
+                    value: s,
+                    child: Text(hrfreqToString(s), style: style),
+                  ),
               ],
             ),
           ),
@@ -555,7 +615,10 @@ class _Display extends StatelessWidget {
                 borderRadius: BorderRadius.circular(4),
                 child: InkWell(
                   onTap: ui.radio.clearError,
-                  child: Padding(padding: const EdgeInsets.all(6), child: Text(err, style: small)),
+                  child: Padding(
+                    padding: const EdgeInsets.all(6),
+                    child: Text(err, style: small),
+                  ),
                 ),
               ),
             ),
@@ -565,9 +628,14 @@ class _Display extends StatelessWidget {
             left: 4,
             bottom: 2,
             child: IgnorePointer(
-              child: Text(statsLine(ui.radio),
-                  key: const ValueKey<String>('statusLine'),
-                  style: small?.copyWith(color: Colors.white70, shadows: const [Shadow(blurRadius: 2)])),
+              child: Text(
+                statsLine(ui.radio),
+                key: const ValueKey<String>('statusLine'),
+                style: small?.copyWith(
+                  color: Colors.white70,
+                  shadows: const [Shadow(blurRadius: 2)],
+                ),
+              ),
             ),
           ),
       ],

@@ -333,7 +333,9 @@ void main() {
     await _settle(50);
     plugin.detach(_rtl);
     await _until(
-      () => c.linkState == DeviceLinkState.disconnected && c.selectedDevice == null,
+      () =>
+          c.linkState == DeviceLinkState.disconnected &&
+          c.selectedDevice == null,
       reason: 'disconnected',
     );
     // Stats / state events keep arriving while the device is gone.
@@ -343,7 +345,9 @@ void main() {
     // Detach without a preceding ENODEV (the other order seen on the phone).
     plugin.detach(_rtlReplugged);
     await _until(
-      () => c.linkState == DeviceLinkState.disconnected && c.selectedDevice == null,
+      () =>
+          c.linkState == DeviceLinkState.disconnected &&
+          c.selectedDevice == null,
       reason: 'disconnected 2',
     );
     await _settle(700);
@@ -353,19 +357,22 @@ void main() {
     expect(violations, isEmpty);
   });
 
-  test('a vanished device cannot be selected manually from a stale menu', () async {
-    plugin.devices.add(_rtl);
-    final c = make();
-    await _until(() => c.running, reason: 'auto start');
-    await c.stop();
-    final stale = c.selectedDevice!;
-    plugin.detach(_rtl);
-    await _until(() => c.selectedDevice == null, reason: 'deselected');
-    await c.selectDevice(stale);
-    await _settle();
-    expect(c.selectedDevice, isNull);
-    expect(plugin.opens, <String>[_rtl['deviceName'] as String]);
-  });
+  test(
+    'a vanished device cannot be selected manually from a stale menu',
+    () async {
+      plugin.devices.add(_rtl);
+      final c = make();
+      await _until(() => c.running, reason: 'auto start');
+      await c.stop();
+      final stale = c.selectedDevice!;
+      plugin.detach(_rtl);
+      await _until(() => c.selectedDevice == null, reason: 'deselected');
+      await c.selectDevice(stale);
+      await _settle();
+      expect(c.selectedDevice, isNull);
+      expect(plugin.opens, <String>[_rtl['deviceName'] as String]);
+    },
+  );
 
   // Phone logs: a loose OTG plug bounced attach/detach every few seconds. Each attach is a
   // new connection (one open), each detach tears it down; the controller must follow without
@@ -402,23 +409,30 @@ void main() {
     expect(c.running, isFalse);
   });
 
-  test('device lost without a detach (ENODEV only): one stop, no start loop', () async {
-    plugin.devices.add(_rtl);
-    final c = make();
-    await _until(() => c.running, reason: 'auto start');
-    await _settle();
-    c.setSourceSetting('simulateLoss', true);
-    await _until(
-      () => c.linkState == DeviceLinkState.disconnected,
-      reason: 'disconnected',
-    );
-    plugin.otherEvent();
-    await c.refreshDevices();
-    await _settle(1500);
-    expect(c.running, isFalse);
-    expect(c.linkState, DeviceLinkState.disconnected);
-    expect(plugin.opens.length, 1, reason: 'no automatic reopen loop on the lost device');
-  });
+  test(
+    'device lost without a detach (ENODEV only): one stop, no start loop',
+    () async {
+      plugin.devices.add(_rtl);
+      final c = make();
+      await _until(() => c.running, reason: 'auto start');
+      await _settle();
+      c.setSourceSetting('simulateLoss', true);
+      await _until(
+        () => c.linkState == DeviceLinkState.disconnected,
+        reason: 'disconnected',
+      );
+      plugin.otherEvent();
+      await c.refreshDevices();
+      await _settle(1500);
+      expect(c.running, isFalse);
+      expect(c.linkState, DeviceLinkState.disconnected);
+      expect(
+        plugin.opens.length,
+        1,
+        reason: 'no automatic reopen loop on the lost device',
+      );
+    },
+  );
 
   test('user Stop: no automatic restart until Start or a new attach', () async {
     plugin.devices.add(_rtl);
@@ -427,7 +441,11 @@ void main() {
     await c.stop();
     expect(c.linkState, DeviceLinkState.stoppedByUser);
     expect(c.lastState['sourceId'], isNull, reason: 'Stop releases DSP source');
-    expect(plugin.closes, contains(_rtl['deviceName']), reason: 'Stop closes USB fd');
+    expect(
+      plugin.closes,
+      contains(_rtl['deviceName']),
+      reason: 'Stop closes USB fd',
+    );
     await c.refreshDevices();
     plugin.otherEvent();
     await _settle();
@@ -522,8 +540,8 @@ void main() {
       expect(c2.lastState['muted'], isTrue);
       expect(
         c2.volume,
-        closeTo(0.6, 1e-9),
-        reason: 'volume is persisted, mute is not',
+        closeTo(1.0, 1e-9),
+        reason: 'volume resets to full, mute remains per session',
       );
     },
   );

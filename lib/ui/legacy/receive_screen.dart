@@ -73,7 +73,7 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
                       icon: const Icon(Icons.close, size: 17),
                     )
                   : IconButton(
-                      // Real mute (separate from the volume slider in Settings); starts muted.
+                      // Real mute, independent of the fixed full app volume; starts muted.
                       key: const ValueKey('legacyMute'),
                       tooltip: widget.scanner.userMuted
                           ? 'Включить звук'
@@ -468,7 +468,7 @@ String linkStatusText(DeviceLinkState s) => switch (s) {
 };
 
 /// Short receive-screen stats: "2.40 MS/s · USB drops 99 · audio drops 0".
-/// The full list lives in Settings; this line is always ellipsized.
+/// The full list lives in the Settings status sheet; this line is always ellipsized.
 String compactStatsLine(RadioController radio) {
   final st = radio.stats;
   return [
