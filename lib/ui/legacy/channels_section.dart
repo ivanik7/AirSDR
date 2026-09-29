@@ -4,14 +4,12 @@
 // the old UI's _ChannelsSection), but honest about the single receiver:
 // exactly one slot is active and only it shows a (real) level.
 //
-// Layout: a header and ONE horizontally scrolling row of fixed-size tiles.
-// The block height never depends on the number of channels, so the Приём
-// tab needs no vertical scrolling. The active channel (and the one the
-// scanner is tuned to) is scrolled into view automatically; a tile dragged
-// to the row edge scrolls the row, so it can be dropped anywhere.
+// Layout: one row for 1–2 channels; two rows by columns for 3+.
+// Horizontal scrolling starts at 5 channels. The active/scanned channel is
+// revealed and edge dragging scrolls the columns; no vertical scrolling.
 //
 // Channels have no own names: a tile shows the preset name at exactly the
-// same frequency, else "<mode> <MHz>" ([ChannelController.displayName]).
+// same frequency, else a blank name (mode remains at the right).
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -39,10 +37,9 @@ class ChannelsSection extends StatefulWidget {
 
   static const tileGap = 4.0;
 
-  /// Tile width for a row of [rowWidth]: about 2.5 tiles are visible, so a
-  /// cut-off tile hints that the row scrolls.
+  /// More than four: two full columns plus a preview of the next.
   static double tileWidthFor(double rowWidth) =>
-      ((rowWidth - 2 * tileGap) / 2.5).clamp(104.0, 160.0);
+      (rowWidth - 2 * tileGap) / 2.35;
 
   @override
   State<ChannelsSection> createState() => _ChannelsSectionState();
@@ -52,6 +49,7 @@ class _ChannelsSectionState extends State<ChannelsSection> {
   final _scroll = ScrollController();
   final _rowKey = GlobalKey();
   double _tileWidth = 120;
+  int _rows = 1;
   String? _shownKey;
 
   // Auto-scroll while a tile is dragged near the row edge.
@@ -105,7 +103,7 @@ class _ChannelsSectionState extends State<ChannelsSection> {
       case 'preset':
         await _saveAsPreset(c);
       case 'delete':
-        await _confirmDelete(c);
+        if (repo.indexOf(c.id) >= 0) widget.controller.delete(c.id);
     }
   }
 
@@ -186,34 +184,6 @@ class _ChannelsSectionState extends State<ChannelsSection> {
     );
   }
 
-  Future<void> _confirmDelete(ReceiverChannel c) async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Удалить канал?'),
-        content: Text(
-          '${widget.controller.displayName(c)} · '
-          '${formatMhz(c.frequencyHz)} MHz',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Отмена'),
-          ),
-          FilledButton(
-            key: const ValueKey('channelDeleteConfirm'),
-            style: FilledButton.styleFrom(backgroundColor: LegacyColors.danger),
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Удалить'),
-          ),
-        ],
-      ),
-    );
-    if (ok == true && repo.indexOf(c.id) >= 0) {
-      widget.controller.delete(c.id);
-    }
-  }
-
   /// Channel whose tile must be visible: the one the scanner is tuned to,
   /// else the active one.
   String? get _focusId => widget.scanner.active
@@ -222,7 +192,8 @@ class _ChannelsSectionState extends State<ChannelsSection> {
 
   void _scheduleReveal() {
     final id = _focusId;
-    final key = '$id/${repo.indexOf(id ?? '')}/${repo.length}/$_tileWidth';
+    final key =
+        '$id/${repo.indexOf(id ?? '')}/${repo.length}/$_tileWidth/$_rows';
     if (key == _shownKey || _dragging) return;
     _shownKey = key;
     WidgetsBinding.instance.addPostFrameCallback((_) => _reveal(id));
@@ -233,7 +204,7 @@ class _ChannelsSectionState extends State<ChannelsSection> {
     final i = repo.indexOf(id);
     if (i < 0) return;
     final p = _scroll.position;
-    final left = i * (_tileWidth + ChannelsSection.tileGap);
+    final left = (i ~/ _rows) * (_tileWidth + ChannelsSection.tileGap);
     final right = left + _tileWidth;
     double? target;
     if (left < p.pixels) {
@@ -292,7 +263,7 @@ class _ChannelsSectionState extends State<ChannelsSection> {
     builder: (context, _) {
       final all = repo.channels;
       final scaler = MediaQuery.textScalerOf(context);
-      // Fixed by text scale only — never by the number of channels.
+      // Each row is fixed by text scale; the second row uses spectrum space.
       // Tile: 15 pt MHz + 11 pt name lines (scaled) + level bar, gaps,
       // padding and the active border (fixed).
       final rowHeight = scaler.scale(38) + 18;
@@ -381,10 +352,17 @@ class _ChannelsSectionState extends State<ChannelsSection> {
           ),
           SizedBox(
             key: _rowKey,
-            height: rowHeight,
+            height:
+                rowHeight * (all.length > 2 ? 2 : 1) +
+                (all.length > 2 ? ChannelsSection.tileGap : 0),
             child: LayoutBuilder(
               builder: (context, box) {
-                _tileWidth = ChannelsSection.tileWidthFor(box.maxWidth);
+                _rows = all.length > 2 ? 2 : 1;
+                _tileWidth = all.length > 4
+                    ? ChannelsSection.tileWidthFor(box.maxWidth)
+                    : all.length == 1
+                    ? box.maxWidth.clamp(104.0, 160.0)
+                    : (box.maxWidth - ChannelsSection.tileGap) / 2;
                 _scheduleReveal();
                 return Listener(
                   onPointerMove: (e) {
@@ -405,38 +383,89 @@ class _ChannelsSectionState extends State<ChannelsSection> {
                           key: const ValueKey('channelsRow'),
                           controller: _scroll,
                           scrollDirection: Axis.horizontal,
-                          child: Row(
-                            children: [
-                              for (final (i, c) in all.indexed) ...[
-                                if (i > 0)
-                                  const SizedBox(
-                                    width: ChannelsSection.tileGap,
+                          physics: all.length > 4
+                              ? null
+                              : const NeverScrollableScrollPhysics(),
+                          child: SizedBox(
+                            width: all.length > 4 ? null : box.maxWidth,
+                            child: Row(
+                              children: [
+                                for (
+                                  var col = 0;
+                                  col < (all.length + _rows - 1) ~/ _rows;
+                                  col++
+                                ) ...[
+                                  if (col > 0)
+                                    const SizedBox(
+                                      width: ChannelsSection.tileGap,
+                                    ),
+                                  Column(
+                                    children: [
+                                      for (var row = 0; row < _rows; row++) ...[
+                                        if (row > 0)
+                                          const SizedBox(
+                                            height: ChannelsSection.tileGap,
+                                          ),
+                                        if (col * _rows + row < all.length)
+                                          SizedBox(
+                                            width: _tileWidth,
+                                            height: rowHeight,
+                                            child: _ChannelTile(
+                                              // Column-major order: indices 0/1 share a column.
+                                              // Keep stable keys for drag targets across reorder.
+                                              key: ValueKey(
+                                                'channel-${all[col * _rows + row].id}',
+                                              ),
+                                              channel: all[col * _rows + row],
+                                              name: widget.controller.tileName(
+                                                all[col * _rows + row],
+                                              ),
+                                              active:
+                                                  all[col * _rows + row].id ==
+                                                  repo.activeId,
+                                              tuned: widget.scanner.active
+                                                  ? all[col * _rows + row].id ==
+                                                        widget
+                                                            .scanner
+                                                            .tunedChannelId
+                                                  : all[col * _rows + row].id ==
+                                                        repo.activeId,
+                                              receiving:
+                                                  all[col * _rows + row].id ==
+                                                  receivingId,
+                                              scanning: widget.scanner.active,
+                                              radio: widget.radio,
+                                              meter: widget.meter,
+                                              onTap: (pos) {
+                                                final c =
+                                                    all[col * _rows + row];
+                                                if (c.id == repo.activeId) {
+                                                  _menu(c, pos);
+                                                } else {
+                                                  _select(c);
+                                                }
+                                              },
+                                              onMenu: (pos) => _menu(
+                                                all[col * _rows + row],
+                                                pos,
+                                              ),
+                                              onDragStarted: _dragStarted,
+                                              onDragFinished: _dragStopped,
+                                              onDropped: (draggedId) =>
+                                                  widget.controller.move(
+                                                    draggedId,
+                                                    repo.indexOf(
+                                                      all[col * _rows + row].id,
+                                                    ),
+                                                  ),
+                                            ),
+                                          ),
+                                      ],
+                                    ],
                                   ),
-                                SizedBox(
-                                  width: _tileWidth,
-                                  height: rowHeight,
-                                  child: _ChannelTile(
-                                    key: ValueKey('channel-${c.id}'),
-                                    channel: c,
-                                    name: widget.controller.displayName(c),
-                                    active: c.id == repo.activeId,
-                                    tuned: widget.scanner.active
-                                        ? c.id == widget.scanner.tunedChannelId
-                                        : c.id == repo.activeId,
-                                    receiving: c.id == receivingId,
-                                    scanning: widget.scanner.active,
-                                    radio: widget.radio,
-                                    meter: widget.meter,
-                                    onTap: () => _select(c),
-                                    onMenu: (pos) => _menu(c, pos),
-                                    onDragStarted: _dragStarted,
-                                    onDragFinished: _dragStopped,
-                                    onDropped: (draggedId) => widget.controller
-                                        .move(draggedId, repo.indexOf(c.id)),
-                                  ),
-                                ),
+                                ],
                               ],
-                            ],
+                            ),
                           ),
                         ),
                 );
@@ -474,7 +503,7 @@ class _ChannelTile extends StatefulWidget {
   final bool scanning;
   final RadioController radio;
   final SignalMeter meter;
-  final VoidCallback onTap;
+  final void Function(Offset globalPosition) onTap;
   final void Function(Offset globalPosition) onMenu;
   final VoidCallback onDragStarted;
   final VoidCallback onDragFinished;
@@ -527,7 +556,8 @@ class _ChannelTileState extends State<_ChannelTile> {
             ),
             childWhenDragging: Opacity(opacity: 0.35, child: _body()),
             child: GestureDetector(
-              onTap: widget.onTap,
+              onTapDown: (details) => _down = details.globalPosition,
+              onTap: () => widget.onTap(_down),
               child: _body(target: candidates.isNotEmpty),
             ),
           ),

@@ -100,7 +100,7 @@ void main() {
         ),
       );
       await until(() => c.running && allAt(118200000), 'snapped restore');
-      expect(find.text('ШАГ 100.00 кГц'), findsOneWidget);
+      expect(find.text('ШАГ 100 кГц'), findsOneWidget);
       expect(shown(), '118.200');
 
       // ◀/▶ left with the tuning ruler: type the neighbouring grid value.
@@ -111,13 +111,13 @@ void main() {
       await until(() => allAt(118100000), 'keypad 118.1');
       expect(shown(), '118.100');
 
-      // 100 kHz → 200 → 5 kHz (cycle); then type 118.1837.
-      await tester.tap(find.textContaining('ШАГ'));
-      await tester.pump();
-      await tester.tap(find.textContaining('ШАГ'));
-      await tester.pump();
-      expect(find.text('ШАГ 5.00 кГц'), findsOneWidget);
-      for (final k in ['1', '1', '8', '.', '1', '8', '3', '7', 'OK']) {
+      // Choose 5 kHz explicitly; the third fractional digit completes input.
+      await tester.tap(find.byKey(const ValueKey('legacyStep')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('legacyStep-5000')));
+      await tester.pumpAndSettle();
+      expect(find.text('ШАГ 5 кГц'), findsOneWidget);
+      for (final k in ['1', '1', '8', '.', '1', '8', '3']) {
         await tester.tap(find.byKey(ValueKey('key-$k')));
         await tester.pump();
       }

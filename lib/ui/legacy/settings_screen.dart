@@ -248,6 +248,22 @@ class SettingsScreen extends StatelessWidget {
     return [
       _section('ВОДОПАД'),
       _row(
+        'Скорость водопада',
+        'Высота строки FFT · не зависит от размера окна',
+        trailing: DropdownButton<int>(
+          key: const ValueKey('waterfallSpeed'),
+          value: s.waterfallRowHeight,
+          items: const [
+            DropdownMenuItem(value: 1, child: Text('Медленно')),
+            DropdownMenuItem(value: 2, child: Text('Нормально')),
+            DropdownMenuItem(value: 4, child: Text('Быстро')),
+          ],
+          onChanged: (height) {
+            if (height != null) s.setWaterfallRowHeight(height);
+          },
+        ),
+      ),
+      _row(
         'Авто-контраст',
         auto
             ? (floor == null

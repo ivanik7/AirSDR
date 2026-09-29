@@ -223,8 +223,10 @@ class WaterfallPainter extends CustomPainter {
     if (img != null) {
       final w = img.width.toDouble(), h = img.height.toDouble();
       final head = wf.imageHead.toDouble().clamp(0.0, h);
-      final sy = size.height / h;
+      final sy = state.waterfallRowHeight.toDouble();
       final paint = Paint()..filterQuality = FilterQuality.low;
+      canvas.save();
+      canvas.clipRect(area);
       // Newest rows [head, h) at the top…
       if (h - head > 0) {
         canvas.drawImageRect(img, Rect.fromLTWH(0, head, w, h - head), Rect.fromLTWH(0, 0, size.width, (h - head) * sy), paint);
@@ -233,6 +235,7 @@ class WaterfallPainter extends CustomPainter {
       if (head > 0) {
         canvas.drawImageRect(img, Rect.fromLTWH(0, 0, w, head), Rect.fromLTWH(0, (h - head) * sy, size.width, head * sy), paint);
       }
+      canvas.restore();
     }
     // SDR++ draws the VFO on the waterfall only on hover; touch has no hover,
     // so it is always drawn, more transparent.
@@ -364,7 +367,8 @@ class _SpectrumWaterfallViewState extends State<SpectrumWaterfallView> {
       final wfH = math.max(1.0, h - specH - widget.scaleHeight);
       final dpr = math.min(MediaQuery.maybeDevicePixelRatioOf(context) ?? 1.0, 2.0) * widget.resolutionScale;
       final cols = (w * dpr).round().clamp(16, widget.maxColumns);
-      final rows = (wfH * dpr / 2).round().clamp(16, widget.maxHistoryRows);
+      // Preserve history across viewport height changes; pixels per row stay fixed.
+      final rows = math.max((wfH / _s.waterfallRowHeight).ceil(), widget.maxHistoryRows);
       _s.setLayout(columns: cols, historyRows: rows);
       return RawGestureDetector(
         behavior: HitTestBehavior.opaque,

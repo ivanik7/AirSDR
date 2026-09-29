@@ -98,7 +98,10 @@ void main() {
       expect(favorites.entries.last.frequencyHz, 99500000);
       expect(favorites.entries.last.name, 'Своя станция');
       await favorites.flush();
-      expect(find.byKey(const ValueKey('presetSection-band-fm')), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('presetSection-band-fm')),
+        findsOneWidget,
+      );
       expect(find.byKey(const ValueKey('category-FM')), findsNothing);
       expect(find.text('Своя станция'), findsOneWidget);
       await tester.tap(
@@ -202,8 +205,11 @@ void main() {
     expect(radio.mode.label, 'USB');
     expect(radio.vfoOffset, 0);
     await tester.tap(find.byKey(const ValueKey('legacyStep')));
-    await tester.pump();
-    expect(find.textContaining('ШАГ 25.00'), findsOneWidget);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('legacyStep-25000')), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('legacyStep-25000')));
+    await tester.pumpAndSettle();
+    expect(find.text('ШАГ 25 кГц'), findsOneWidget);
     expect(radio.centerFrequency, radio.tunedFrequency);
     radio.setTuning(centerFrequency: 90000000, vfoOffset: 3500);
     await tester.pump();

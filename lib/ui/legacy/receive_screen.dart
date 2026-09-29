@@ -44,6 +44,31 @@ class ReceiveScreen extends StatefulWidget {
 
 class _ReceiveScreenState extends State<ReceiveScreen> {
   String? feedback;
+  @override
+  void initState() {
+    super.initState();
+    widget.receiver.onEntryExpired = _entryExpired;
+  }
+
+  void _entryExpired() {
+    if (mounted) setState(() => feedback = null);
+  }
+
+  @override
+  void didUpdateWidget(ReceiveScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.receiver != widget.receiver) {
+      oldWidget.receiver.onEntryExpired = null;
+      widget.receiver.onEntryExpired = _entryExpired;
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.receiver.onEntryExpired = null;
+    super.dispose();
+  }
+
   void _finishDrag() {
     widget.receiver.endDrag();
     setState(() {});
@@ -98,6 +123,9 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
                             ? Icons.volume_off
                             : Icons.volume_up,
                         size: 18,
+                        color: widget.scanner.userMuted
+                            ? LegacyColors.danger
+                            : LegacyColors.primary,
                       ),
                     ),
             ),
@@ -140,7 +168,11 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
                     style: plex(
                       mono: true,
                       size: 10,
-                      color: LegacyColors.muted,
+                      color:
+                          !r.running &&
+                              r.linkState != DeviceLinkState.connecting
+                          ? LegacyColors.danger
+                          : LegacyColors.muted,
                     ),
                   ),
                 ),
@@ -199,14 +231,46 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
                 const SizedBox(width: 8),
                 SizedBox(
                   width: 160,
-                  child: TextButton(
+                  child: PopupMenuButton<int>(
                     key: const ValueKey('legacyStep'),
-                    onPressed: () => setState(f.cycleStep),
-                    child: FittedBox(
-                      fit: BoxFit.scaleDown,
-                      child: Text(
-                        'ШАГ ${(f.stepHz / 1000).toStringAsFixed(2)} кГц',
-                        style: plex(size: 11, color: LegacyColors.accent),
+                    tooltip: 'Шаг',
+                    initialValue: f.stepHz,
+                    onSelected: (hz) => setState(() => f.setStepHz(hz)),
+                    itemBuilder: (context) => [
+                      for (final hz in CenteredReceiver.steps)
+                        PopupMenuItem(
+                          key: ValueKey('legacyStep-$hz'),
+                          value: hz,
+                          child: Text(_stepLabel(hz)),
+                        ),
+                    ],
+                    child: Container(
+                      height: 40,
+                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                      decoration: BoxDecoration(
+                        color: LegacyColors.card,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: FittedBox(
+                              fit: BoxFit.scaleDown,
+                              alignment: Alignment.centerLeft,
+                              child: Text(
+                                'ШАГ ${_stepLabel(f.stepHz)}',
+                                style: plex(
+                                  size: 12,
+                                  color: LegacyColors.accent,
+                                ),
+                              ),
+                            ),
+                          ),
+                          const Icon(
+                            Icons.arrow_drop_down,
+                            color: LegacyColors.accent,
+                          ),
+                        ],
                       ),
                     ),
                   ),
@@ -242,7 +306,7 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
                                     .clamp(32, 1024);
                             widget.spectrum.setLayout(
                               columns: cols,
-                              historyRows: 64,
+                              historyRows: 512,
                             );
                             final plot = (box.maxHeight * 0.48).clamp(
                               0.0,
@@ -353,7 +417,9 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
                         vertical: 2,
                       ),
                       child: SizedBox(
-                        height: 38,
+                        height: MediaQuery.sizeOf(context).height < 750
+                            ? 38
+                            : 46,
                         child: Material(
                           color: label == 'OK'
                               ? LegacyColors.accent
@@ -367,7 +433,9 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
                                 label,
                                 style: plex(
                                   mono: true,
-                                  size: 17,
+                                  size: MediaQuery.sizeOf(context).height < 750
+                                      ? 17
+                                      : 20,
                                   color: label == 'OK'
                                       ? LegacyColors.background
                                       : LegacyColors.primary,
@@ -389,6 +457,10 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
     },
   );
 }
+
+String _stepLabel(int hz) => hz >= 1000000
+    ? '${hz ~/ 1000000} МГц'
+    : '${hz % 1000 == 0 ? hz ~/ 1000 : hz / 1000} кГц';
 
 /// Frequency readout with a geometry that never depends on the text: the
 /// font size is chosen once for the available width so that the longest
