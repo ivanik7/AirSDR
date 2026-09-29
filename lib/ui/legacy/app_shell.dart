@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../../runtime/sdr_radio_controller.dart';
 import '../channels/channel_controller.dart';
+import '../channels/channel_scanner.dart';
 import '../channels/channels.dart';
 import '../channels/signal_meter.dart';
 import '../favorites/favorites.dart';
@@ -36,6 +37,7 @@ class _LegacyAppShellState extends State<LegacyAppShell> {
   late FavoritesRepository favorites;
   late ChannelsRepository channelSlots;
   late ChannelController channels;
+  late ChannelScanner scanner;
   late SignalMeter meter;
   bool ownFavorites = false;
   bool ownChannels = false;
@@ -65,6 +67,8 @@ class _LegacyAppShellState extends State<LegacyAppShell> {
       channels: channelSlots,
       favorites: favorites,
     );
+    scanner = ChannelScanner(controller: channels);
+    scanner.addListener(_scannerChanged);
     meter = SignalMeter(widget.controller);
     final radio = widget.controller;
     final slots = channelSlots;
@@ -113,6 +117,13 @@ class _LegacyAppShellState extends State<LegacyAppShell> {
     if (!widget.controller.running) spectrum.waterfall.clear();
   }
 
+  void _scannerChanged() {
+    spectrum.holdDisplayAt(
+      scanner.active ? channelSlots.active?.frequencyHz.toDouble() : null,
+    );
+    if (mounted) setState(() {});
+  }
+
   @override
   void didUpdateWidget(LegacyAppShell oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -126,6 +137,8 @@ class _LegacyAppShellState extends State<LegacyAppShell> {
       return;
     }
     oldWidget.controller.removeListener(_radioChanged);
+    scanner.removeListener(_scannerChanged);
+    scanner.dispose();
     receiver.dispose();
     spectrum.dispose();
     meter.dispose();
@@ -138,6 +151,8 @@ class _LegacyAppShellState extends State<LegacyAppShell> {
   void dispose() {
     widget.openReceive?.removeListener(_showReceive);
     widget.controller.removeListener(_radioChanged);
+    scanner.removeListener(_scannerChanged);
+    scanner.dispose();
     receiver.dispose();
     spectrum.dispose();
     meter.dispose();
@@ -161,6 +176,7 @@ class _LegacyAppShellState extends State<LegacyAppShell> {
                   spectrum: spectrum,
                   favorites: favorites,
                   channels: channels,
+                  scanner: scanner,
                   meter: meter,
                 ),
                 PresetsScreen(

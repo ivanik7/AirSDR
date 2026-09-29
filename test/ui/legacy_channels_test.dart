@@ -11,6 +11,7 @@ import 'package:sdr_flutter/ui/demo_radio_controller.dart';
 import 'package:sdr_flutter/ui/favorites/favorites.dart';
 import 'package:sdr_flutter/ui/legacy/app_shell.dart';
 import 'package:sdr_flutter/ui/radio_controller.dart';
+import 'package:sdr_flutter/ui/sdr_ui_state.dart';
 
 class _Env {
   _Env(this.radio, this.favorites, this.channels);
@@ -30,15 +31,36 @@ class _RowsRadio extends DemoRadioController {
   }
 }
 
+class _ScanRadio extends DemoRadioController {
+  AutoSquelchStatus? status;
+  @override
+  AutoSquelchStatus? get autoSquelchStatus => status;
+  @override
+  void setTuning({required double centerFrequency, required double vfoOffset}) {
+    if (centerFrequency != this.centerFrequency) status = null;
+    super.setTuning(centerFrequency: centerFrequency, vfoOffset: vfoOffset);
+  }
+
+  void signal(bool open) {
+    status = AutoSquelchStatus(
+      open: open,
+      metricDb: open ? 14 : 0,
+      thresholdDb: 6,
+    );
+    notifyListeners();
+  }
+}
+
 Future<_Env> _pump(
   WidgetTester tester, {
   Size size = const Size(344, 882),
   void Function(ChannelsRepository)? seed,
+  DemoRadioController? radioOverride,
 }) async {
   tester.view.devicePixelRatio = 2.625;
   tester.view.physicalSize = size * 2.625;
   addTearDown(tester.view.reset);
-  final radio = DemoRadioController();
+  final radio = radioOverride ?? DemoRadioController();
   final favorites = FavoritesRepository();
   await favorites.load();
   final channels = ChannelsRepository();
@@ -82,6 +104,137 @@ void _seed3(ChannelsRepository c) {
 
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
+
+  testWidgets(
+    'selected display stays on selected slot while another tile receives',
+    (tester) async {
+      final radio = _ScanRadio();
+      final env = await _pump(
+        tester,
+        radioOverride: radio,
+        seed: (c) {
+          c.add(frequencyHz: 145500000, mode: DemodMode.nfm, name: 'Выбранный');
+          c.add(frequencyHz: 433500000, mode: DemodMode.nfm, name: 'Другой');
+          c.activate(c.channels.first.id);
+        },
+      );
+      await radio.start();
+      await _showChannels(tester);
+      await tester.tap(find.byKey(const ValueKey('channelScanToggle')));
+      await tester.pump();
+      radio.signal(false);
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 220)),
+      );
+      await tester.pump(const Duration(milliseconds: 25));
+      expect(radio.tunedFrequency, 433500000);
+      radio.signal(true);
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 220)),
+      );
+      await tester.pump(const Duration(milliseconds: 25));
+      expect(find.text('Приём: Другой'), findsOneWidget);
+      expect(
+        tester.widget<Text>(find.byKey(const ValueKey('legacyFrequency'))).data,
+        '145.500',
+      );
+      expect(env.channels.activeId, env.channels.channels.first.id);
+      final receiving = find.byKey(
+        ValueKey('channel-${env.channels.channels[1].id}'),
+      );
+      expect(
+        find.descendant(
+          of: receiving,
+          matching: find.byKey(const ValueKey('channelLed')),
+        ),
+        findsOneWidget,
+      );
+      expect(tester.takeException(), isNull);
+      await _dispose(tester, env);
+    },
+  );
+
+  testWidgets(
+    'scan control needs two supported channels; 344dp and selected frequency stays fixed',
+    (tester) async {
+      final env = await _pump(
+        tester,
+        seed: (c) {
+          c.add(frequencyHz: 145500000, mode: DemodMode.nfm, name: 'Выбранный');
+          c.add(frequencyHz: 433500000, mode: DemodMode.nfm, name: 'Другой');
+          c.activate(c.channels.first.id);
+        },
+      );
+      await _showChannels(tester);
+      final toggle = find.byKey(const ValueKey('channelScanToggle'));
+      expect(
+        tester.widget<TextButton>(toggle).onPressed,
+        isNull,
+        reason: 'receiver not running',
+      );
+      await env.radio.start();
+      await tester.pump();
+      expect(tester.widget<TextButton>(toggle).onPressed, isNotNull);
+      await tester.tap(toggle);
+      await tester.pump();
+      expect(find.text('Стоп скан'), findsOneWidget);
+      expect(
+        tester.widget<Text>(find.byKey(const ValueKey('legacyFrequency'))).data,
+        '145.500',
+      );
+      expect(tester.takeException(), isNull);
+      await tester.tap(toggle);
+      await tester.pump();
+      expect(find.text('Скан'), findsOneWidget);
+      await _dispose(tester, env);
+    },
+  );
+
+  test('FFT rows from other channels and retune transition never enter selected waterfall', () async {
+    final radio = _RowsRadio();
+    final ui = SdrUiState(radio, centerDisplayOnVfo: true);
+    radio.setTuning(centerFrequency: 145500000, vfoOffset: 0);
+    await radio.start();
+    ui.holdDisplayAt(145500000);
+    radio.setTuning(centerFrequency: 433500000, vfoOffset: 0);
+    radio.rows.add(
+      FftRow(
+        db: Float32List.fromList(List.filled(8, -40)),
+        lowFreq: 432300000,
+        highFreq: 434700000,
+      ),
+    );
+    expect(ui.waterfall.lines, 0);
+    expect(ui.displayViewport.centerFreq, 145500000);
+    radio.setTuning(centerFrequency: 145500000, vfoOffset: 0);
+    radio.rows.add(
+      FftRow(
+        db: Float32List.fromList(List.filled(8, -30)),
+        lowFreq: 144300000,
+        highFreq: 146700000,
+      ),
+    );
+    expect(ui.waterfall.lines, 0, reason: 'retune buffer discarded');
+    await Future<void>.delayed(const Duration(milliseconds: 210));
+    radio.rows.add(
+      FftRow(
+        db: Float32List.fromList(List.filled(8, -60)),
+        lowFreq: 144300000,
+        highFreq: 146700000,
+      ),
+    );
+    expect(ui.waterfall.lines, 1);
+    radio.rows.add(
+      FftRow(
+        db: Float32List.fromList(List.filled(8, -30)),
+        lowFreq: 432300000,
+        highFreq: 434700000,
+      ),
+    );
+    expect(ui.waterfall.lines, 1);
+    ui.dispose();
+    radio.dispose();
+  });
 
   testWidgets('first launch seeds one active channel from the receiver', (
     tester,
