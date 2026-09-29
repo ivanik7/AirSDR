@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Squelch controls of the legacy UI (Приём and Настройки tabs): Выкл / Ручной / Авто.
+// Squelch controls of the legacy Settings tab: Выкл / Ручной / Авто.
 //  * Ручной — the SDR++ power squelch, slider = level (−100..0 dB).
 //  * Авто — the automatic squelch (app extension, auto_squelch.dart): noise squelch in NFM,
 //    level squelch in AM/SSB/DSB/CW; the slider becomes the threshold offset ("sensitivity")
@@ -36,12 +36,9 @@ String squelchStatusText(RadioController r) {
 String _offsetText(double v) => '${v > 0 ? '+' : ''}${v.toStringAsFixed(0)} dB';
 
 class SquelchControls extends StatelessWidget {
-  const SquelchControls({super.key, required this.controller, this.compact = false});
+  const SquelchControls({super.key, required this.controller});
 
   final RadioController controller;
-
-  /// Receive tab: smaller paddings/fonts.
-  final bool compact;
 
   @override
   Widget build(BuildContext context) {
@@ -52,13 +49,13 @@ class SquelchControls extends StatelessWidget {
     final auto = type == SquelchType.auto;
     final open = auto && (r.autoSquelchStatus?.open ?? false);
     return legacyCard(
-      padding: EdgeInsets.all(compact ? 9 : 12),
+      padding: const EdgeInsets.all(12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Text('Шумодав', style: plex(size: compact ? 13 : 14)),
+              Text('Шумодав', style: plex(size: 14)),
               const SizedBox(width: 8),
               if (auto)
                 Icon(
@@ -147,7 +144,10 @@ class SquelchControls extends StatelessWidget {
       Row(
         children: [
           Expanded(
-            child: Text(label, style: plex(size: 12, color: LegacyColors.muted)),
+            child: Text(
+              label,
+              style: plex(size: 12, color: LegacyColors.muted),
+            ),
           ),
           Text(
             formatted,
@@ -156,7 +156,7 @@ class SquelchControls extends StatelessWidget {
         ],
       ),
       SizedBox(
-        height: compact ? 30 : 40,
+        height: 40,
         child: Slider(
           key: key,
           value: value.clamp(min, max),
