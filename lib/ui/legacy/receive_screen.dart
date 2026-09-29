@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import 'package:flutter/material.dart';
 
+import '../channels/channel_controller.dart';
+import '../channels/signal_meter.dart';
 import '../device_dropdown.dart';
 import '../favorites/favorites.dart';
 import '../radio_controller.dart';
@@ -8,6 +10,7 @@ import '../sdr_ui_state.dart';
 import '../source_settings.dart';
 import '../spectrum_waterfall.dart';
 import 'centered_receiver.dart';
+import 'channels_section.dart';
 import 'theme.dart';
 
 class ReceiveScreen extends StatefulWidget {
@@ -17,11 +20,15 @@ class ReceiveScreen extends StatefulWidget {
     required this.receiver,
     required this.spectrum,
     required this.favorites,
+    required this.channels,
+    required this.meter,
   });
   final RadioController controller;
   final CenteredReceiver receiver;
   final SdrUiState spectrum;
   final FavoritesRepository favorites;
+  final ChannelController channels;
+  final SignalMeter meter;
   @override
   State<ReceiveScreen> createState() => _ReceiveScreenState();
 }
@@ -348,49 +355,10 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
               style: plex(size: 11, color: LegacyColors.muted),
             ),
           ),
-          Text(
-            'КАНАЛЫ · один текущий',
-            style: plex(size: 12, color: LegacyColors.muted),
-          ),
-          const SizedBox(height: 7),
-          Row(
-            children: [
-              Expanded(
-                child: legacyCard(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        mhz.toStringAsFixed(3),
-                        style: plex(size: 15, mono: true),
-                      ),
-                      Text(
-                        'Текущий · ${r.mode.label}',
-                        style: plex(size: 11, color: LegacyColors.muted),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: legacyCard(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        '+ канал · позже',
-                        style: plex(size: 13, color: LegacyColors.muted),
-                      ),
-                      Text(
-                        'Мульти-приём недоступен',
-                        style: plex(size: 10, color: LegacyColors.muted),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ],
+          ChannelsSection(
+            controller: widget.channels,
+            radio: r,
+            meter: widget.meter,
           ),
           const SizedBox(height: 11),
           for (final row in const [
