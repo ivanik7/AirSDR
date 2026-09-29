@@ -288,6 +288,49 @@ void main() {
     expect(c.lastError, isNull);
   });
 
+  test('unmuted USB loss and recovery beep once each; ENODEV plus detach does not duplicate', () async {
+    plugin.devices.add(_rtl);
+    final c = make();
+    await _until(() => c.running, reason: 'cold start');
+    c.setMuted(false);
+    await _until(() => c.lastState['muted'] == false);
+    expect(c.lastStats['linkBeeps'] ?? 0, 0, reason: 'cold start is silent');
+    c.setSourceSetting('simulateLoss', true);
+    plugin.detach(_rtl);
+    await _until(
+      () => c.lastStats['linkBeeps'] == 1 && c.lastState['sourceId'] == null,
+      reason: 'loss beep and release',
+    );
+    expect(c.linkState, DeviceLinkState.disconnected);
+    await _settle(300);
+    expect(c.lastStats['linkBeeps'], 1);
+    plugin.attach(_rtlReplugged);
+    await _until(
+      () => c.running && c.lastStats['linkBeeps'] == 2,
+      reason: 'recovery beep',
+    );
+    await c.stop();
+    await c.start();
+    expect(c.lastStats['linkBeeps'], 2, reason: 'manual Stop/Start silent');
+  });
+
+  test('muted loss/re-plug and denied USB permission never beep', () async {
+    plugin.devices.add(_rtl);
+    final c = make();
+    await _until(() => c.running);
+    plugin.detach(_rtl);
+    await _until(() => c.lastState['sourceId'] == null);
+    expect(c.lastStats['linkBeeps'] ?? 0, 0);
+    plugin.deny.add(_rtlReplugged['deviceName'] as String);
+    plugin.attach(_rtlReplugged);
+    await _until(() => c.linkState == DeviceLinkState.permissionDenied);
+    expect(c.lastStats['linkBeeps'] ?? 0, 0);
+    plugin.deny.clear();
+    await c.retryDevice();
+    await _until(() => c.running);
+    expect(c.lastStats['linkBeeps'] ?? 0, 0);
+  });
+
   test('detach event alone (no ENODEV first) also stops cleanly; muted stays muted after re-plug', () async {
     plugin.devices.add(_rtl);
     final c = make();
@@ -333,7 +376,9 @@ void main() {
     await _settle(50);
     plugin.detach(_rtl);
     await _until(
-      () => c.linkState == DeviceLinkState.disconnected && c.selectedDevice == null,
+      () =>
+          c.linkState == DeviceLinkState.disconnected &&
+          c.selectedDevice == null,
       reason: 'disconnected',
     );
     // Stats / state events keep arriving while the device is gone.
@@ -343,7 +388,9 @@ void main() {
     // Detach without a preceding ENODEV (the other order seen on the phone).
     plugin.detach(_rtlReplugged);
     await _until(
-      () => c.linkState == DeviceLinkState.disconnected && c.selectedDevice == null,
+      () =>
+          c.linkState == DeviceLinkState.disconnected &&
+          c.selectedDevice == null,
       reason: 'disconnected 2',
     );
     await _settle(700);
@@ -353,19 +400,22 @@ void main() {
     expect(violations, isEmpty);
   });
 
-  test('a vanished device cannot be selected manually from a stale menu', () async {
-    plugin.devices.add(_rtl);
-    final c = make();
-    await _until(() => c.running, reason: 'auto start');
-    await c.stop();
-    final stale = c.selectedDevice!;
-    plugin.detach(_rtl);
-    await _until(() => c.selectedDevice == null, reason: 'deselected');
-    await c.selectDevice(stale);
-    await _settle();
-    expect(c.selectedDevice, isNull);
-    expect(plugin.opens, <String>[_rtl['deviceName'] as String]);
-  });
+  test(
+    'a vanished device cannot be selected manually from a stale menu',
+    () async {
+      plugin.devices.add(_rtl);
+      final c = make();
+      await _until(() => c.running, reason: 'auto start');
+      await c.stop();
+      final stale = c.selectedDevice!;
+      plugin.detach(_rtl);
+      await _until(() => c.selectedDevice == null, reason: 'deselected');
+      await c.selectDevice(stale);
+      await _settle();
+      expect(c.selectedDevice, isNull);
+      expect(plugin.opens, <String>[_rtl['deviceName'] as String]);
+    },
+  );
 
   // Phone logs: a loose OTG plug bounced attach/detach every few seconds. Each attach is a
   // new connection (one open), each detach tears it down; the controller must follow without
@@ -402,23 +452,30 @@ void main() {
     expect(c.running, isFalse);
   });
 
-  test('device lost without a detach (ENODEV only): one stop, no start loop', () async {
-    plugin.devices.add(_rtl);
-    final c = make();
-    await _until(() => c.running, reason: 'auto start');
-    await _settle();
-    c.setSourceSetting('simulateLoss', true);
-    await _until(
-      () => c.linkState == DeviceLinkState.disconnected,
-      reason: 'disconnected',
-    );
-    plugin.otherEvent();
-    await c.refreshDevices();
-    await _settle(1500);
-    expect(c.running, isFalse);
-    expect(c.linkState, DeviceLinkState.disconnected);
-    expect(plugin.opens.length, 1, reason: 'no automatic reopen loop on the lost device');
-  });
+  test(
+    'device lost without a detach (ENODEV only): one stop, no start loop',
+    () async {
+      plugin.devices.add(_rtl);
+      final c = make();
+      await _until(() => c.running, reason: 'auto start');
+      await _settle();
+      c.setSourceSetting('simulateLoss', true);
+      await _until(
+        () => c.linkState == DeviceLinkState.disconnected,
+        reason: 'disconnected',
+      );
+      plugin.otherEvent();
+      await c.refreshDevices();
+      await _settle(1500);
+      expect(c.running, isFalse);
+      expect(c.linkState, DeviceLinkState.disconnected);
+      expect(
+        plugin.opens.length,
+        1,
+        reason: 'no automatic reopen loop on the lost device',
+      );
+    },
+  );
 
   test('user Stop: no automatic restart until Start or a new attach', () async {
     plugin.devices.add(_rtl);
@@ -427,7 +484,11 @@ void main() {
     await c.stop();
     expect(c.linkState, DeviceLinkState.stoppedByUser);
     expect(c.lastState['sourceId'], isNull, reason: 'Stop releases DSP source');
-    expect(plugin.closes, contains(_rtl['deviceName']), reason: 'Stop closes USB fd');
+    expect(
+      plugin.closes,
+      contains(_rtl['deviceName']),
+      reason: 'Stop closes USB fd',
+    );
     await c.refreshDevices();
     plugin.otherEvent();
     await _settle();

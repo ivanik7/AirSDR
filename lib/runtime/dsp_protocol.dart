@@ -11,7 +11,8 @@ abstract final class DspCmd {
   /// (stops the current one first).
   static const selectSource = 'selectSource';
 
-  /// MainWindow::setPlayState(true/false).
+  /// MainWindow::setPlayState(true/false). start may carry `{reconnected: bool}`
+  /// only for successful automatic USB recovery (never cold/manual starts).
   static const start = 'start';
   static const stop = 'stop';
 
@@ -40,7 +41,8 @@ abstract final class DspCmd {
   /// (never restored from config) and holds no audio output device while muted.
   static const setMuted = 'setMuted';
 
-  /// Stops and disposes the current source (device lost): nothing may touch its dead fd again.
+  /// Stops and disposes the source. `{deviceLost: bool}` only for active USB loss;
+  /// the DSP isolate plays the disconnect tone before releasing its audio output.
   static const releaseSource = 'releaseSource';
 
   /// `{enabled: bool?, level: double?, mode: String?, autoOffset: double?}` — squelch.
