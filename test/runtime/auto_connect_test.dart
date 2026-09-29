@@ -288,6 +288,49 @@ void main() {
     expect(c.lastError, isNull);
   });
 
+  test('unmuted USB loss and recovery beep once each; ENODEV plus detach does not duplicate', () async {
+    plugin.devices.add(_rtl);
+    final c = make();
+    await _until(() => c.running, reason: 'cold start');
+    c.setMuted(false);
+    await _until(() => c.lastState['muted'] == false);
+    expect(c.lastStats['linkBeeps'] ?? 0, 0, reason: 'cold start is silent');
+    c.setSourceSetting('simulateLoss', true);
+    plugin.detach(_rtl);
+    await _until(
+      () => c.lastStats['linkBeeps'] == 1 && c.lastState['sourceId'] == null,
+      reason: 'loss beep and release',
+    );
+    expect(c.linkState, DeviceLinkState.disconnected);
+    await _settle(300);
+    expect(c.lastStats['linkBeeps'], 1);
+    plugin.attach(_rtlReplugged);
+    await _until(
+      () => c.running && c.lastStats['linkBeeps'] == 2,
+      reason: 'recovery beep',
+    );
+    await c.stop();
+    await c.start();
+    expect(c.lastStats['linkBeeps'], 2, reason: 'manual Stop/Start silent');
+  });
+
+  test('muted loss/re-plug and denied USB permission never beep', () async {
+    plugin.devices.add(_rtl);
+    final c = make();
+    await _until(() => c.running);
+    plugin.detach(_rtl);
+    await _until(() => c.lastState['sourceId'] == null);
+    expect(c.lastStats['linkBeeps'] ?? 0, 0);
+    plugin.deny.add(_rtlReplugged['deviceName'] as String);
+    plugin.attach(_rtlReplugged);
+    await _until(() => c.linkState == DeviceLinkState.permissionDenied);
+    expect(c.lastStats['linkBeeps'] ?? 0, 0);
+    plugin.deny.clear();
+    await c.retryDevice();
+    await _until(() => c.running);
+    expect(c.lastStats['linkBeeps'] ?? 0, 0);
+  });
+
   test('detach event alone (no ENODEV first) also stops cleanly; muted stays muted after re-plug', () async {
     plugin.devices.add(_rtl);
     final c = make();

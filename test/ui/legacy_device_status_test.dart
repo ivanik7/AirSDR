@@ -122,6 +122,10 @@ void main() {
       await tester.pump();
       await tester.scrollUntilVisible(retry, 170,
           scrollable: find.byType(Scrollable).first);
+      // Leave the retry row above the fixed bottom tab bar (the bands row
+      // adds height to Settings and can put a barely-visible button there).
+      await tester.drag(find.byType(Scrollable).first, const Offset(0, -160));
+      await tester.pump();
       expect(retry, findsOneWidget);
       expect(tester.takeException(), isNull);
       await tester.tap(retry);

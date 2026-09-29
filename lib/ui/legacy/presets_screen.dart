@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import 'package:flutter/material.dart';
 
+import '../bands/bands.dart';
+import '../channels/channel_controller.dart' show presetCategoryFor;
 import '../favorites/favorites.dart';
 import '../radio_controller.dart';
 import 'centered_receiver.dart';
@@ -23,25 +25,27 @@ class PresetsScreen extends StatefulWidget {
     required this.controller,
     required this.receiver,
     required this.favorites,
+    this.bands,
     required this.onApplied,
   });
   final RadioController controller;
   final CenteredReceiver receiver;
   final FavoritesRepository favorites;
+
+  /// Sections of the list; without bands everything is «Вне диапазонов».
+  final BandsRepository? bands;
   final VoidCallback onApplied;
   @override
   State<PresetsScreen> createState() => _PresetsScreenState();
 }
 
 class _PresetsScreenState extends State<PresetsScreen> {
-  String category = 'Все';
   String? message;
   Future<void> edit([Favorite? existing]) async {
     // A new attempt supersedes the previous error.
     setState(() => message = null);
     var name = existing?.name ?? '';
     var mode = existing?.mode ?? widget.controller.mode;
-    var band = existing?.category ?? 'FM';
     final result = await showDialog<bool>(
       context: context,
       builder: (context) => StatefulBuilder(
@@ -72,16 +76,6 @@ class _PresetsScreenState extends State<PresetsScreen> {
                     if (m != null) update(() => mode = m);
                   },
                 ),
-                DropdownButton<String>(
-                  value: band,
-                  items: [
-                    for (final b in favoriteCategories.skip(1))
-                      DropdownMenuItem(value: b, child: Text(b)),
-                  ],
-                  onChanged: (b) {
-                    if (b != null) update(() => band = b);
-                  },
-                ),
               ],
             ),
           ),
@@ -102,11 +96,13 @@ class _PresetsScreenState extends State<PresetsScreen> {
     if (result == true) {
       try {
         if (existing == null) {
+          final hz = widget.controller.tunedFrequency.round();
           widget.favorites.add(
-            frequencyHz: widget.controller.tunedFrequency.round(),
+            frequencyHz: hz,
             name: name,
             mode: mode,
-            category: band,
+            // Storage-only field (the list is grouped by band).
+            category: presetCategoryFor(hz, mode),
             minHz: (widget.controller.selectedDevice?.minFrequency ?? 1)
                 .round(),
             maxHz:
@@ -118,7 +114,7 @@ class _PresetsScreenState extends State<PresetsScreen> {
             existing.id,
             name: name,
             mode: mode,
-            category: band,
+            category: existing.category,
           );
         }
         if (mounted) setState(() => message = null);
@@ -169,11 +165,95 @@ class _PresetsScreenState extends State<PresetsScreen> {
     }
   }
 
+  /// Section title: band name and limits, or «Вне диапазонов».
+  Widget _sectionHeader(Band? band) => Padding(
+    key: ValueKey('presetSection-${band?.id ?? 'none'}'),
+    padding: const EdgeInsets.fromLTRB(4, 6, 4, 6),
+    child: Row(
+      children: [
+        Flexible(
+          child: Text(
+            band?.name ?? 'Вне диапазонов',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: plex(size: 12, color: LegacyColors.accent),
+          ),
+        ),
+        if (band != null) ...[
+          const SizedBox(width: 8),
+          Text(
+            formatBandRange(band),
+            maxLines: 1,
+            style: plex(size: 10, mono: true, color: LegacyColors.muted),
+          ),
+        ],
+        const SizedBox(width: 8),
+        const Expanded(child: Divider(color: LegacyColors.key)),
+      ],
+    ),
+  );
+
+  Widget _presetCard(Favorite f) => legacyCard(
+    child: Row(
+      children: [
+        IconButton(
+          key: ValueKey('toggle-${f.id}'),
+          tooltip: f.enabled ? 'Убрать из избранного' : 'Добавить в избранное',
+          onPressed: () {
+            setState(() => message = null);
+            widget.favorites.toggle(f.id);
+          },
+          icon: Icon(
+            f.enabled ? Icons.bookmark : Icons.bookmark_border,
+            color: f.enabled ? LegacyColors.accent : LegacyColors.muted,
+          ),
+        ),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                f.name,
+                overflow: TextOverflow.ellipsis,
+                style: plex(size: 14),
+              ),
+              Text(
+                '${formatMhz(f.frequencyHz)} MHz · ${f.mode.label}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: plex(size: 11, mono: true, color: LegacyColors.muted),
+              ),
+            ],
+          ),
+        ),
+        PopupMenuButton<String>(
+          key: ValueKey('favoriteMenu-${f.id}'),
+          tooltip: 'Редактировать пресет',
+          onSelected: (action) {
+            if (action == 'edit') edit(f);
+            if (action == 'delete') confirmDelete(f);
+          },
+          itemBuilder: (_) => const [
+            PopupMenuItem(value: 'edit', child: Text('Изменить')),
+            PopupMenuItem(value: 'delete', child: Text('Удалить')),
+          ],
+        ),
+        FilledButton(
+          key: ValueKey('apply-${f.id}'),
+          onPressed: () => apply(f),
+          child: Text(
+            'Применить',
+            style: plex(size: 11, color: LegacyColors.background),
+          ),
+        ),
+      ],
+    ),
+  );
+
   @override
   Widget build(BuildContext context) => ListenableBuilder(
-    listenable: widget.favorites,
+    listenable: Listenable.merge([widget.favorites, ?widget.bands]),
     builder: (context, _) {
-      final entries = widget.favorites.filtered(category);
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -215,106 +295,28 @@ class _PresetsScreenState extends State<PresetsScreen> {
               ),
             ),
           ),
-          SizedBox(
-            height: 52,
-            child: ListView(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.fromLTRB(14, 11, 14, 5),
-              children: [
-                for (final b in favoriteCategories)
-                  Padding(
-                    padding: const EdgeInsets.only(right: 7),
-                    child: ChoiceChip(
-                      key: ValueKey('category-$b'),
-                      label: Text(b, style: plex(size: 12)),
-                      selected: category == b,
-                      onSelected: (_) => setState(() {
-                        category = b;
-                        message = null;
-                      }),
-                    ),
-                  ),
-              ],
-            ),
-          ),
           if (message != null)
             Padding(
               padding: const EdgeInsets.all(8),
               child: Text(message!, style: plex(color: LegacyColors.danger)),
             ),
           Expanded(
-            child: ListView.separated(
+            child: ListView(
+              key: const ValueKey('presetsList'),
               padding: const EdgeInsets.fromLTRB(14, 8, 14, 4),
-              itemCount: entries.length,
-              separatorBuilder: (_, _) => const SizedBox(height: 7),
-              itemBuilder: (context, i) {
-                final f = entries[i];
-                return legacyCard(
-                  child: Row(
-                    children: [
-                      IconButton(
-                        key: ValueKey('toggle-${f.id}'),
-                        tooltip: f.enabled
-                            ? 'Убрать из избранного'
-                            : 'Добавить в избранное',
-                        onPressed: () {
-                          setState(() => message = null);
-                          widget.favorites.toggle(f.id);
-                        },
-                        icon: Icon(
-                          f.enabled ? Icons.bookmark : Icons.bookmark_border,
-                          color: f.enabled
-                              ? LegacyColors.accent
-                              : LegacyColors.muted,
-                        ),
-                      ),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              f.name,
-                              overflow: TextOverflow.ellipsis,
-                              style: plex(size: 14),
-                            ),
-                            Text(
-                              '${formatMhz(f.frequencyHz)} MHz · ${f.mode.label} · ${f.category}',
-                              style: plex(
-                                size: 11,
-                                mono: true,
-                                color: LegacyColors.muted,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      PopupMenuButton<String>(
-                        key: ValueKey('favoriteMenu-${f.id}'),
-                        tooltip: 'Редактировать пресет',
-                        onSelected: (action) {
-                          if (action == 'edit') edit(f);
-                          if (action == 'delete') confirmDelete(f);
-                        },
-                        itemBuilder: (_) => const [
-                          PopupMenuItem(value: 'edit', child: Text('Изменить')),
-                          PopupMenuItem(
-                            value: 'delete',
-                            child: Text('Удалить'),
-                          ),
-                        ],
-                      ),
-                      FilledButton(
-                        key: ValueKey('apply-${f.id}'),
-                        onPressed: () => apply(f),
-                        child: Text(
-                          'Применить',
-                          style: plex(size: 11, color: LegacyColors.background),
-                        ),
-                      ),
-                    ],
-                  ),
-                );
-              },
+              children: [
+                for (final g in groupPresetsByBand(
+                  widget.favorites.entries,
+                  widget.bands?.entries ?? const [],
+                )) ...[
+                  _sectionHeader(g.band),
+                  for (final f in g.presets)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 7),
+                      child: _presetCard(f),
+                    ),
+                ],
+              ],
             ),
           ),
           Padding(

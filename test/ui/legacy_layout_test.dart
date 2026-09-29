@@ -196,7 +196,7 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('favoriteSave')));
     await tester.pumpAndSettle();
     expect(find.textContaining('введите название'), findsOneWidget);
-    await tester.tap(find.byKey(const ValueKey('category-FM')));
+    await tester.tap(find.byKey(const ValueKey('toggle-builtin-fm')));
     await tester.pump();
     expect(
       find.textContaining('Не удалось сохранить'),

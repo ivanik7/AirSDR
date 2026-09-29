@@ -170,6 +170,8 @@ class SdrRadioController extends RadioController {
 
   DeviceLinkState _link = DeviceLinkState.idle;
   bool _userStopped = false;
+  bool _lossBeepPending = false;
+  bool _reconnectPending = false;
 
   /// Cold start: connect to the first auto-connect device found by the first enumeration.
   /// Re-armed only by [retryDevice] (never by plain refreshes: no permission request loop).
@@ -286,6 +288,13 @@ class SdrRadioController extends RadioController {
         if (m['fatal'] == true) {
           // The source stopped itself (device lost / ENODEV): release it so nothing touches
           // the dead fd again and the next connection reopens the device.
+          if (!_userStopped &&
+              _running &&
+              _openedDevice != null &&
+              _isAuto(_openedDevice!)) {
+            _lossBeepPending = true;
+            _reconnectPending = true;
+          }
           _running = false;
           if (!_userStopped) _link = DeviceLinkState.disconnected;
           _stopFuture = _queue(_lostLocked);
@@ -549,6 +558,13 @@ class SdrRadioController extends RadioController {
           _link == DeviceLinkState.receiving ||
           _link == DeviceLinkState.connecting ||
           _link == DeviceLinkState.disconnected;
+      if (!_userStopped &&
+          _running &&
+          _openedDevice != null &&
+          _isAuto(_openedDevice!)) {
+        _lossBeepPending = true;
+        _reconnectPending = true;
+      }
       _device = null;
       _running = false;
       final released = Completer<void>();
@@ -627,7 +643,7 @@ class SdrRadioController extends RadioController {
       _notify();
       return;
     }
-    await _startLocked(device, gen);
+    await _startLocked(device, gen, reconnected: _reconnectPending);
   }
 
   /// Device lost while receiving (fatal DSP source error).
@@ -644,8 +660,13 @@ class SdrRadioController extends RadioController {
   /// the provider connection. The DSP engine releases the audio output with the source.
   Future<void> _releaseLocked() async {
     _running = false;
+    final deviceLost = _lossBeepPending;
+    _lossBeepPending = false;
     try {
-      await _cmd(<String, Object?>{DspMsg.cmd: DspCmd.releaseSource});
+      await _cmd(<String, Object?>{
+        DspMsg.cmd: DspCmd.releaseSource,
+        'deviceLost': deviceLost,
+      });
     } catch (_) {}
     final d = _openedDevice;
     _openedDevice = null;
@@ -719,7 +740,11 @@ class SdrRadioController extends RadioController {
     });
   }
 
-  Future<void> _startLocked(SdrDeviceInfo d, int gen) async {
+  Future<void> _startLocked(
+    SdrDeviceInfo d,
+    int gen, {
+    bool reconnected = false,
+  }) async {
     try {
       // A saved configuration from the old multi-offset UI may have a nonzero VFO.
       // Preserve the tuned frequency while returning to the single centered channel.
@@ -732,12 +757,16 @@ class SdrRadioController extends RadioController {
         'center': _centerFrequency,
         'offset': _vfoOffset,
       });
-      await _cmd(<String, Object?>{DspMsg.cmd: DspCmd.start});
+      await _cmd(<String, Object?>{
+        DspMsg.cmd: DspCmd.start,
+        'reconnected': reconnected && _isAuto(d),
+      });
       // A Stop pressed meanwhile is queued after this start in the DSP isolate.
       if (gen == _stopGen) {
         _running = true;
         _link = DeviceLinkState.receiving;
         _lastError = null;
+        _reconnectPending = false;
       } else {
         // Stop arrived while the DSP was initializing the tuner. The UI never set
         // _running, so stop() had nothing to stop; finish the cancelled start here.
@@ -755,6 +784,8 @@ class SdrRadioController extends RadioController {
   Future<void> stop() {
     // User Stop: also cancels a pending automatic start (permission dialog / opening).
     _userStopped = true;
+    _lossBeepPending = false;
+    _reconnectPending = false;
     _stopGen++;
     _link = DeviceLinkState.stoppedByUser;
     _running = false;

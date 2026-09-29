@@ -24,6 +24,7 @@ import '../sdrpp/signal_path/source_handler.dart';
 import '../ui/waterfall_math.dart' show doZoom;
 import 'audio_output.dart';
 import 'dsp_protocol.dart';
+import 'link_tone.dart';
 import 'source_registry.dart';
 
 /// Engine construction options (sendable).
@@ -157,6 +158,9 @@ class DspEngine {
   int _sourceGen = 0; // bumped per created source: late errors of a replaced source are ignored
   bool _running = false;
   bool _muted = true;
+  bool _lostWhileRunning = false;
+  final LinkTone _linkTone = LinkTone();
+  int _linkBeepCount = 0;
   double _centerFreq = 100e6;
 
   // FFT output
@@ -216,6 +220,7 @@ class DspEngine {
   /// The running source stopped itself (device lost): mirror stop() without calling into it.
   void _sourceStopped() {
     if (!_running) return;
+    _lostWhileRunning = _sourceId == 'usb';
     _running = false;
     _updateAudio();
     _fftWanted = false;
@@ -268,7 +273,7 @@ class DspEngine {
             (m['params'] as Map?)?.cast<Object?, Object?>() ?? const {},
           );
         case DspCmd.start:
-          await start();
+          await start(reconnected: m['reconnected'] == true);
         case DspCmd.stop:
           await stop();
         case DspCmd.tune:
@@ -324,7 +329,7 @@ class DspEngine {
         case DspCmd.setMuted:
           setMuted(m['muted'] == true);
         case DspCmd.releaseSource:
-          await releaseSource();
+          await releaseSource(deviceLost: m['deviceLost'] == true);
         case DspCmd.setSquelch:
           setSquelch(
             enabled: m['enabled'] as bool?,
@@ -398,9 +403,39 @@ class DspEngine {
   }
 
   /// Stops (if needed) and disposes the current source; the engine then has no source.
-  Future<void> releaseSource() async {
+  Future<void> releaseSource({bool deviceLost = false}) async {
+    // Only a running hardware source can have been unplugged. A second release after
+    // ENODEV + Android's detach broadcast sees no source and cannot sound twice.
+    final beep =
+        deviceLost &&
+        _sourceId == 'usb' &&
+        !_muted &&
+        (_running || _lostWhileRunning);
+    _lostWhileRunning = false;
+    if (beep) {
+      // The source can no longer feed audio. Stop its stream, queue the earcon on the
+      // same output, then let miniaudio drain it before releasing AAudio and the fd.
+      if (_running) {
+        await stop();
+      } else {
+        _updateAudio(); // fatal source loss already stopped the source
+      }
+      if (audio.open(LinkTone.sampleRate)) {
+        if (_linkTone.play(
+          audio,
+          LinkToneKind.disconnected,
+          radio.stream.getVolume(),
+        )) {
+          _linkBeepCount++;
+        }
+        // mp_audio_stream buffers 60 ms of pre-roll plus the 120 ms tone.
+        await Future<void>.delayed(const Duration(milliseconds: 240));
+        audio.close();
+      }
+    }
     await _dropSource();
     _sendState();
+    _sendStats();
   }
 
   Future<void> _dropSource() async {
@@ -419,7 +454,7 @@ class DspEngine {
   }
 
   /// main_window.cpp:676-692.
-  Future<void> start() async {
+  Future<void> start({bool reconnected = false}) async {
     if (_running) return;
     if (_source == null) throw StateError('No source selected');
     core.iqFrontEnd.flushInputBuffer();
@@ -434,6 +469,17 @@ class DspEngine {
     radio.resetAutoSquelch();
     _running = true;
     _updateAudio();
+    _lostWhileRunning = false;
+    if (reconnected &&
+        _sourceId == 'usb' &&
+        !_muted &&
+        _linkTone.play(
+          audio,
+          LinkToneKind.reconnected,
+          radio.stream.getVolume(),
+        )) {
+      _linkBeepCount++;
+    }
     _fftWanted = core.iqFrontEnd.fftEnabled;
     _statsTimer?.cancel();
     _statsTimer = Timer.periodic(options.statsInterval, (_) => _sendStats());
@@ -663,6 +709,7 @@ class DspEngine {
   }
 
   Map<String, Object?> statsMap() => <String, Object?>{
+    'linkBeeps': _linkBeepCount,
     'samplesIn': core.iqFrontEnd.samplesIn,
     'audioFrames': radio.audioFrames,
     'fftRows': _fftSeq,
