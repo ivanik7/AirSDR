@@ -84,7 +84,7 @@ tool/oracle/sources/build.sh      # пересобрать golden-трассы �
 - путь Impeller `decodeImageFromPixelsSync` для водопада.
 
 Не реализованы: FM IF NR, CTCSS, RDS-декодер. Фоновый приём через foreground service
-описан в `STATUS-background.md` (проверка на разблокированном телефоне ещё требуется).
+описан в `STATUS-background.md` (проверен на SM-F936B с RTL-SDR Blog V4; слышимость в фоне не подтверждена).
 
 ## Лицензия
 
