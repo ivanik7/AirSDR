@@ -33,12 +33,13 @@ class ChannelController {
   bool get scanning => _scanning;
   void setScanning(bool value) => _scanning = value;
 
-  /// Retune without activating or rewriting the selected slot.
+  /// Retune without activating or rewriting the selected slot. Band settings
+  /// are never applied while scanning (the slot's own mode, current step).
   bool scanTo(ReceiverChannel c) {
     if (!_inRange(c.frequencyHz)) return false;
     _scanApplying = true;
     try {
-      return _apply(c);
+      return _apply(c, restore: true);
     } finally {
       _scanApplying = false;
     }
@@ -63,12 +64,15 @@ class ChannelController {
       add();
     }
     final c = channels.active;
-    if (c != null && !_apply(c)) {
+    // Restoring the stored slot is not a band entry: the persisted step and
+    // the slot's mode stay.
+    if (c != null && !_apply(c, restore: true)) {
       // Out of range for this device: keep the slot as stored, stop driving.
       _applying = true;
       channels.activate(null);
       _applying = false;
     }
+    if (c == null) receiver.markCurrentBand();
     onRadioChanged();
   }
 
@@ -79,11 +83,17 @@ class ChannelController {
         hz <= (d?.maxFrequency ?? 999999999999);
   }
 
-  bool _apply(ReceiverChannel c) {
+  /// [restore]: stored state / scanning (no band settings); otherwise a user
+  /// selection (slot mode wins, band step on band entry).
+  bool _apply(ReceiverChannel c, {bool restore = false}) {
     if (!_inRange(c.frequencyHz)) return false;
     _applying = true;
     try {
-      receiver.apply(c.frequencyHz, c.mode);
+      if (restore) {
+        receiver.restore(c.frequencyHz, c.mode);
+      } else {
+        receiver.apply(c.frequencyHz, c.mode);
+      }
     } on ArgumentError {
       return false;
     } finally {
@@ -181,7 +191,10 @@ String channelDisplayName(int hz, DemodMode mode, Iterable<Favorite> presets) =>
     presets.where((f) => f.frequencyHz == hz).firstOrNull?.name ??
     '${mode.label} ${formatMhz(hz)}';
 
-/// Preset category for a channel (the favorites list needs one).
+/// Storage category of a preset created from a channel. The Пресеты tab
+/// groups presets by band (bands.dart) and no longer shows categories; the
+/// field is kept only so the favorites storage format stays readable by older
+/// builds, so any valid category would do. Kept deterministic by frequency.
 String presetCategoryFor(int hz, DemodMode mode) {
   if (mode == DemodMode.wfm || (hz >= 87500000 && hz <= 108000000)) {
     return 'FM';

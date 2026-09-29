@@ -2,10 +2,12 @@
 import 'package:flutter/material.dart';
 
 import '../auto_levels.dart';
+import '../bands/bands.dart';
 import '../device_dropdown.dart';
 import '../radio_controller.dart';
 import '../sdr_ui_state.dart';
 import '../source_settings.dart';
+import 'bands_screen.dart';
 import 'centered_receiver.dart';
 import 'squelch_controls.dart';
 import 'step_grid.dart';
@@ -17,12 +19,16 @@ class SettingsScreen extends StatelessWidget {
     required this.controller,
     required this.receiver,
     this.spectrum,
+    this.bands,
   });
   final RadioController controller;
   final CenteredReceiver receiver;
 
   /// Waterfall levels (Max/Min + Auto); the section is hidden without it.
   final SdrUiState? spectrum;
+
+  /// Frequency bands (Настройки → Диапазоны); the row is hidden without it.
+  final BandsRepository? bands;
 
   @override
   Widget build(BuildContext context) => ListenableBuilder(
@@ -112,6 +118,19 @@ class SettingsScreen extends StatelessWidget {
               ),
             ),
           _section('ПАРАМЕТРЫ ПРИЁМНИКА'),
+          if (bands case final b?)
+            ListenableBuilder(
+              listenable: b,
+              builder: (context, _) => _row(
+                'Диапазоны',
+                '${b.entries.length} · модуляция и шаг по частоте',
+                trailing: TextButton(
+                  key: const ValueKey('settingsBands'),
+                  onPressed: () => BandsScreen.open(context, b),
+                  child: const Text('Открыть'),
+                ),
+              ),
+            ),
           _row(
             'AGC приёмника',
             'Автоматическое усиление',

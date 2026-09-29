@@ -74,7 +74,7 @@ void main() {
   });
 
   testWidgets(
-    'add arbitrary current frequency, edit, filter, delete and persist',
+    'add arbitrary current frequency, edit, group, delete and persist',
     (tester) async {
       final radio = DemoRadioController();
       final favorites = FavoritesRepository();
@@ -98,8 +98,8 @@ void main() {
       expect(favorites.entries.last.frequencyHz, 99500000);
       expect(favorites.entries.last.name, 'Своя станция');
       await favorites.flush();
-      await tester.tap(find.byKey(const ValueKey('category-FM')));
-      await tester.pump();
+      expect(find.byKey(const ValueKey('presetSection-band-fm')), findsOneWidget);
+      expect(find.byKey(const ValueKey('category-FM')), findsNothing);
       expect(find.text('Своя станция'), findsOneWidget);
       await tester.tap(
         find.byKey(ValueKey('toggle-${favorites.entries.last.id}')),

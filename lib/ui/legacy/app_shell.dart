@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 
 import '../../runtime/sdr_radio_controller.dart';
+import '../bands/bands.dart';
 import '../channels/channel_controller.dart';
 import '../channels/channel_scanner.dart';
 import '../channels/channels.dart';
@@ -21,11 +22,13 @@ class LegacyAppShell extends StatefulWidget {
     required this.controller,
     this.favorites,
     this.channels,
+    this.bands,
     this.openReceive,
   });
   final RadioController controller;
   final FavoritesRepository? favorites;
   final ChannelsRepository? channels;
+  final BandsRepository? bands;
   final Listenable? openReceive;
   @override
   State<LegacyAppShell> createState() => _LegacyAppShellState();
@@ -35,12 +38,14 @@ class _LegacyAppShellState extends State<LegacyAppShell> {
   late CenteredReceiver receiver;
   late SdrUiState spectrum;
   late FavoritesRepository favorites;
+  late BandsRepository bands;
   late ChannelsRepository channelSlots;
   late ChannelController channels;
   late ChannelScanner scanner;
   late SignalMeter meter;
   bool ownFavorites = false;
   bool ownChannels = false;
+  bool ownBands = false;
   bool radioReady = false;
   int tab = 0;
   @override
@@ -55,6 +60,9 @@ class _LegacyAppShellState extends State<LegacyAppShell> {
   void _init() {
     radioReady = widget.controller is! SdrRadioController;
     receiver = CenteredReceiver(widget.controller);
+    bands = widget.bands ?? BandsRepository();
+    ownBands = widget.bands == null;
+    receiver.bands = bands;
     spectrum = SdrUiState(widget.controller, centerDisplayOnVfo: true);
     spectrum.loadSettings();
     favorites = widget.favorites ?? FavoritesRepository();
@@ -96,10 +104,12 @@ class _LegacyAppShellState extends State<LegacyAppShell> {
       });
     }
     favorites.load();
-    // The active channel drives the receiver only once both the radio's own
-    // persisted state and the stored channel list are in.
+    final bandsLoaded = bands.load();
+    // The active channel drives the receiver only once the radio's own
+    // persisted state, the stored channel list and the bands are in (attach
+    // marks the restored frequency's band as entered, without applying it).
     final slotsLoaded = slots.loaded ? Future<void>.value() : slots.load();
-    Future.wait([radioLoaded, slotsLoaded]).then((_) {
+    Future.wait([radioLoaded, slotsLoaded, bandsLoaded]).then((_) {
       if (mounted && identical(channels, bound)) {
         bound.attach(seedFirstRun: true);
       }
@@ -133,7 +143,8 @@ class _LegacyAppShellState extends State<LegacyAppShell> {
     }
     if (oldWidget.controller == widget.controller &&
         oldWidget.favorites == widget.favorites &&
-        oldWidget.channels == widget.channels) {
+        oldWidget.channels == widget.channels &&
+        oldWidget.bands == widget.bands) {
       return;
     }
     oldWidget.controller.removeListener(_radioChanged);
@@ -144,6 +155,7 @@ class _LegacyAppShellState extends State<LegacyAppShell> {
     meter.dispose();
     if (ownFavorites) favorites.dispose();
     if (ownChannels) channelSlots.dispose();
+    if (ownBands) bands.dispose();
     _init();
   }
 
@@ -158,6 +170,7 @@ class _LegacyAppShellState extends State<LegacyAppShell> {
     meter.dispose();
     if (ownFavorites) favorites.dispose();
     if (ownChannels) channelSlots.dispose();
+    if (ownBands) bands.dispose();
     super.dispose();
   }
 
@@ -175,6 +188,7 @@ class _LegacyAppShellState extends State<LegacyAppShell> {
                   receiver: receiver,
                   spectrum: spectrum,
                   favorites: favorites,
+                  bands: bands,
                   channels: channels,
                   scanner: scanner,
                   meter: meter,
@@ -183,12 +197,14 @@ class _LegacyAppShellState extends State<LegacyAppShell> {
                   controller: widget.controller,
                   receiver: receiver,
                   favorites: favorites,
+                  bands: bands,
                   onApplied: () => setState(() => tab = 0),
                 ),
                 SettingsScreen(
                   controller: widget.controller,
                   receiver: receiver,
                   spectrum: spectrum,
+                  bands: bands,
                 ),
               ],
             ),

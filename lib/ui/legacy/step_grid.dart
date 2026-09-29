@@ -3,7 +3,9 @@
 // Frequency step grid of the legacy receiver (task t_33f07c06).
 //
 // The selected step defines the set of allowed receive frequencies: integer
-// multiples of the step relative to 0 Hz (100 kHz step → …, 118.100, 118.200 MHz).
+// multiples of the step relative to 0 Hz by default (100 kHz step → …,
+// 118.100, 118.200 MHz). Named bands can use their lower edge as origin
+// (CB channels start at 26.965 MHz, then repeat every 10 kHz).
 // All arithmetic is done in integer Hz so repeated steps never drift.
 //
 // Rounding rule for arbitrary input (keypad, preset, channel, drag, restored
@@ -25,7 +27,18 @@ int _clampToRange(int hz, int min, int max) =>
     hz < min ? min : (hz > max ? max : hz);
 
 /// Nearest grid node to [hz] (ties go up), limited to [min]..[max].
-int snapToStep(int hz, int step, {int min = 1, int max = 999999999999}) {
+/// [origin] shifts the grid without changing the default zero-based policy.
+int snapToStep(
+  int hz,
+  int step, {
+  int min = 1,
+  int max = 999999999999,
+  int origin = 0,
+}) {
+  if (origin != 0) {
+    return origin +
+        snapToStep(hz - origin, step, min: min - origin, max: max - origin);
+  }
   if (step <= 0) throw ArgumentError.value(step, 'step');
   if (hz < 0) hz = 0;
   final nodes = _nodeRange(step, min, max);
@@ -43,7 +56,18 @@ int stepFrom(
   int direction, {
   int min = 1,
   int max = 999999999999,
+  int origin = 0,
 }) {
+  if (origin != 0) {
+    return origin +
+        stepFrom(
+          hz - origin,
+          step,
+          direction,
+          min: min - origin,
+          max: max - origin,
+        );
+  }
   if (step <= 0) throw ArgumentError.value(step, 'step');
   if (hz < 0) hz = 0;
   final nodes = _nodeRange(step, min, max);
