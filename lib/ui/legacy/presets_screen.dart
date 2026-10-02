@@ -196,18 +196,6 @@ class _PresetsScreenState extends State<PresetsScreen> {
   Widget _presetCard(Favorite f) => legacyCard(
     child: Row(
       children: [
-        IconButton(
-          key: ValueKey('toggle-${f.id}'),
-          tooltip: f.enabled ? 'Убрать из избранного' : 'Добавить в избранное',
-          onPressed: () {
-            setState(() => message = null);
-            widget.favorites.toggle(f.id);
-          },
-          icon: Icon(
-            f.enabled ? Icons.bookmark : Icons.bookmark_border,
-            color: f.enabled ? LegacyColors.accent : LegacyColors.muted,
-          ),
-        ),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -229,6 +217,7 @@ class _PresetsScreenState extends State<PresetsScreen> {
         PopupMenuButton<String>(
           key: ValueKey('favoriteMenu-${f.id}'),
           tooltip: 'Редактировать пресет',
+          onOpened: () => setState(() => message = null),
           onSelected: (action) {
             if (action == 'edit') edit(f);
             if (action == 'delete') confirmDelete(f);
@@ -262,35 +251,10 @@ class _PresetsScreenState extends State<PresetsScreen> {
               children: [
                 Text('Пресеты', style: plex(size: 22, weight: FontWeight.w600)),
                 Text(
-                  '${widget.favorites.entries.where((f) => f.enabled).length} сохранено · один приёмный канал',
+                  '${widget.favorites.entries.length} сохранено · один приёмный канал',
                   style: plex(size: 12, color: LegacyColors.muted),
                 ),
               ],
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(14, 12, 14, 0),
-            child: legacyCard(
-              child: Row(
-                children: [
-                  const Icon(Icons.radio, color: LegacyColors.accent, size: 17),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      'КАНАЛЫ МОНИТОРИНГА · позже',
-                      style: plex(size: 12, color: LegacyColors.muted),
-                    ),
-                  ),
-                  Text(
-                    '1 VFO',
-                    style: plex(
-                      size: 11,
-                      mono: true,
-                      color: LegacyColors.accent,
-                    ),
-                  ),
-                ],
-              ),
             ),
           ),
           if (message != null)

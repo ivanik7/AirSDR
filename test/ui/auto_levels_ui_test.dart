@@ -198,6 +198,14 @@ void main() {
     expect(find.byKey(const ValueKey('legacyFftMin')), findsNothing);
     await tester.tap(sw);
     await tester.pump();
+    // The removed promo rows shorten the lazy list: scroll the recreated
+    // Min slider into view after turning Auto off.
+    await tester.scrollUntilVisible(
+      minSlider,
+      100,
+      scrollable: find.byType(Scrollable).last,
+    );
+    await tester.pump();
     expect(
       tester
           .widget<Slider>(find.byKey(const ValueKey('legacyFftMax')))
@@ -222,6 +230,12 @@ void main() {
     await tester.pump();
     expect(find.byKey(const ValueKey('legacyFftMin')), findsNothing);
     await tester.tap(sw);
+    await tester.pump();
+    await tester.scrollUntilVisible(
+      minSlider,
+      100,
+      scrollable: find.byType(Scrollable).last,
+    );
     await tester.pump();
     expect(tester.widget<Slider>(find.byKey(const ValueKey('legacyFftMin'))).value, -90);
     final prefs = await SharedPreferences.getInstance();

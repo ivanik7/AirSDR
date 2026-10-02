@@ -104,11 +104,10 @@ void main() {
       );
       expect(find.byKey(const ValueKey('category-FM')), findsNothing);
       expect(find.text('Своя станция'), findsOneWidget);
-      await tester.tap(
+      expect(
         find.byKey(ValueKey('toggle-${favorites.entries.last.id}')),
+        findsNothing,
       );
-      await tester.pump();
-      expect(favorites.entries.last.enabled, isFalse);
       final id = favorites.entries.last.id;
       await tester.tap(find.byKey(ValueKey('favoriteMenu-$id')));
       await tester.pumpAndSettle();
@@ -121,6 +120,7 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('favoriteSave')));
       await tester.pumpAndSettle();
       expect(favorites.entries.last.name, 'Другая станция');
+      expect(favorites.entries.last.enabled, isTrue);
       await tester.tap(find.byKey(ValueKey('favoriteMenu-$id')));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Удалить').last);
