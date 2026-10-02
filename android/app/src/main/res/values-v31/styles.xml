@@ -5,5 +5,8 @@
         <item name="android:windowSplashScreenBackground">@color/airsdr_background</item>
         <item name="android:windowSplashScreenAnimatedIcon">@drawable/ic_launcher_foreground</item>
         <item name="android:windowBackground">@drawable/launch_background</item>
+        <item name="android:navigationBarColor">@color/airsdr_background</item>
+        <item name="android:windowLightNavigationBar">false</item>
+        <item name="android:enforceNavigationBarContrast">false</item>
     </style>
 </resources>

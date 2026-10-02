@@ -98,7 +98,7 @@ class SettingsScreen extends StatelessWidget {
           ),
           _row(
             'Параметры устройства',
-            'Bias-T · PPM · sample rate · direct sampling',
+            'Особые параметры источника и демодулятора',
             trailing: TextButton(
               onPressed: () => showSourceSettingsSheet(context, r),
               child: const Text('Открыть'),
@@ -194,9 +194,6 @@ class SettingsScreen extends StatelessWidget {
             child: SquelchControls(controller: r),
           ),
           if (spectrum case final s?) ..._waterfallLevels(s),
-          _section('ПОЗЖЕ'),
-          _row('Запись · rtl_tcp · уведомления', 'Недоступно в текущем движке'),
-          _row('Сканирование каналов', 'Недоступно · работает один VFO'),
         ],
       );
     },

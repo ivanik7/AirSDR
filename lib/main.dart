@@ -10,6 +10,7 @@
 // DemoRadioController (lib/ui/demo_radio_controller.dart) is only used by UI tests.
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 
 import 'runtime/device_sources.dart';
@@ -63,6 +64,14 @@ class SdrApp extends StatefulWidget {
 }
 
 class _SdrAppState extends State<SdrApp> with WidgetsBindingObserver {
+  static const _systemBars = SystemUiOverlayStyle(
+    statusBarColor: Colors.transparent,
+    statusBarIconBrightness: Brightness.light,
+    systemNavigationBarColor: LegacyColors.background,
+    systemNavigationBarDividerColor: LegacyColors.background,
+    systemNavigationBarIconBrightness: Brightness.light,
+    systemNavigationBarContrastEnforced: false,
+  );
   final ValueNotifier<int> _openReceive = ValueNotifier<int>(0);
   late BackgroundReception _background;
 
@@ -70,6 +79,8 @@ class _SdrAppState extends State<SdrApp> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    SystemChrome.setSystemUIOverlayStyle(_systemBars);
     _background = BackgroundReception(
       widget.controller,
       onOpenReceive: () => _openReceive.value++,
@@ -90,6 +101,9 @@ class _SdrAppState extends State<SdrApp> with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      SystemChrome.setSystemUIOverlayStyle(_systemBars);
+    }
     if (widget.controller case final SdrRadioController real) {
       if (state == AppLifecycleState.resumed) real.setFftVisible(true);
       if (state == AppLifecycleState.paused ||
@@ -113,6 +127,13 @@ class _SdrAppState extends State<SdrApp> with WidgetsBindingObserver {
       title: 'AirSDR',
       debugShowCheckedModeBanner: false,
       theme: legacyTheme(),
+      // Android 15+ draws the 3-button navbar over app content; opt out of
+      // the system's light contrast scrim and supply a dark canvas beneath it.
+      // Gesture navigation remains edge-to-edge with a light handle.
+      builder: (context, child) => AnnotatedRegion<SystemUiOverlayStyle>(
+        value: _systemBars,
+        child: ColoredBox(color: LegacyColors.background, child: child!),
+      ),
       home: LegacyAppShell(
         controller: widget.controller,
         openReceive: _openReceive,

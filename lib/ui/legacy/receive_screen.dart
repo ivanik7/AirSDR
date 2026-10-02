@@ -137,7 +137,7 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
               key: const ValueKey('legacyStatus'),
               children: [
                 Text(
-                  '${r.mode.label} · BW ${(r.bandwidth / 1000).toStringAsFixed(1)}k',
+                  'BW ${(r.bandwidth / 1000).toStringAsFixed(1)}k',
                   maxLines: 1,
                   style: plex(mono: true, size: 12, color: LegacyColors.accent),
                 ),

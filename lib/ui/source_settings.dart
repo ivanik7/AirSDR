@@ -1,18 +1,14 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-//
-// Source-specific settings (the SDR++ source menu: gui/menus/source.cpp + the selected source
-// module's menuHandler, e.g. rtl_sdr_source/src/main.cpp:361-524) and demodulator options
-// (radio module menu, e.g. the WFM "Stereo" checkbox), rendered from the declarative
-// [SourceSetting] list of [RadioController.sourceSettings] / [RadioController.demodOptions].
-// Also the one-line runtime status (sample rate, dropped buffers, audio output).
-
+// Source-specific SDR++ settings and demodulator options, rendered from the
+// selected SourceSetting list; protocol IDs and option indices are unchanged.
 import 'package:flutter/material.dart';
 
-import 'hrfreq.dart';
 import 'radio_controller.dart';
 
-/// Opens the settings as a modal bottom sheet.
-Future<void> showSourceSettingsSheet(BuildContext context, RadioController radio) {
+Future<void> showSourceSettingsSheet(
+  BuildContext context,
+  RadioController radio,
+) {
   return showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
@@ -22,20 +18,50 @@ Future<void> showSourceSettingsSheet(BuildContext context, RadioController radio
       initialChildSize: 0.6,
       minChildSize: 0.3,
       maxChildSize: 0.95,
-      builder: (context, scroll) => SourceSettingsPanel(radio: radio, scrollController: scroll),
+      builder: (context, scroll) =>
+          SourceSettingsPanel(radio: radio, scrollController: scroll),
     ),
   );
 }
 
-/// Demod option keys shown as switches, with labels (bool options only; RDS is not ported).
 const Map<String, String> _demodBoolOptions = <String, String>{
-  'stereo': 'Stereo',
-  'lowPass': 'Low pass',
-  'carrierAgc': 'Carrier AGC',
+  'stereo': 'Стерео',
+  'lowPass': 'Фильтр НЧ',
+  'carrierAgc': 'АРУ несущей',
+};
+
+const _settingLabels = <String, String>{
+  'gain': 'Усиление RF',
+  'tunerAgc': 'АРУ тюнера',
+  'directSampling': 'Прямая дискретизация',
+  'ppm': 'Коррекция PPM',
+  'biasT': 'Питание антенны (Bias-T)',
+  'offsetTuning': 'Смещение настройки',
+  'rtlAgc': 'АРУ RTL',
+  'bandwidth': 'Полоса фильтра',
+  'lnaGain': 'Усиление LNA',
+  'vgaGain': 'Усиление VGA',
+  'amp': 'Усилитель HackRF',
+  'noise': 'Уровень шума (dBFS)',
+  'format': 'Формат IQ',
+};
+
+String _settingLabel(SourceSetting s) => _settingLabels[s.id] ?? s.label;
+
+String _choiceLabel(String id, String value) => switch ((id, value)) {
+  ('directSampling', 'Disabled') => 'Выкл.',
+  ('directSampling', 'I branch') => 'Ветвь I',
+  ('directSampling', 'Q branch') => 'Ветвь Q',
+  ('bandwidth', 'Auto') => 'Авто',
+  _ => value,
 };
 
 class SourceSettingsPanel extends StatelessWidget {
-  const SourceSettingsPanel({super.key, required this.radio, this.scrollController});
+  const SourceSettingsPanel({
+    super.key,
+    required this.radio,
+    this.scrollController,
+  });
 
   final RadioController radio;
   final ScrollController? scrollController;
@@ -51,17 +77,38 @@ class SourceSettingsPanel extends StatelessWidget {
         final children = <Widget>[
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
-            child: Text(radio.selectedDevice?.name ?? 'No device', style: theme.textTheme.titleMedium),
+            child: Text(switch (radio.selectedDevice) {
+              null => 'Устройство не выбрано',
+              final device when device.id.startsWith('synth:') =>
+                'Генератор сигнала',
+              final device => device.name,
+            }, style: theme.textTheme.titleMedium),
           ),
-          if (settings.isEmpty)
-            const ListTile(dense: true, title: Text('No device-specific settings (select the device first)')),
+          if (radio.selectedDevice == null)
+            const ListTile(
+              dense: true,
+              title: Text('Выберите устройство в настройках'),
+            ),
           for (final s in settings)
-            if (s.id != 'device') // one device per fd on Android
-              _SettingTile(key: ValueKey<String>('src:${s.id}'), setting: s, running: radio.running, radio: radio),
+            // The shared controls are on the main Settings tab. RTL AGC is
+            // distinct from tuner AGC; HackRF LNA/VGA are not combined RF gain.
+            if (s.id != 'device' &&
+                s.id != 'sampleRate' &&
+                !(radio.selectedDevice?.hasAgc == true &&
+                    (s.id == 'gain' || s.id == 'tunerAgc')))
+              _SettingTile(
+                key: ValueKey<String>('src:${s.id}'),
+                setting: s,
+                running: radio.running,
+                radio: radio,
+              ),
           const Divider(),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
-            child: Text('Demodulator ${radio.mode.label}', style: theme.textTheme.titleSmall),
+            child: Text(
+              'Демодулятор ${radio.mode.label}',
+              style: theme.textTheme.titleSmall,
+            ),
           ),
           for (final e in _demodBoolOptions.entries)
             if (demod[e.key] is bool)
@@ -75,7 +122,11 @@ class SourceSettingsPanel extends StatelessWidget {
           const Divider(),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: Text(statsLine(radio), key: const ValueKey<String>('statsLine'), style: theme.textTheme.bodySmall),
+            child: Text(
+              statsLine(radio),
+              key: const ValueKey<String>('statsLine'),
+              style: theme.textTheme.bodySmall,
+            ),
           ),
         ];
         return ListView(controller: scrollController, children: children);
@@ -84,57 +135,78 @@ class SourceSettingsPanel extends StatelessWidget {
   }
 }
 
-/// "2.4 MSPS · drops 0 · audio mp_audio_stream" status text.
+/// Compact runtime status for the source sheet.
 String statsLine(RadioController radio) {
   final st = radio.stats;
   final parts = <String>[
-    '${hrfreqToString(radio.sampleRate)}S/s',
-    if (st['droppedBuffers'] is num) 'USB drops ${st['droppedBuffers']}',
-    if (st['audioDropped'] is num) 'audio drops ${st['audioDropped']}',
-    if (st['audioOutput'] is String) 'out ${st['audioOutput']}',
+    '${(radio.sampleRate / 1e6).toStringAsFixed(2)} Мвыб/с',
+    if (st['droppedBuffers'] is num) 'USB потери ${st['droppedBuffers']}',
+    if (st['audioDropped'] is num) 'потери аудио ${st['audioDropped']}',
+    if (st['audioOutput'] is String) 'выход ${st['audioOutput']}',
   ];
   return parts.join(' · ');
 }
 
 class _SettingTile extends StatelessWidget {
-  const _SettingTile({super.key, required this.setting, required this.running, required this.radio});
+  const _SettingTile({
+    super.key,
+    required this.setting,
+    required this.running,
+    required this.radio,
+  });
 
   final SourceSetting setting;
   final bool running;
   final RadioController radio;
 
-  // SDR++ disables these while the source runs (BeginDisabled in the module menus).
-  static const Set<String> _disabledWhileRunning = <String>{'device', 'sampleRate', 'refresh'};
-
   @override
   Widget build(BuildContext context) {
     final s = setting;
-    final enabled = !(running && _disabledWhileRunning.contains(s.id));
+    final enabled = !(running && s.id == 'refresh');
     final style = Theme.of(context).textTheme.bodyMedium;
     switch (s) {
       case ChoiceSetting c:
         return ListTile(
           dense: true,
-          title: Text(c.label, style: style),
-          trailing: DropdownButton<int>(
-            value: (c.selected >= 0 && c.selected < c.options.length) ? c.selected : null,
-            onChanged: enabled ? (v) => v == null ? null : radio.setSourceSetting(c.id, v) : null,
-            items: [
-              for (int i = 0; i < c.options.length; i++) DropdownMenuItem<int>(value: i, child: Text(c.options[i])),
-            ],
+          title: Text(_settingLabel(c), style: style),
+          trailing: SizedBox(
+            width: 132,
+            child: DropdownButton<int>(
+              isExpanded: true,
+              value: (c.selected >= 0 && c.selected < c.options.length)
+                  ? c.selected
+                  : null,
+              onChanged: enabled
+                  ? (v) => v == null ? null : radio.setSourceSetting(c.id, v)
+                  : null,
+              items: [
+                for (int i = 0; i < c.options.length; i++)
+                  DropdownMenuItem<int>(
+                    value: i,
+                    child: Text(
+                      _choiceLabel(c.id, c.options[i]),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+              ],
+            ),
           ),
         );
       case BoolSetting b:
         return SwitchListTile(
           dense: true,
-          title: Text(b.label, style: style),
+          title: Text(_settingLabel(b), style: style),
           value: b.value,
           onChanged: enabled ? (v) => radio.setSourceSetting(b.id, v) : null,
         );
       case SliderSetting sl:
         final steps = sl.step > 0 ? ((sl.max - sl.min) / sl.step).round() : 0;
         if (steps > 1000) {
-          return _NumberSettingTile(setting: sl, enabled: enabled, radio: radio);
+          return _NumberSettingTile(
+            setting: sl,
+            enabled: enabled,
+            radio: radio,
+          );
         }
         return _SliderSettingTile(setting: sl, enabled: enabled, radio: radio);
     }
@@ -143,7 +215,11 @@ class _SettingTile extends StatelessWidget {
 
 /// Slider applied on release (every applySetting is a USB round trip on the device).
 class _SliderSettingTile extends StatefulWidget {
-  const _SliderSettingTile({required this.setting, required this.enabled, required this.radio});
+  const _SliderSettingTile({
+    required this.setting,
+    required this.enabled,
+    required this.radio,
+  });
   final SliderSetting setting;
   final bool enabled;
   final RadioController radio;
@@ -163,27 +239,36 @@ class _SliderSettingTileState extends State<_SliderSettingTile> {
     final valueText = s.step >= 1 ? v.round().toString() : v.toStringAsFixed(1);
     return ListTile(
       dense: true,
-      title: Text(s.label),
+      title: Text(_settingLabel(s)),
       subtitle: Slider(
         value: v,
         min: s.min,
         max: s.max > s.min ? s.max : s.min + 1,
         divisions: steps > 0 ? steps : null,
         label: valueText,
-        onChanged: (widget.enabled && s.max > s.min) ? (x) => setState(() => _drag = x) : null,
+        onChanged: (widget.enabled && s.max > s.min)
+            ? (x) => setState(() => _drag = x)
+            : null,
         onChangeEnd: (x) {
           widget.radio.setSourceSetting(s.id, x);
           setState(() => _drag = null);
         },
       ),
-      trailing: SizedBox(width: 48, child: Text(valueText, textAlign: TextAlign.right)),
+      trailing: SizedBox(
+        width: 48,
+        child: Text(valueText, textAlign: TextAlign.right),
+      ),
     );
   }
 }
 
 /// Wide-range integer settings (PPM correction) as a number field.
 class _NumberSettingTile extends StatelessWidget {
-  const _NumberSettingTile({required this.setting, required this.enabled, required this.radio});
+  const _NumberSettingTile({
+    required this.setting,
+    required this.enabled,
+    required this.radio,
+  });
   final SliderSetting setting;
   final bool enabled;
   final RadioController radio;
@@ -193,9 +278,9 @@ class _NumberSettingTile extends StatelessWidget {
     final s = setting;
     return ListTile(
       dense: true,
-      title: Text(s.label),
+      title: Text(_settingLabel(s)),
       trailing: SizedBox(
-        width: 120,
+        width: 104,
         child: TextFormField(
           key: ValueKey<double>(s.value),
           enabled: enabled,
@@ -204,7 +289,12 @@ class _NumberSettingTile extends StatelessWidget {
           keyboardType: const TextInputType.numberWithOptions(signed: true),
           onFieldSubmitted: (t) {
             final v = int.tryParse(t.trim());
-            if (v != null) radio.setSourceSetting(s.id, v.clamp(s.min.toInt(), s.max.toInt()));
+            if (v != null) {
+              radio.setSourceSetting(
+                s.id,
+                v.clamp(s.min.toInt(), s.max.toInt()),
+              );
+            }
           },
         ),
       ),
