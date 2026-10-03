@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
+import 'dart:convert';
 import 'dart:ffi';
 import 'dart:io';
 
@@ -6,6 +7,92 @@ import 'package:ffi/ffi.dart';
 
 /// Opaque handle from native/include/sdrcore.h.
 final class SdrHandle extends Opaque {}
+
+/// Loads libsdrcore.so for this platform (see [SdrCore.open] for the order).
+DynamicLibrary openSdrCoreLibrary([String? libraryPath]) {
+  if (libraryPath != null && libraryPath.isNotEmpty) {
+    return DynamicLibrary.open(libraryPath);
+  }
+  if (Platform.isLinux) {
+    final env = Platform.environment['SDRCORE_HOST_LIBRARY'];
+    if (env != null && env.isNotEmpty) return DynamicLibrary.open(env);
+    // Flutter Linux bundle: <bundle>/<binary> + <bundle>/lib/libsdrcore.so.
+    final bundled = File(
+      '${File(Platform.resolvedExecutable).parent.path}/lib/libsdrcore.so',
+    );
+    if (bundled.existsSync()) return DynamicLibrary.open(bundled.path);
+  }
+  return DynamicLibrary.open('libsdrcore.so');
+}
+
+/// A failed native command; [code] is the SdrResult / SdrHostResult value.
+final class SdrCoreError extends StateError {
+  SdrCoreError(this.code) : super('Native core error $code');
+  final int code;
+}
+
+/// Native result codes (sdrcore.h enum SdrResult + sdrcore_host.h).
+abstract final class SdrResult {
+  static const ok = 0;
+  static const invalidArgument = -1;
+  static const invalidState = -2;
+  static const unsupported = -3;
+  static const ioError = -4;
+  static const deviceGone = -5;
+  static const internalError = -6;
+  static const hostAccessDenied = -16;
+  static const hostNotFound = -17;
+}
+
+/// Native engine states (sdrcore.h enum SdrState).
+abstract final class SdrState {
+  static const idle = 0;
+  static const open = 1;
+  static const running = 2;
+  static const error = 3;
+}
+
+/// Native source ids (sdrcore.h enum SdrSource).
+abstract final class SdrSourceId {
+  static const rtlsdr = 3;
+  static const hackrf = 4;
+}
+
+/// One USB device listed by the desktop host layer (sdrcore_host.h).
+final class SdrHostUsbDevice {
+  const SdrHostUsbDevice({
+    required this.vendorId,
+    required this.productId,
+    required this.bus,
+    required this.address,
+    required this.path,
+    this.manufacturer,
+    this.product,
+    this.serial,
+  });
+  final int vendorId;
+  final int productId;
+  final int bus;
+  final int address;
+
+  /// /dev/bus/usb/BBB/DDD; changes on re-enumeration (replug).
+  final String path;
+  final String? manufacturer;
+  final String? product;
+  final String? serial;
+
+  @override
+  String toString() =>
+      'SdrHostUsbDevice($path ${vendorId.toRadixString(16)}:'
+      '${productId.toRadixString(16)} $manufacturer $product $serial)';
+}
+
+/// Optional desktop host USB layer; present only in Linux host builds.
+abstract interface class SdrCoreHostBindings {
+  bool get hasHostUsb;
+  List<SdrHostUsbDevice> hostUsbList();
+  int hostOpenUsb(Pointer<SdrHandle> handle, int bus, int address, int source);
+}
 
 /// The three original C ABI functions. Injection permits lifecycle tests.
 abstract interface class SdrCoreBindings {
@@ -85,6 +172,54 @@ final class _NativeStats extends Struct {
   external int checksum;
 }
 
+// Mirror of SdrHostUsbDevice in native/include/sdrcore_host.h (232 bytes).
+final class _NativeHostUsbDevice extends Struct {
+  @Uint32()
+  external int size;
+  @Uint16()
+  external int vendorId;
+  @Uint16()
+  external int productId;
+  @Uint8()
+  external int bus;
+  @Uint8()
+  external int address;
+  @Array(2)
+  external Array<Uint8> reserved;
+  @Array(32)
+  external Array<Uint8> path;
+  @Array(64)
+  external Array<Uint8> manufacturer;
+  @Array(64)
+  external Array<Uint8> product;
+  @Array(64)
+  external Array<Uint8> serial;
+
+  static String _str(Array<Uint8> a, int cap) {
+    final bytes = <int>[];
+    for (var i = 0; i < cap && a[i] != 0; i++) {
+      bytes.add(a[i]);
+    }
+    return utf8.decode(bytes, allowMalformed: true);
+  }
+
+  static String? _opt(Array<Uint8> a, int cap) {
+    final s = _str(a, cap);
+    return s.isEmpty ? null : s;
+  }
+
+  SdrHostUsbDevice toDevice() => SdrHostUsbDevice(
+    vendorId: vendorId,
+    productId: productId,
+    bus: bus,
+    address: address,
+    path: _str(path, 32),
+    manufacturer: _opt(manufacturer, 64),
+    product: _opt(product, 64),
+    serial: _opt(serial, 64),
+  );
+}
+
 /// Explicitly loads the native core. It does not replace the Dart receiver.
 final class SdrCore {
   SdrCore._(this._bindings) {
@@ -99,16 +234,17 @@ final class SdrCore {
   /// Current revision of native/include/sdrcore.h, not an application version.
   static const abiVersion = 2;
 
-  /// On Android loads the packaged arm64 library. On Linux, supply [libraryPath]
-  /// or put libsdrcore.so on the loader path. Other platforms are not built.
+  /// On Android loads the packaged arm64 library. On Linux resolves, in order:
+  /// [libraryPath], `$SDRCORE_HOST_LIBRARY`, the Flutter bundle's
+  /// `<executable dir>/lib/libsdrcore.so`, then the loader path. Other
+  /// platforms are not built.
   factory SdrCore.open({String? libraryPath}) {
     if (!Platform.isAndroid && !Platform.isLinux) {
       throw UnsupportedError(
         'libsdrcore.so is only built for Android arm64 and Linux',
       );
     }
-    final library = DynamicLibrary.open(libraryPath ?? 'libsdrcore.so');
-    return SdrCore._(_DynamicSdrCoreBindings(library));
+    return SdrCore._(_DynamicSdrCoreBindings(openSdrCoreLibrary(libraryPath)));
   }
 
   /// Allows lifecycle checks with bindings that do not allocate native memory.
@@ -118,6 +254,19 @@ final class SdrCore {
 
   /// Calls native sdr_version (ABI revision, not receiver state).
   int get version => _bindings.version();
+
+  /// True when this library has the desktop host USB layer (Linux builds).
+  bool get hasHostUsb =>
+      _bindings is SdrCoreHostBindings &&
+      (_bindings as SdrCoreHostBindings).hasHostUsb;
+
+  /// Lists host USB devices (all non-hub devices; filter by VID:PID).
+  List<SdrHostUsbDevice> hostUsbDevices() {
+    if (!hasHostUsb) {
+      throw UnsupportedError('Host USB layer not available in this library');
+    }
+    return (_bindings as SdrCoreHostBindings).hostUsbList();
+  }
 
   /// Allocates one idle native handle; caller must dispose the result.
   SdrCoreInstance create() {
@@ -151,7 +300,7 @@ final class SdrCoreInstance {
   }
 
   void _check(int result) {
-    if (result != 0) throw StateError('Native core error $result');
+    if (result != 0) throw SdrCoreError(result);
   }
 
   /// Diagnostic CU8 file source. Native duplicates [fd]; caller owns original.
@@ -165,6 +314,16 @@ final class SdrCoreInstance {
   /// Native USB source. Keep the Android UsbDeviceConnection alive until close
   /// or dispose; native duplicates [fd] and never owns the original.
   void openUsb(int fd, int source) => _check(_v2.openUsb(_live, fd, source));
+
+  /// Desktop host only: opens /dev/bus/usb/<bus>/<address> through the same
+  /// native driver path as [openUsb]; native owns the descriptor.
+  void openHostUsb(int bus, int address, int source) {
+    final b = _bindings;
+    if (b is! SdrCoreHostBindings || !b.hasHostUsb) {
+      throw UnsupportedError('Host USB layer not available in this library');
+    }
+    _check(b.hostOpenUsb(_live, bus, address, source));
+  }
 
   /// Configure in OPEN only. RF Hz, complex IQ pairs/s, tenths of a dB.
   void configure(int frequencyHz, int sampleRate, int gainTenthsDb) =>
@@ -183,10 +342,52 @@ final class SdrCoreInstance {
 }
 
 // Exact C signatures: uint32_t(void), SdrHandle*(void), void(SdrHandle*).
-final class _DynamicSdrCoreBindings implements SdrCoreV2Bindings {
+final class _DynamicSdrCoreBindings
+    implements SdrCoreV2Bindings, SdrCoreHostBindings {
   _DynamicSdrCoreBindings(this._library);
 
   final DynamicLibrary _library;
+
+  @override
+  late final bool hasHostUsb =
+      _library.providesSymbol('sdr_host_usb_list') &&
+      _library.providesSymbol('sdr_host_open_usb');
+  late final int Function(Pointer<_NativeHostUsbDevice>, int, Pointer<Uint32>)
+  _hostList = _library
+      .lookupFunction<
+        Int32 Function(Pointer<_NativeHostUsbDevice>, Uint32, Pointer<Uint32>),
+        int Function(Pointer<_NativeHostUsbDevice>, int, Pointer<Uint32>)
+      >('sdr_host_usb_list');
+  late final int Function(Pointer<SdrHandle>, int, int, int) _hostOpen = _library
+      .lookupFunction<
+        Int32 Function(Pointer<SdrHandle>, Uint8, Uint8, Uint32),
+        int Function(Pointer<SdrHandle>, int, int, int)
+      >('sdr_host_open_usb');
+
+  @override
+  List<SdrHostUsbDevice> hostUsbList() {
+    const capacity = 64;
+    final buf = calloc<_NativeHostUsbDevice>(capacity);
+    final count = calloc<Uint32>();
+    try {
+      for (var i = 0; i < capacity; i++) {
+        buf[i].size = sizeOf<_NativeHostUsbDevice>();
+      }
+      final code = _hostList(buf, capacity, count);
+      if (code != 0) throw SdrCoreError(code);
+      final n = count.value < capacity ? count.value : capacity;
+      return <SdrHostUsbDevice>[
+        for (var i = 0; i < n; i++) buf[i].toDevice(),
+      ];
+    } finally {
+      calloc.free(buf);
+      calloc.free(count);
+    }
+  }
+
+  @override
+  int hostOpenUsb(Pointer<SdrHandle> handle, int bus, int address, int source) =>
+      _hostOpen(handle, bus, address, source);
   late final int Function(Pointer<SdrHandle>, int, int) _openFile = _library
       .lookupFunction<
         Int32 Function(Pointer<SdrHandle>, Int32, Uint32),
@@ -289,7 +490,7 @@ final class _DynamicSdrCoreBindings implements SdrCoreV2Bindings {
       ptr.ref.size = sizeOf<_NativeStats>();
       ptr.ref.revision = SdrCore.abiVersion;
       final code = _stats(handle, ptr);
-      if (code != 0) throw StateError('Native core error $code');
+      if (code != 0) throw SdrCoreError(code);
       final s = ptr.ref;
       return SdrCoreStats(
         s.state,

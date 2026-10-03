@@ -10,6 +10,10 @@ add_library(sdrcore SHARED
 )
 if(ANDROID)
     target_sources(sdrcore PRIVATE src/sdr_jni.cpp)
+else()
+    # Desktop Linux platform layer (L1): libusb enumeration + open by path.
+    target_sources(sdrcore PRIVATE src/sdrcore_host.cpp)
+    target_link_libraries(sdrcore PRIVATE sdrcore_libusb)
 endif()
 target_compile_features(sdrcore PRIVATE cxx_std_17)
 find_package(Threads REQUIRED)
@@ -20,7 +24,14 @@ set_target_properties(sdrcore PROPERTIES
     VISIBILITY_INLINES_HIDDEN YES)
 target_include_directories(sdrcore PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
-if(NOT ANDROID)
+# Audio sink backends (null/WAV/ALSA); defines target sdrcore_audio and, for
+# standalone host builds, its CTest. See src/audio/audio_sink.h.
+include(src/audio/audio.cmake)
+target_link_libraries(sdrcore PRIVATE sdrcore_audio)
+
+# Tests only for a standalone host configure (native/ as the top-level project);
+# the Flutter Linux runner adds native/ as a subdirectory and needs the library only.
+if(NOT ANDROID AND PROJECT_IS_TOP_LEVEL)
     enable_testing()
     add_executable(sdrcore_abi_test tests/abi_test.c)
     target_link_libraries(sdrcore_abi_test PRIVATE sdrcore)
@@ -49,4 +60,9 @@ if(NOT ANDROID)
     target_link_libraries(sdrcore_rtl_libusb_init_failure_test PRIVATE sdrcore_rtlsdr sdrcore_libusb m)
     target_link_options(sdrcore_rtl_libusb_init_failure_test PRIVATE -Wl,--wrap=libusb_init)
     add_test(NAME sdrcore_rtl_libusb_init_failure COMMAND sdrcore_rtl_libusb_init_failure_test)
+    add_executable(sdrcore_host_usb_test tests/host_usb_test.c)
+    target_link_libraries(sdrcore_host_usb_test PRIVATE sdrcore)
+    add_test(NAME sdrcore_host_usb COMMAND sdrcore_host_usb_test)
+    add_executable(sdrcore_host_rx_diag tests/host_rx_diag.c)
+    target_link_libraries(sdrcore_host_rx_diag PRIVATE sdrcore)
 endif()
