@@ -6,8 +6,8 @@
 #include "sdrcore.h"
 
 #include <algorithm>
-#include <atomic>
 #include <chrono>
+#include <mutex>
 #include <thread>
 #include <unistd.h>
 
@@ -43,36 +43,38 @@ HackRfGains split_gain(int32_t gain_tenths_db) {
   return g;
 }
 
-std::atomic<int> g_hackrf_init_refcount{0};
+// hackrf_init/exit operate on one process-wide libusb context. An atomic
+// refcount alone lets a second open use that context before init completes,
+// or lets an open race the last close's exit.
+std::mutex g_hackrf_lifecycle;
+int g_hackrf_init_refcount = 0;
 }  // namespace
 
 HackRfAdapter::~HackRfAdapter() { close(); }
 
 int HackRfAdapter::open(int fd) {
   if (dev_) return SDR_INVALID_STATE;
-  if (g_hackrf_init_refcount.fetch_add(1) == 0) {
-    if (hackrf_init() != 0) {
-      g_hackrf_init_refcount.fetch_sub(1);
-      return SDR_INTERNAL_ERROR;
-    }
-  }
+  std::lock_guard<std::mutex> lifecycle(g_hackrf_lifecycle);
+  if (g_hackrf_init_refcount == 0 && hackrf_init() != 0)
+    return SDR_INTERNAL_ERROR;
   // libusb_wrap_sys_device() stores the fd as-is and does not dup() or
   // close() it; dup() here so libhackrf/libusb own an independent descriptor
   // and the caller's original fd is left untouched.
   const int dup_fd = dup(fd);
   if (dup_fd < 0) {
-    if (g_hackrf_init_refcount.fetch_sub(1) == 1) hackrf_exit();
+    if (g_hackrf_init_refcount == 0) hackrf_exit();
     return SDR_IO_ERROR;
   }
   hackrf_device* dev = nullptr;
   const int rc = hackrf_open_by_fd(dup_fd, &dev);
   if (rc != 0 || !dev) {
     ::close(dup_fd);
-    if (g_hackrf_init_refcount.fetch_sub(1) == 1) hackrf_exit();
+    if (g_hackrf_init_refcount == 0) hackrf_exit();
     return SDR_DEVICE_GONE;
   }
   dev_ = dev;
   owned_fd_ = dup_fd;
+  ++g_hackrf_init_refcount;
   return SDR_OK;
 }
 
@@ -144,10 +146,11 @@ void HackRfAdapter::stop() {
 }
 
 void HackRfAdapter::close() {
+  std::lock_guard<std::mutex> lifecycle(g_hackrf_lifecycle);
   if (dev_) {
     hackrf_close(dev_);
     dev_ = nullptr;
-    if (g_hackrf_init_refcount.fetch_sub(1) == 1) hackrf_exit();
+    if (--g_hackrf_init_refcount == 0) hackrf_exit();
   }
   if (owned_fd_ >= 0) {
     ::close(owned_fd_);

@@ -88,9 +88,11 @@ struct SdrHandle {
             static_cast<SdrHandle*>(ctx)->push(data, len);
           },
           this);
-      if (rc != SDR_OK && !stopping.load()) {
+      if (!stopping.load()) {
         std::lock_guard<std::mutex> lock(mutex);
-        stats.last_error = rc;
+        // A USB producer must run until explicitly stopped. Even a driver
+        // returning success without a stop is an unexpected loss of input.
+        stats.last_error = rc == SDR_OK ? SDR_DEVICE_GONE : rc;
         stats.state = SDR_ERROR;
       }
       { std::lock_guard<std::mutex> lock(mutex); producer_done = true; }
@@ -221,10 +223,15 @@ extern "C" int32_t sdr_v2_open_usb(SdrHandle* h, int32_t fd, uint32_t source) {
     if (h->stats.state != SDR_IDLE) return SDR_INVALID_STATE;
   }
   std::unique_ptr<UsbRxAdapter> adapter;
-  if (source == SDR_RTLSDR) {
-    adapter = std::make_unique<RtlSdrAdapter>();
-  } else {
-    adapter = std::make_unique<HackRfAdapter>();
+  try {
+    if (source == SDR_RTLSDR) {
+      adapter = std::make_unique<RtlSdrAdapter>();
+    } else {
+      adapter = std::make_unique<HackRfAdapter>();
+    }
+  } catch (...) {
+    // No C++ exception may escape the public C ABI.
+    return SDR_INTERNAL_ERROR;
   }
   // open() dup()s fd itself (see usb_*_adapter.h); the caller's original fd,
   // owned by the Kotlin UsbSdrPlugin/UsbDeviceConnection, is never touched
