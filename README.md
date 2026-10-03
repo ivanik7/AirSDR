@@ -2,7 +2,9 @@
 
 Карманный SDR-приёмник для Android с RTL-SDR и HackRF через USB OTG. Модули
 [SDR++](https://github.com/AlexandreRouma/SDRPlusPlus) портированы на Dart близко к оригиналу
-(1:1 по структуре), без C/NDK в собственном коде.
+(1:1 по структуре). Этот рабочий путь сохраняется на время поэтапного перехода на C++/NDK
+(план — `~/prj/docs/40-native-core-plan.md`). `native/` пока содержит только собираемый
+каркас C ABI без USB, DSP и приёма; UI продолжает работать через Dart-приёмник.
 
 Путь сигнала: USB OTG → драйвер RTL-SDR/HackRF (Dart, через usbfs `ioctl`) → сигнальный путь
 SDR++ (IQ-фронтенд, FFT, VFO) → демодуляторы (WFM/NFM/AM/USB/LSB/DSB/CW/RAW) → звук, спектр
@@ -27,6 +29,11 @@ SDR++ (IQ-фронтенд, FFT, VFO) → демодуляторы (WFM/NFM/AM/U
 DSP передаются слотами нативного пула.
 
 ## Сборка
+
+`android/app` собирает `native/CMakeLists.txt` через `externalNativeBuild` для arm64-v8a;
+`libsdrcore.so` пока не вызывается Dart-кодом. На хосте с CMake 3.22+ каркас проверяется
+командами `cmake -S native -B <build-dir>`, `cmake --build <build-dir>` и
+`ctest --test-dir <build-dir> --output-on-failure`. Build-dir должен быть вне исходников.
 
 Тулчейн (Flutter, JDK, Android SDK) установлен в `~/sdk`, sudo не нужен:
 
