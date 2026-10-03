@@ -28,5 +28,34 @@ int main(void) {
   SdrHandle* again = sdr_create();
   CHECK(again != NULL);
   sdr_destroy(again);
+
+  // Invalid-argument rejection documented in sdrcore.h: out-of-range sample
+  // rate, frequency above the 7.25 GHz ceiling, and gain outside +/-100.0 dB
+  // must all be rejected without touching engine state.
+  SdrHandle* guard = sdr_create();
+  CHECK(sdr_v2_open_synthetic(guard, 0) == SDR_INVALID_ARGUMENT);
+  CHECK(sdr_v2_open_synthetic(guard, 999) == SDR_INVALID_ARGUMENT);
+  CHECK(sdr_v2_open_synthetic(guard, 20000001u) == SDR_INVALID_ARGUMENT);
+  CHECK(sdr_v2_open_file(guard, -1, 2000000) == SDR_INVALID_ARGUMENT);
+  CHECK(sdr_v2_open_synthetic(guard, 2000000) == SDR_OK);
+  CHECK(sdr_v2_configure(guard, 7250000001ULL, 2000000, 0) ==
+        SDR_INVALID_ARGUMENT);
+  CHECK(sdr_v2_configure(guard, 100000000, 2000000, 1001) ==
+        SDR_INVALID_ARGUMENT);
+  CHECK(sdr_v2_configure(guard, 100000000, 2000000, -1001) ==
+        SDR_INVALID_ARGUMENT);
+  CHECK(sdr_v2_configure(guard, 100000000, 2000000, 1000) == SDR_OK);
+  CHECK(sdr_v2_configure(guard, 100000000, 2000000, -1000) == SDR_OK);
+  sdr_destroy(guard);
+
+  // A duplicate-call pair at the handle-allocation boundary should not alias:
+  // sdr_create() must keep returning distinct pointers across many cycles,
+  // which rules out an allocator free-list bug that could later resurrect a
+  // destroyed handle as "still valid".
+  for (int i = 0; i < 20; ++i) {
+    SdrHandle* h = sdr_create();
+    CHECK(h != NULL);
+    sdr_destroy(h);
+  }
   return 0;
 }

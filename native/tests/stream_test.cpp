@@ -72,5 +72,33 @@ int main() {
   close(original);
   close(pipefd[0]);
   close(pipefd[1]);
+
+  // Destroying a handle whose synthetic producer is actively busy (not
+  // blocked in poll/read) must also join cleanly: the synthetic path only
+  // sleeps between pushes, so destroy() races a live producer thread rather
+  // than a stalled one.
+  h = sdr_create();
+  assert(sdr_v2_open_synthetic(h, 2400000) == SDR_OK);
+  assert(sdr_v2_start(h) == SDR_OK);
+  std::this_thread::sleep_for(std::chrono::milliseconds(5));
+  sdr_destroy(h);  // Must not hang, double-free, or leak the thread handles.
+
+  // Repeated start/stop cycles on the same handle must behave identically
+  // each time: no state leaks from one cycle into the next (ring indices,
+  // stats accumulation, producer_done flag).
+  h = sdr_create();
+  assert(sdr_v2_open_synthetic(h, 2400000) == SDR_OK);
+  for (int cycle = 0; cycle < 10; ++cycle) {
+    assert(sdr_v2_start(h) == SDR_OK);
+    std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    assert(sdr_v2_stop(h) == SDR_OK);
+    auto cycle_stats = snapshot(h);
+    assert(cycle_stats.state == SDR_OPEN);
+    assert(cycle_stats.input_samples ==
+           cycle_stats.processed_samples + cycle_stats.dropped_samples);
+    assert(cycle_stats.input_samples > 0);
+  }
+  assert(sdr_v2_close(h) == SDR_OK);
+  sdr_destroy(h);
   return 0;
 }
