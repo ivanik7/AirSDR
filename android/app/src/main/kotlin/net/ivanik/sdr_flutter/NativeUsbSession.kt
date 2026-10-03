@@ -30,6 +30,10 @@ class NativeUsbSession(
     var source: SdrSource? = null
         private set
 
+    /** True between a successful open and close (OPENED or RUNNING). */
+    val isActive: Boolean
+        get() = phase == Phase.OPENED || phase == Phase.RUNNING
+
     /** Last raw SdrResult code observed from an open/configure/start/stop/close call, for
      * diagnostics; SdrResult.OK initially. */
     @Volatile
@@ -84,10 +88,9 @@ class NativeUsbSession(
     /**
      * Stops (if running) and closes synchronously, then destroys the handle. Idempotent: a
      * second call once CLOSED is a no-op returning SDR_OK. Blocks the calling thread until the
-     * native engine has fully stopped and joined, by construction of the synchronous ABI — do
-     * not call this from a thread that must stay responsive (e.g. consider dispatching it off
-     * the main thread once a real native USB driver lands; current callers are detach/teardown
-     * paths where no native session can yet exist, see UsbSdrPlugin.kt integration notes).
+     * native engine has fully stopped and joined, by construction of the synchronous ABI. In
+     * production it only runs on UsbDeviceLifecycle's serial native executor, never on the
+     * Android main thread.
      */
     fun close(): SdrResult = synchronized(lock) {
         when (phase) {

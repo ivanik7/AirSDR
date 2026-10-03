@@ -22,6 +22,9 @@ class NativeUsbSessionRegistry(private val bridgeFactory: () -> SdrNativeBridge)
 
     fun existing(deviceName: String): NativeUsbSession? = synchronized(lock) { sessions[deviceName] }
 
+    /** Snapshot of all tracked sessions. */
+    fun all(): List<NativeUsbSession> = synchronized(lock) { sessions.values.toList() }
+
     /**
      * Stops/closes/destroys the session for [deviceName] if one exists and removes it from the
      * registry. Safe to call even if no native session was ever opened for this device (returns

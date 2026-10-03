@@ -121,6 +121,8 @@ class ReceptionService : Service() {
         stopping = true
         val engine = (application as SdrApplication).radioEngine
         if (engine == null) { stopSelf(); return }
+        // Native sdrcore streams stop on the plugin's control thread, in parallel with Dart.
+        usbPlugin()?.stopNativeStreams {}
         // If Dart cannot acknowledge Stop, kill this process to close USB/AAudio rather
         // than leaving an invisible, still-running receiver after the notification vanishes.
         val watchdog = Runnable { Process.killProcess(Process.myPid()) }
@@ -141,8 +143,14 @@ class ReceptionService : Service() {
 
     override fun onDestroy() {
         if (current === this) current = null
+        // No native stream may keep running once the foreground lifetime ends (the process can
+        // then be frozen or killed mid-transfer). Sessions stay open; the owner restarts them.
+        usbPlugin()?.stopNativeStreams {}
         wakeLock?.let { if (it.isHeld) it.release() }
         wakeLock = null
         super.onDestroy()
     }
+
+    private fun usbPlugin(): UsbSdrPlugin? =
+        (application as SdrApplication).radioEngine?.plugins?.get(UsbSdrPlugin::class.java) as? UsbSdrPlugin
 }
