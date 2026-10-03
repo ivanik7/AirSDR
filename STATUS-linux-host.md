@@ -70,8 +70,14 @@ Flutter:
   - Then: stop → configure to 99.5 MHz at gain 38 dB → restart.
   - Run 2: 61 s, 2 399 720 S/s, 0 drops, no native error.
 - Dart controller on hardware, `SDR_HW_TEST=1 SDR_HW_SECONDS=600 flutter test
-  test/platform/host_iq_hw_test.dart`: results in
-  `~/prj/docs/l1-host-controller-600s.json`; see the next section.
+  test/platform/host_iq_hw_test.dart`: passed in 10:13. Snapshots are in
+  `~/prj/docs/l1-host-controller-600s.json`.
+  - 600 one-second snapshots, 100 MHz, 2.4 MSPS. Steady average
+    2 400 256 S/s (error 0.011 %), 1.45 G samples. Every snapshot was
+    `receiving` with 0 ring drops and native error 0.
+  - Retune to 99.5 MHz at gain 38 dB: 5 s. After stop/start: 5 s. VFO offset
+    0 at rest.
+  - Final state: `stoppedByUser`, `lastError` null.
 - App: `flutter build linux --debug` succeeded. Under `xvfb-run` the app
   auto-opened the Blog V4 ("RTL-SDR Blog V4 Detected" in the log). The status
   line reads `2.40 MS/s · ring drops 0 · IQ only, no audio (N2)`; see
