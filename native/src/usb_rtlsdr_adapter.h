@@ -3,6 +3,7 @@
 #define SDRCORE_USB_RTLSDR_ADAPTER_H
 
 #include "usb_adapter.h"
+#include <atomic>
 
 // RTL-SDR (R820T/R828D incl. Blog V4, E4000, FC0012/13) receive adapter over
 // the vendored librtlsdr (third_party/rtl-sdr), opened from a caller-owned fd
@@ -26,6 +27,8 @@ class RtlSdrAdapter final : public UsbRxAdapter {
  private:
   struct rtlsdr_dev* dev_ = nullptr;
   int owned_fd_ = -1;
+  std::atomic<bool> stop_requested_{false};
+  std::atomic<bool> stream_finished_{true};
 };
 
 #endif  // SDRCORE_USB_RTLSDR_ADAPTER_H

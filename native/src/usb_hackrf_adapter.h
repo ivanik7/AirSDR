@@ -3,6 +3,7 @@
 #define SDRCORE_USB_HACKRF_ADAPTER_H
 
 #include "usb_adapter.h"
+#include <mutex>
 
 // HackRF (One/Jawbreaker/rad1o) receive adapter over the vendored libhackrf
 // (third_party/hackrf), opened from a caller-owned fd via
@@ -25,6 +26,9 @@ class HackRfAdapter final : public UsbRxAdapter {
  private:
   struct hackrf_device* dev_ = nullptr;
   int owned_fd_ = -1;
+  std::mutex control_;
+  bool stop_requested_ = false;
+  bool streaming_ = false;
 };
 
 #endif  // SDRCORE_USB_HACKRF_ADAPTER_H

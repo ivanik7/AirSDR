@@ -37,7 +37,7 @@ echo "== Configuring host build in $build_dir =="
 echo "== Building sdrcore + CMake-wired tests =="
 "$cmake_bin" --build "$build_dir" -j"$(nproc)"
 
-echo "== Running CMake-wired ctest suite (sdrcore_abi, sdrcore_stream) =="
+echo "== Running CMake-wired ctest suite =="
 (cd "$build_dir" && ctest --output-on-failure)
 
 lib="$build_dir/libsdrcore.so"

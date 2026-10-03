@@ -1,21 +1,15 @@
 # N1 host-side native tests — scope, commands, and limits
 
-Owner of this document and the files it describes: the `n1-host-tests` test
-task (branch `wt/n1-host-tests`). Scope is strictly test and test-support
-code: `native/tests/`, `test/native/`, and this file. It does **not** modify
-`native/src/`, `native/include/sdrcore.h`, `native/CMakeLists.txt`, Kotlin,
-or `AGENTS.md`; the native implementation (`native/src/sdrcore.cpp`) is
-owned by a parallel worker and is treated here as a fixed contract defined
-by `native/include/sdrcore.h`.
+The host-test branch was integrated with the driver and Kotlin branches in
+`wt/t_ff2dd2b1`. The public ABI contract remains `native/include/sdrcore.h`.
 
 ## What is tested, and how
 
 Everything below drives the real `libsdrcore.so` through its public C ABI
 (`native/include/sdrcore.h`, revision 2) with real host file descriptors —
 pipes, a TCP loopback socket pair, and regular files. There is no mock or
-simulated "hardware" layer standing in for a device; where the ABI cannot
-yet do something for real (USB acquisition), the tests assert that it
-honestly reports `SDR_UNSUPPORTED` rather than faking success.
+simulated "hardware" layer standing in for a device. The real USB adapters
+reject non-USB descriptors; this does not validate a real USB device.
 
 | Area | File | What it covers |
 |---|---|---|
@@ -26,6 +20,7 @@ honestly reports `SDR_UNSUPPORTED` rather than faking success.
 | Dart FFI, ABI 1 lifecycle | `test/native/sdr_core_test.dart` (existing) | `lib/native/sdr_core.dart` wrapper semantics with fake bindings (no native library needed). |
 | Dart FFI, ABI 2 synthetic smoke | `test/native/sdr_core_ffi_integration_test.dart` (existing) | Real `libsdrcore.so` through the wrapper: synthetic source start/stop/stats. |
 | Dart FFI, ABI 2 file/usb/configure | `test/native/sdr_core_abi2_ffi_test.dart` (new) | The parts of ABI 2 the current `lib/native/sdr_core.dart` wrapper does not expose yet (`sdr_v2_open_file`, `sdr_v2_open_usb`, `sdr_v2_configure`): binds the C symbols directly with `dart:ffi` the same way `test/usb/usbfs_sys_test.dart` binds libc directly, since extending the wrapper's public surface is native-task work, not test-task work. |
+| Native callback slot boundary | `native/tests/ring_boundary_test.cpp` | Oversized callback splitting, full-ring accounting, checksum, and signed HackRF IQ normalization without claiming hardware reception. |
 
 ### Why TCP loopback instead of a pipe or AF_UNIX socket for the "abnormal fd
 failure" case
@@ -46,7 +41,7 @@ not a raw socket).
 
 ### What is intentionally not claimed
 - No USB device is opened, emulated, or faked as succeeding. `sdr_v2_open_usb`
-  is asserted to keep returning `SDR_UNSUPPORTED`.
+  must fail on the fake non-USB descriptors; the exact driver error varies.
 - The TCP-RST scenario is not a stand-in for real USB detach semantics;
   see above.
 - Ring overflow under `TestRingOverflowUnderBackpressure` is scheduler-timing
@@ -69,15 +64,16 @@ native/tests/run_host_tests.sh [build_dir]
 
 Builds `libsdrcore.so` for the host with CMake (default
 `<repo>/build/native-host-tests`), runs the CMake-wired `ctest` suite
-(`sdrcore_abi`, `sdrcore_stream` — defined in `native/CMakeLists.txt`, not
-modified by this task), then builds and runs the two new standalone
+(`sdrcore_abi`, `sdrcore_stream`, `sdrcore_fd_lifecycle`,
+`sdrcore_checksum_oracle`, and `sdrcore_ring_boundary`), then builds and runs the two standalone
 programs (`fd_lifecycle_test`, `checksum_oracle_test`) against the same
 `.so`. It looks for `cmake` on `PATH` first and falls back to the Android
 SDK's bundled copy (`~/sdk/android/cmake/*/bin/cmake`) if none is found —
 this host build is plain Linux x86_64, not an Android/NDK build; the SDK
 copy is just a convenient, already-present CMake binary.
 
-Observed output (debian-ai host, repeated 3× for stability):
+Observed output below is from the standalone test branch before integration;
+the integrated `ctest` has five cases and passed 5/5 separately.
 
 ```
 == Running CMake-wired ctest suite (sdrcore_abi, sdrcore_stream) ==
@@ -119,20 +115,13 @@ flutter analyze                            # repo-wide, 0 issues (checked during
 
 ## Known gaps / out of scope for this task
 
-- **No real USB hardware or Blog V4 run.** `sdr_v2_open_usb` is fixed at
-  `SDR_UNSUPPORTED` in the current native implementation; there is nothing
-  to test beyond "it says unsupported honestly". The eventual 2.4 MSPS
-  ≥10 min phone gate from `docs/native-n1-status.md` is a separate,
-  hardware-dependent task.
-- **Kotlin fd-handoff lifecycle** (serializing fd ownership between Dart and
-  native, detach ordering) is explicitly out of this task's file ownership
-  (`native/tests/`, `test/native/` only) and is being developed on another
-  branch (`n1-kotlin-fd` per the worktree list at task start).
-- **`native/CMakeLists.txt` is untouched.** The two new standalone programs
-  (`fd_lifecycle_test.cpp`, `checksum_oracle_test.c`) are deliberately not
-  added as CMake targets; the native lead owns that file and its test
-  target list. `run_host_tests.sh` builds them directly with `g++`/`gcc`
-  against the CMake-built `libsdrcore.so` instead.
+- **No real USB hardware or Blog V4 run.** Real driver source and JNI were
+  integrated, but 2.4 MSPS ≥10 min, tuning/gain, detach/replug, and fd
+  teardown on a phone remain unverified.
+- **Kotlin fd-handoff lifecycle** has JVM fake-bridge tests and a real JNI
+  bridge, but neither the fake nor a host descriptor proves phone USB behavior.
+- **CMake integration:** the standalone programs are now also registered as
+  CTest targets; `run_host_tests.sh` runs them again for detailed output.
 - **Ring-overflow determinism.** See "What is intentionally not claimed"
   above — the backpressure test's drop assertion is a soft warning, not a
   hard failure, because it depends on host scheduling.

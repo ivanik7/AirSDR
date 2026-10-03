@@ -112,16 +112,35 @@ int HackRfAdapter::start(PushFn push, void* ctx) {
   // this call keeps the same "blocks until stop()" contract as the rtlsdr
   // adapter and the file/synthetic producer loop in sdrcore.cpp.
   HackRfStreamCtx stream_ctx{push, ctx};
-  if (hackrf_start_rx(dev_, hackrf_rx_trampoline, &stream_ctx) != 0)
-    return SDR_IO_ERROR;
+  {
+    std::lock_guard<std::mutex> lock(control_);
+    if (stop_requested_) {
+      stop_requested_ = false;
+      return SDR_OK;
+    }
+    if (hackrf_start_rx(dev_, hackrf_rx_trampoline, &stream_ctx) != 0)
+      return SDR_IO_ERROR;
+    streaming_ = true;
+  }
   while (hackrf_is_streaming(dev_) == HACKRF_TRUE) {
     std::this_thread::sleep_for(std::chrono::milliseconds(20));
   }
-  return SDR_OK;
+  // stop_rx() joins its USB transfers before the stack callback context dies.
+  std::lock_guard<std::mutex> lock(control_);
+  const bool unexpected_end = !stop_requested_;
+  if (streaming_) hackrf_stop_rx(dev_);
+  streaming_ = false;
+  stop_requested_ = false;
+  return unexpected_end ? SDR_DEVICE_GONE : SDR_OK;
 }
 
 void HackRfAdapter::stop() {
-  if (dev_) hackrf_stop_rx(dev_);
+  std::lock_guard<std::mutex> lock(control_);
+  stop_requested_ = true;
+  if (dev_ && streaming_) {
+    hackrf_stop_rx(dev_);
+    streaming_ = false;
+  }
 }
 
 void HackRfAdapter::close() {

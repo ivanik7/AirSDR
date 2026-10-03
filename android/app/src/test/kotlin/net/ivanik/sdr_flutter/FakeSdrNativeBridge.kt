@@ -25,7 +25,8 @@ class FakeSdrNativeBridge : SdrNativeBridge {
     var forceStartResult: Int? = null
     var forceStopResult: Int? = null
 
-    override fun version(): Int = 2
+    var abiVersion: Int = 2
+    override fun version(): Int = abiVersion
 
     override fun create(): Long {
         val h = nextHandle++

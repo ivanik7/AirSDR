@@ -4,8 +4,9 @@
 [SDR++](https://github.com/AlexandreRouma/SDRPlusPlus) портированы на Dart близко к оригиналу
 (1:1 по структуре). Этот рабочий путь сохраняется на время поэтапного перехода на C++/NDK
 (план — `~/prj/docs/40-native-core-plan.md`). `native/` содержит ABI 2 с диагностическими
-file/synthetic IQ источниками, но без нативного USB, DSP и аудио. Аппаратный приём и UI
-по-прежнему работают через Dart; состояние N1 — `docs/native-n1-status.md`.
+file/synthetic IQ источниками и исходниками нативных RTL-SDR/HackRF драйверов, но без DSP и аудио.
+Аппаратный приём и UI по умолчанию по-прежнему работают через Dart; аппаратная проверка N1
+не пройдена — подробности в `docs/native-n1-status.md`.
 
 Путь сигнала: USB OTG → драйвер RTL-SDR/HackRF (Dart, через usbfs `ioctl`) → сигнальный путь
 SDR++ (IQ-фронтенд, FFT, VFO) → демодуляторы (WFM/NFM/AM/USB/LSB/DSB/CW/RAW) → звук, спектр

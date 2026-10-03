@@ -14,16 +14,17 @@
 //   open(fd)      duplicates/wraps the caller-owned fd via libusb_wrap_sys_device
 //                  (through the vendor driver's *_open_sys_dev/*_open_by_fd).
 //                  The adapter does not take ownership of fd itself; wrap_sys_device
-//                  keeps its own libusb-internal duplicate, so the caller's
-//                  original fd must remain open until close().
+//                  stores the supplied descriptor without duplicating it;
+//                  each adapter owns its explicit dup while the caller keeps
+//                  the original UsbDeviceConnection alive until close().
 //   configure(..) sets center frequency (RF Hz), sample rate (complex S/s) and
 //                  a single combined gain in tenths of a dB, matching ABI 2's
 //                  sdr_v2_configure() units exactly.
 //   start(push,ctx) is a BLOCKING call made from the producer thread; it
 //                  returns only after stop() is called from another thread
 //                  (or on an unrecoverable I/O error). `push` is invoked with
-//                  interleaved unsigned-8-bit IQ (CU8) buffers, same framing
-//                  as the file/synthetic sources.
+//                  interleaved 8-bit IQ buffers (CU8 for RTL, CS8 for HackRF);
+//                  the core normalizes HackRF to CU8 in its bounded ring.
 //   stop()         unblocks a pending start() and stops the hardware stream;
 //                  safe to call once after start() has been entered.
 //   close()        releases the device handle; safe to call after stop().

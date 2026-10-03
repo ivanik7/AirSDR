@@ -9,8 +9,8 @@
 // Every scenario here drives the real libsdrcore.so through its public C
 // ABI (native/include/sdrcore.h) with host file descriptors (pipes,
 // AF_UNIX socket pairs, regular files). None of it is a USB device, and
-// none of it is presented as one: sdr_v2_open_usb is expected to keep
-// returning SDR_UNSUPPORTED (see the dedicated check below). A socket pair
+// none of it is presented as one: sdr_v2_open_usb must reject a non-USB
+// descriptor (see the dedicated check below). A socket pair
 // closed with SO_LINGER{on,0} is used only as a fake fd that fails with
 // ECONNRESET, standing in for "the transport fd died mid-read" without
 // claiming it reproduces real USB unplug semantics (which go through
@@ -125,8 +125,8 @@ void TestOpenUsbNeverFakesSuccess() {
   SdrHandle* h = sdr_create();
   int fds[2];
   assert(socketpair(AF_UNIX, SOCK_STREAM, 0, fds) == 0);
-  assert(sdr_v2_open_usb(h, fds[0], SDR_RTLSDR) == SDR_UNSUPPORTED);
-  assert(sdr_v2_open_usb(h, fds[0], SDR_HACKRF) == SDR_UNSUPPORTED);
+  assert(sdr_v2_open_usb(h, fds[0], SDR_RTLSDR) != SDR_OK);
+  assert(sdr_v2_open_usb(h, fds[0], SDR_HACKRF) != SDR_OK);
   assert(sdr_v2_open_usb(h, fds[0], SDR_SYNTHETIC) == SDR_INVALID_ARGUMENT);
   assert(Snapshot(h).state == SDR_IDLE);  // No state change on rejection.
   sdr_destroy(h);

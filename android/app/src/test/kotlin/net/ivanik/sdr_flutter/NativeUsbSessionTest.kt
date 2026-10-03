@@ -41,6 +41,14 @@ class NativeUsbSessionTest {
     }
 
     @Test
+    fun `unsupported native ABI is rejected before allocating a handle`() {
+        val bridge = FakeSdrNativeBridge().apply { abiVersion = 1 }
+        val session = NativeUsbSession(bridge, "dev1")
+        assertEquals(SdrResult.BRIDGE_UNAVAILABLE, session.open(42, SdrSource.RTLSDR))
+        assertTrue(bridge.calls.isEmpty())
+    }
+
+    @Test
     fun `start requires OPENED, then moves to RUNNING`() {
         val bridge = FakeSdrNativeBridge()
         val session = NativeUsbSession(bridge, "dev1")

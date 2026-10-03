@@ -26,6 +26,10 @@ class NativeUsbSession(
     var phase: Phase = Phase.IDLE
         private set
 
+    @Volatile
+    var source: SdrSource? = null
+        private set
+
     /** Last raw SdrResult code observed from an open/configure/start/stop/close call, for
      * diagnostics; SdrResult.OK initially. */
     @Volatile
@@ -39,6 +43,7 @@ class NativeUsbSession(
      */
     fun open(fd: Int, source: SdrSource): SdrResult = synchronized(lock) {
         if (phase != Phase.IDLE) return remember(SdrResult.INVALID_STATE)
+        if (bridge.version() != 2) return remember(SdrResult.BRIDGE_UNAVAILABLE)
         val h = bridge.create()
         if (h == 0L) return remember(SdrResult.INTERNAL_ERROR)
         val rc = SdrResult.fromCode(bridge.openUsb(h, fd, source.code))
@@ -47,6 +52,7 @@ class NativeUsbSession(
             return remember(rc)
         }
         handle = h
+        this.source = source
         phase = Phase.OPENED
         return remember(SdrResult.OK)
     }
@@ -99,6 +105,7 @@ class NativeUsbSession(
         val closeRc = SdrResult.fromCode(bridge.close(handle))
         bridge.destroy(handle)
         handle = 0L
+        source = null
         phase = Phase.CLOSED
         return remember(if (rc != SdrResult.OK) rc else closeRc)
     }

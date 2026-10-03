@@ -5,6 +5,8 @@
 
 #include "sdrcore.h"
 
+#include <chrono>
+#include <thread>
 #include <unistd.h>
 
 RtlSdrAdapter::~RtlSdrAdapter() { close(); }
@@ -55,16 +57,41 @@ void rtlsdr_async_trampoline(unsigned char* buf, uint32_t len, void* raw) {
 
 int RtlSdrAdapter::start(PushFn push, void* ctx) {
   if (!dev_) return SDR_INVALID_STATE;
-  if (rtlsdr_reset_buffer(dev_) != 0) return SDR_IO_ERROR;
+  stream_finished_ = false;
+  if (stop_requested_) {
+    stream_finished_ = true;
+    stop_requested_ = false;
+    return SDR_OK;
+  }
+  if (rtlsdr_reset_buffer(dev_) != 0) {
+    stream_finished_ = true;
+    stop_requested_ = false;
+    return SDR_IO_ERROR;
+  }
+  if (stop_requested_) {
+    stream_finished_ = true;
+    stop_requested_ = false;
+    return SDR_OK;
+  }
   RtlAsyncCtx async_ctx{push, ctx};
-  // Blocks until rtlsdr_cancel_async() is called from stop(); default buffer
-  // count/length (0, 0) matches librtlsdr's own CLI tools (rtl_sdr.c).
-  const int rc = rtlsdr_read_async(dev_, rtlsdr_async_trampoline, &async_ctx, 0, 0);
-  return rc == 0 ? SDR_OK : SDR_IO_ERROR;
+  // Keep callback buffers aligned with the ring slot size. The upstream
+  // default (262144 bytes) would overrun a single slot and starve the
+  // consumer; 16 submitted buffers keep sufficient USB transfers in flight.
+  const int rc = rtlsdr_read_async(dev_, rtlsdr_async_trampoline, &async_ctx, 16, 8192);
+  stream_finished_ = true;
+  stop_requested_ = false;
+  return rc == 0 ? SDR_OK : (rc == -1 ? SDR_DEVICE_GONE : SDR_IO_ERROR);
 }
 
 void RtlSdrAdapter::stop() {
-  if (dev_) rtlsdr_cancel_async(dev_);
+  stop_requested_ = true;
+  // A stop can race the producer before read_async sets RUNNING. Retry the
+  // cancellation until the producer finishes or acknowledges it; join() then
+  // waits for all in-flight callbacks before freeing their context.
+  while (dev_ && !stream_finished_) {
+    if (rtlsdr_cancel_async(dev_) == 0) break;
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  }
 }
 
 void RtlSdrAdapter::close() {

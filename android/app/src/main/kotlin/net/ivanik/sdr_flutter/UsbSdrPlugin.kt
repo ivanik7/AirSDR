@@ -8,7 +8,7 @@
 // (native/include/sdrcore.h ABI 2, via SdrNativeBridge/NativeUsbSession) borrow the SAME
 // UsbDeviceConnection fd Dart would otherwise use. [ownership] enforces that only one side
 // (Dart xor native) holds a given device at a time — see UsbSessionOwnership — so Dart and
-// native never stream the same device simultaneously. Native does NOT duplicate the fd itself;
+// native never stream the same device simultaneously. Kotlin does NOT duplicate the fd;
 // sdr_v2_open_usb() does that internally per the header, and native close/stop/join is awaited
 // synchronously (NativeUsbSession.close) before this plugin closes the Java connection.
 //
@@ -25,15 +25,15 @@
 //     hasPermission({deviceName}) -> Boolean
 //     initialDevice()           -> device map or null (activity launched by USB_DEVICE_ATTACHED)
 //     -- native-only, not called by lib/usb/android_usb.dart today; see NativeUsbSession --
-//     nativeOpen({deviceName, source: "rtlsdr"|"hackrf"}) -> {fd, vid, pid, result}
+//     nativeOpen({deviceName, source: "rtlsdr"|"hackrf"}) -> {vid, pid, result}
 //     nativeConfigure({deviceName, frequencyHz, samplesPerSecond, gainTenthsDb}) -> {result}
 //     nativeStart({deviceName})  -> {result}
 //     nativeStop({deviceName})   -> {result}
 //     nativeStats({deviceName})  -> stats map or null
 //     nativeClose({deviceName})  -> {result}
-//     `result` is the raw `enum SdrResult` code from native/include/sdrcore.h (SdrResult.kt),
-//     or SdrResult.BRIDGE_UNAVAILABLE's code (-1000) if libsdrcore.so doesn't export the JNI
-//     entry points yet. "BUSY" errors mean the other side (Dart vs native) currently holds the
+//     `result` is the raw `enum SdrResult` code from native/include/sdrcore.h (SdrAbi.kt),
+//     or SdrResult.BRIDGE_UNAVAILABLE's code (-1000) if JNI cannot load.
+//     "BUSY" errors mean the other side (Dart vs native) currently holds the
 //     device; this is reported honestly, never silently queued or overridden.
 //   EventChannel "sdr/usb/events": {event: "attached"|"detached", device: {...}}
 //
@@ -423,7 +423,8 @@ class UsbSdrPlugin :
         if (existing != null && existing.phase != NativeUsbSession.Phase.IDLE &&
             existing.phase != NativeUsbSession.Phase.CLOSED
         ) {
-            result.success(mapOf("fd" to conn.fileDescriptor, "vid" to vid, "pid" to pid, "result" to SdrResult.OK.code))
+            val rc = if (existing.source == source) SdrResult.OK else SdrResult.INVALID_STATE
+            result.success(mapOf("vid" to vid, "pid" to pid, "result" to rc.code))
             return
         }
         val session = nativeSessions.sessionFor(name)
@@ -433,7 +434,7 @@ class UsbSdrPlugin :
             // leave the device marked as native-owned when nothing is actually streaming.
             ownership.release(name, UsbSessionOwnership.Owner.NATIVE)
         }
-        result.success(mapOf("fd" to conn.fileDescriptor, "vid" to vid, "pid" to pid, "result" to rc.code))
+        result.success(mapOf("vid" to vid, "pid" to pid, "result" to rc.code))
     }
 
     private fun withNativeSession(

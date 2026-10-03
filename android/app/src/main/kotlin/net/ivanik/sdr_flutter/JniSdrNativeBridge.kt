@@ -2,13 +2,11 @@
 //
 // This is deliberately a real `external fun` JNI declaration set, not a documentation stub: it
 // is wired into NativeUsbSession/NativeUsbSessionRegistry (via UsbSdrPlugin.kt) and loads the
-// same "sdrcore" native library that android/app/build.gradle.kts already builds from
-// native/CMakeLists.txt (externalNativeBuild). It stays usable even when the native side has
-// not yet exported the matching JNI entry points: System.loadLibrary()/UnsatisfiedLinkError on
-// an individual call are caught and mapped to SdrResult.BRIDGE_UNAVAILABLE instead of crashing
-// the app or silently pretending the call succeeded.
+// same "sdrcore" native library that android/app/build.gradle.kts builds from
+// native/CMakeLists.txt (externalNativeBuild). System.loadLibrary()/UnsatisfiedLinkError
+// on an individual call are caught and mapped to SdrResult.BRIDGE_UNAVAILABLE.
 //
-// Required native-side JNI exports (native/ owns adding these; out of scope for this file):
+// Native-side JNI exports implemented in native/src/sdr_jni.cpp:
 //   JNIEXPORT jint      JNICALL Java_net_ivanik_sdr_1flutter_JniSdrNativeBridge_nativeVersion(JNIEnv*, jobject)
 //   JNIEXPORT jlong     JNICALL Java_net_ivanik_sdr_1flutter_JniSdrNativeBridge_nativeCreate(JNIEnv*, jobject)
 //   JNIEXPORT void      JNICALL Java_net_ivanik_sdr_1flutter_JniSdrNativeBridge_nativeDestroy(JNIEnv*, jobject, jlong)
@@ -33,8 +31,8 @@ import android.util.Log
 
 /**
  * Real JNI-backed [SdrNativeBridge]. Safe to construct even when libsdrcore.so is missing or
- * does not export the JNI symbols yet (current native/ state, see docs/native-n1-status.md):
- * every call degrades to [SdrResult.BRIDGE_UNAVAILABLE] / null instead of throwing.
+ * does not export the matching JNI symbols: every call degrades to
+ * [SdrResult.BRIDGE_UNAVAILABLE] / null instead of throwing.
  */
 class JniSdrNativeBridge(libraryName: String = "sdrcore") : SdrNativeBridge {
     companion object {
@@ -57,8 +55,7 @@ class JniSdrNativeBridge(libraryName: String = "sdrcore") : SdrNativeBridge {
         return try {
             call()
         } catch (e: UnsatisfiedLinkError) {
-            // Expected until native/ exports the JNI symbols documented above.
-            Log.w(TAG, "native JNI symbol not exported by libsdrcore.so yet", e)
+            Log.w(TAG, "native JNI symbol not exported by libsdrcore.so", e)
             default
         }
     }

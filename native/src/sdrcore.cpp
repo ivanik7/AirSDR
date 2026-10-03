@@ -5,6 +5,7 @@
 #include "usb_hackrf_adapter.h"
 #include "usb_rtlsdr_adapter.h"
 
+#include <algorithm>
 #include <array>
 #include <atomic>
 #include <cerrno>
@@ -48,16 +49,30 @@ struct SdrHandle {
   }
 
   void push(const uint8_t* bytes, size_t length) {
-    std::lock_guard<std::mutex> lock(mutex);
-    stats.input_samples += length / 2;
-    if (queued == kSlots) {
-      stats.dropped_samples += length / 2;
-    } else {
-      std::memcpy(ring[tail].data(), bytes, length);
-      lengths[tail] = length;
-      tail = (tail + 1) % kSlots;
-      ++queued;
-      ready.notify_one();
+    // USB callbacks may deliver much more than one ring slot (RTL's default
+    // async transfer is 262144 bytes). Split on complete IQ pairs; never
+    // write beyond a slot. HackRF emits signed CS8, while this diagnostic
+    // consumer and the other sources use unsigned CU8.
+    length &= ~size_t{1};
+    for (size_t offset = 0; offset < length;) {
+      const size_t chunk = std::min(kBytes, length - offset);
+      std::lock_guard<std::mutex> lock(mutex);
+      stats.input_samples += chunk / 2;
+      if (queued == kSlots) {
+        stats.dropped_samples += chunk / 2;
+      } else {
+        if (stats.source == SDR_HACKRF) {
+          for (size_t i = 0; i < chunk; ++i)
+            ring[tail][i] = bytes[offset + i] ^ 0x80;
+        } else {
+          std::memcpy(ring[tail].data(), bytes + offset, chunk);
+        }
+        lengths[tail] = chunk;
+        tail = (tail + 1) % kSlots;
+        ++queued;
+        ready.notify_one();
+      }
+      offset += chunk;
     }
   }
 
@@ -201,6 +216,10 @@ extern "C" int32_t sdr_v2_open_synthetic(SdrHandle* h, uint32_t rate) {
 extern "C" int32_t sdr_v2_open_usb(SdrHandle* h, int32_t fd, uint32_t source) {
   if (!h || fd < 0 || (source != SDR_RTLSDR && source != SDR_HACKRF))
     return SDR_INVALID_ARGUMENT;
+  {
+    std::lock_guard<std::mutex> lock(h->mutex);
+    if (h->stats.state != SDR_IDLE) return SDR_INVALID_STATE;
+  }
   std::unique_ptr<UsbRxAdapter> adapter;
   if (source == SDR_RTLSDR) {
     adapter = std::make_unique<RtlSdrAdapter>();
@@ -251,6 +270,7 @@ extern "C" int32_t sdr_v2_start(SdrHandle* h) {
   {
     std::lock_guard<std::mutex> lock(h->mutex);
     if (h->stats.state != SDR_OPEN) return SDR_INVALID_STATE;
+    if (h->usb_adapter && h->stats.sample_rate == 0) return SDR_INVALID_STATE;
     h->head = h->tail = h->queued = 0;
     h->producer_done = false;
     h->stopping = false;

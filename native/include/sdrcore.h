@@ -59,16 +59,16 @@ typedef struct SdrStats {
 
 // fd remains owned by the caller; native duplicates it only after validation.
 // Caller MUST keep the Java UsbDeviceConnection alive for a USB session; do not
-// allow Dart and native to stream the same device simultaneously. USB sources
-// are explicitly unsupported until libusb/driver integration is built.
+// allow Dart and native to stream the same device simultaneously. Native USB
+// requires a real usbfs fd and device permission; it is not the default path.
 SDRCORE_API int32_t sdr_v2_open_file(SdrHandle* handle, int32_t fd,
                                       uint32_t samples_per_second);
 SDRCORE_API int32_t sdr_v2_open_synthetic(SdrHandle* handle,
                                            uint32_t samples_per_second);
 SDRCORE_API int32_t sdr_v2_open_usb(SdrHandle* handle, int32_t fd,
                                      uint32_t source);
-// Retune/gain on the file and synthetic source changes metadata only. Real
-// hardware configuration is not implemented and must not be presented as such.
+// Retune/gain on file and synthetic sources changes metadata only; on a USB
+// source it configures the device. USB must be configured before start.
 SDRCORE_API int32_t sdr_v2_configure(SdrHandle* handle, uint64_t frequency_hz,
                                       uint32_t samples_per_second,
                                       int32_t gain_tenths_db);

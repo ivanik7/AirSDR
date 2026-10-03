@@ -55,7 +55,7 @@ final class _Handle extends Opaque {}
 const int _sdrOk = 0;
 const int _sdrInvalidArgument = -1;
 const int _sdrInvalidState = -2;
-const int _sdrUnsupported = -3;
+
 const int _sdrIdle = 0;
 const int _sdrRunning = 2;
 const int _sdrFile = 1;
@@ -213,15 +213,15 @@ void main() {
     );
 
     test(
-      'open_usb is honestly unsupported for both RTL-SDR and HackRF enum '
-      'values, and never mutates state on rejection',
+      'open_usb rejects a non-USB fd for both driver enum values without '
+      'mutating state',
       () {
         final h = abi.create();
         final fd = _devZeroFd();
-        expect(abi.openUsb(h, fd, _sdrRtlsdr), _sdrUnsupported);
-        expect(abi.openUsb(h, fd, _sdrHackrf), _sdrUnsupported);
+        expect(abi.openUsb(h, fd, _sdrRtlsdr), isNot(_sdrOk));
+        expect(abi.openUsb(h, fd, _sdrHackrf), isNot(_sdrOk));
         // Passing a source that is not a USB enum value is a plain
-        // argument error, distinct from "USB not implemented yet".
+        // argument error, distinct from a driver open failure.
         expect(abi.openUsb(h, fd, _sdrFile), _sdrInvalidArgument);
         final buf = calloc<_NativeStats>();
         try {

@@ -21,7 +21,7 @@ int main() {
   SdrStats bad{};
   assert(sdr_v2_stats(h, &bad) == SDR_INVALID_ARGUMENT);
   assert(sdr_v2_start(h) == SDR_INVALID_STATE);
-  assert(sdr_v2_open_usb(h, 0, SDR_RTLSDR) == SDR_UNSUPPORTED);
+  assert(sdr_v2_open_usb(h, 0, SDR_RTLSDR) != SDR_OK);
   assert(snapshot(h).state == SDR_IDLE);
   assert(sdr_v2_open_synthetic(h, 2400000) == SDR_OK);
   assert(sdr_v2_configure(h, 100000000, 2400000, 0) == SDR_OK);
