@@ -27,6 +27,19 @@ android {
         // flag during build.
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        // Build our new core only for arm64; keep other debug ABIs for Flutter/emulators.
+        externalNativeBuild {
+            cmake {
+                abiFilters.add("arm64-v8a")
+            }
+        }
+    }
+
+    externalNativeBuild {
+        cmake {
+            path = file("../../native/CMakeLists.txt")
+            version = "3.22.1"
+        }
     }
 
     buildTypes {
