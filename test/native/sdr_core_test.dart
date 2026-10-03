@@ -4,7 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sdr_flutter/native/sdr_core.dart';
 
 final class FakeBindings implements SdrCoreBindings {
-  FakeBindings({this.abi = 1, this.failCreate = false});
+  FakeBindings({this.abi = 2, this.failCreate = false});
 
   final int abi;
   final bool failCreate;
@@ -30,7 +30,7 @@ final class FakeBindings implements SdrCoreBindings {
 
 void main() {
   test('checks ABI before allocating a handle', () {
-    final bindings = FakeBindings(abi: 2);
+    final bindings = FakeBindings(abi: 1);
     expect(() => SdrCore.withBindings(bindings), throwsUnsupportedError);
     expect(bindings.versionCalls, 1);
     expect(bindings.createCalls, 0);
@@ -48,7 +48,7 @@ void main() {
     () {
       final bindings = FakeBindings();
       final core = SdrCore.withBindings(bindings);
-      expect(core.version, 1);
+      expect(core.version, 2);
       final first = core.create();
       final second = core.create();
       expect(first.isDisposed, isFalse);
