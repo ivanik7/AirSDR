@@ -1,10 +1,16 @@
 cmake_minimum_required(VERSION 3.22)
 project(sdrcore VERSION 1.0.0 LANGUAGES C CXX)
 
-add_library(sdrcore SHARED src/sdrcore.cpp)
+add_subdirectory(third_party)
+
+add_library(sdrcore SHARED
+    src/sdrcore.cpp
+    src/usb_rtlsdr_adapter.cpp
+    src/usb_hackrf_adapter.cpp
+)
 target_compile_features(sdrcore PRIVATE cxx_std_17)
 find_package(Threads REQUIRED)
-target_link_libraries(sdrcore PRIVATE Threads::Threads)
+target_link_libraries(sdrcore PRIVATE Threads::Threads sdrcore_rtlsdr sdrcore_hackrf)
 set_target_properties(sdrcore PROPERTIES
     CXX_EXTENSIONS OFF
     CXX_VISIBILITY_PRESET hidden

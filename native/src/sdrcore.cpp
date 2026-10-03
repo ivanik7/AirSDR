@@ -1,12 +1,17 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "sdrcore.h"
 
+#include "usb_adapter.h"
+#include "usb_hackrf_adapter.h"
+#include "usb_rtlsdr_adapter.h"
+
 #include <array>
 #include <atomic>
 #include <cerrno>
 #include <chrono>
 #include <condition_variable>
 #include <cstring>
+#include <memory>
 #include <mutex>
 #include <new>
 #include <poll.h>
@@ -32,6 +37,7 @@ struct SdrHandle {
   size_t head = 0, tail = 0, queued = 0;
   bool producer_done = false;
   int fd = -1;  // exclusively owned duplicate; Java/FFI retains original
+  std::unique_ptr<UsbRxAdapter> usb_adapter;  // set only for SDR_RTLSDR/HACKRF
   SdrStats stats{};
 
   SdrHandle() {
@@ -59,6 +65,23 @@ struct SdrHandle {
     std::array<uint8_t, kBytes + 1> bytes{};
     size_t carry = 0;
     uint8_t phase = 0;
+    if (usb_adapter) {
+      // Blocks until the adapter's stop() unblocks it (join() calls that
+      // from a different thread) or the hardware reports a fatal I/O error.
+      const int rc = usb_adapter->start(
+          [](void* ctx, const uint8_t* data, size_t len) {
+            static_cast<SdrHandle*>(ctx)->push(data, len);
+          },
+          this);
+      if (rc != SDR_OK && !stopping.load()) {
+        std::lock_guard<std::mutex> lock(mutex);
+        stats.last_error = rc;
+        stats.state = SDR_ERROR;
+      }
+      { std::lock_guard<std::mutex> lock(mutex); producer_done = true; }
+      ready.notify_all();
+      return;
+    }
     while (!stopping.load()) {
       size_t length = 0;
       if (fd >= 0) {
@@ -122,6 +145,7 @@ struct SdrHandle {
 
   void join() {
     stopping = true;
+    if (usb_adapter) usb_adapter->stop();  // unblocks a blocking start() call
     if (producer.joinable()) producer.join();
     { std::lock_guard<std::mutex> lock(mutex); producer_done = true; }
     ready.notify_all();
@@ -138,6 +162,7 @@ extern "C" SdrHandle* sdr_create(void) {
 extern "C" void sdr_destroy(SdrHandle* handle) {
   if (!handle) return;
   handle->join();
+  if (handle->usb_adapter) handle->usb_adapter->close();
   if (handle->fd >= 0) close(handle->fd);
   delete handle;
 }
@@ -176,7 +201,30 @@ extern "C" int32_t sdr_v2_open_synthetic(SdrHandle* h, uint32_t rate) {
 extern "C" int32_t sdr_v2_open_usb(SdrHandle* h, int32_t fd, uint32_t source) {
   if (!h || fd < 0 || (source != SDR_RTLSDR && source != SDR_HACKRF))
     return SDR_INVALID_ARGUMENT;
-  return SDR_UNSUPPORTED;  // Never pretend a file source is a USB receiver.
+  std::unique_ptr<UsbRxAdapter> adapter;
+  if (source == SDR_RTLSDR) {
+    adapter = std::make_unique<RtlSdrAdapter>();
+  } else {
+    adapter = std::make_unique<HackRfAdapter>();
+  }
+  // open() dup()s fd itself (see usb_*_adapter.h); the caller's original fd,
+  // owned by the Kotlin UsbSdrPlugin/UsbDeviceConnection, is never touched
+  // and must stay open for the session (same contract as sdr_v2_open_file).
+  const int rc = adapter->open(fd);
+  if (rc != SDR_OK) return rc;
+  std::lock_guard<std::mutex> lock(h->mutex);
+  if (h->stats.state != SDR_IDLE) {
+    adapter->close();
+    return SDR_INVALID_STATE;
+  }
+  h->usb_adapter = std::move(adapter);
+  h->stats = SdrStats{};
+  h->stats.size = sizeof(SdrStats);
+  h->stats.revision = 2;
+  h->stats.source = source;
+  h->stats.state = SDR_OPEN;
+  h->stats.checksum = kFnvOffset;
+  return SDR_OK;
 }
 
 extern "C" int32_t sdr_v2_configure(SdrHandle* h, uint64_t frequency,
@@ -185,6 +233,13 @@ extern "C" int32_t sdr_v2_configure(SdrHandle* h, uint64_t frequency,
       gain < -1000 || gain > 1000) return SDR_INVALID_ARGUMENT;
   std::lock_guard<std::mutex> lock(h->mutex);
   if (h->stats.state != SDR_OPEN) return SDR_INVALID_STATE;
+  if (h->usb_adapter) {
+    // Real hardware reconfiguration; unlike the file/synthetic sources this
+    // actually retunes the RF front end (see usb_rtlsdr_adapter.cpp /
+    // usb_hackrf_adapter.cpp for the exact register-level calls).
+    const int rc = h->usb_adapter->configure(frequency, rate, gain);
+    if (rc != SDR_OK) return rc;
+  }
   h->stats.frequency_hz = frequency;
   h->stats.sample_rate = rate;
   h->stats.gain_tenths_db = gain;
@@ -235,6 +290,7 @@ extern "C" int32_t sdr_v2_close(SdrHandle* h) {
   }
   h->join();
   std::lock_guard<std::mutex> lock(h->mutex);
+  if (h->usb_adapter) { h->usb_adapter->close(); h->usb_adapter.reset(); }
   if (h->fd >= 0) { close(h->fd); h->fd = -1; }
   h->stats.state = SDR_IDLE;
   h->stats.source = SDR_NONE;
