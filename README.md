@@ -31,7 +31,12 @@ DSP передаются слотами нативного пула.
 ## Сборка
 
 `android/app` собирает `native/CMakeLists.txt` через `externalNativeBuild` для arm64-v8a;
-`libsdrcore.so` пока не вызывается Dart-кодом. На хосте с CMake 3.22+ каркас проверяется
+`lib/native/sdr_core.dart` загружает библиотеку по запросу и предоставляет только N0
+`sdr_version`/`sdr_create`/`sdr_destroy`: проверяет ABI 1 до создания handle,
+требует явный `dispose()`; приём не запускает. На Android arm64 используется
+`libsdrcore.so` из APK, на Linux можно передать `libraryPath` в `SdrCore.open()`
+или настроить путь загрузчика. Для других платформ этот core не собран;
+приложение по-прежнему работает через Dart-приёмник. На хосте с CMake 3.22+ каркас проверяется
 командами `cmake -S native -B <build-dir>`, `cmake --build <build-dir>` и
 `ctest --test-dir <build-dir> --output-on-failure`. Build-dir должен быть вне исходников.
 
