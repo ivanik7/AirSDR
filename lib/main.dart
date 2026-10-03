@@ -8,11 +8,21 @@
 //                + registerDeviceSources ('usb' → rtl_sdr_source / hackrf_source).
 //
 // DemoRadioController (lib/ui/demo_radio_controller.dart) is only used by UI tests.
+//
+// Desktop Linux (L1 dev/test target) uses the native core instead:
+// HostIqRadioController (libsdrcore.so + host USB layer), or the honest
+// NativeRequiredRadioController when the library cannot be loaded. The Dart
+// receive engine is not used on Linux.
+
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 
+import 'native/sdr_core.dart';
+import 'platform/linux/host_iq_radio_controller.dart';
+import 'platform/linux/native_required_radio_controller.dart';
 import 'runtime/device_sources.dart';
 import 'runtime/background_reception.dart';
 import 'runtime/dsp_engine.dart';
@@ -32,7 +42,26 @@ Future<void> main() async {
   } catch (_) {
     configDir = null; // in-memory config
   }
-  runApp(SdrApp(controller: createRadioController(configDir: configDir)));
+  final RadioController controller = Platform.isLinux
+      ? createLinuxRadioController(configDir: configDir)
+      : createRadioController(configDir: configDir);
+  runApp(SdrApp(controller: controller));
+}
+
+/// Linux desktop: native host engine, or an honest "native required" state.
+RadioController createLinuxRadioController({String? configDir}) {
+  final SdrCore core;
+  try {
+    core = SdrCore.open();
+  } catch (e) {
+    return NativeRequiredRadioController(reason: '$e');
+  }
+  if (!core.hasHostUsb) {
+    return NativeRequiredRadioController(
+      reason: 'library has no sdr_host_usb_list/sdr_host_open_usb',
+    );
+  }
+  return HostIqRadioController(core: core, configDir: configDir);
 }
 
 /// The production controller: USB devices + synthetic generator (+ optional IQ files),

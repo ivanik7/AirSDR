@@ -256,16 +256,18 @@ final class SdrCore {
   int get version => _bindings.version();
 
   /// True when this library has the desktop host USB layer (Linux builds).
-  bool get hasHostUsb =>
-      _bindings is SdrCoreHostBindings &&
-      (_bindings as SdrCoreHostBindings).hasHostUsb;
+  bool get hasHostUsb {
+    final Object b = _bindings;
+    return b is SdrCoreHostBindings && b.hasHostUsb;
+  }
 
   /// Lists host USB devices (all non-hub devices; filter by VID:PID).
   List<SdrHostUsbDevice> hostUsbDevices() {
-    if (!hasHostUsb) {
+    final Object b = _bindings;
+    if (b is! SdrCoreHostBindings || !b.hasHostUsb) {
       throw UnsupportedError('Host USB layer not available in this library');
     }
-    return (_bindings as SdrCoreHostBindings).hostUsbList();
+    return b.hostUsbList();
   }
 
   /// Allocates one idle native handle; caller must dispose the result.
@@ -315,10 +317,10 @@ final class SdrCoreInstance {
   /// or dispose; native duplicates [fd] and never owns the original.
   void openUsb(int fd, int source) => _check(_v2.openUsb(_live, fd, source));
 
-  /// Desktop host only: opens /dev/bus/usb/<bus>/<address> through the same
+  /// Desktop host only: opens `/dev/bus/usb/<bus>/<address>` through the same
   /// native driver path as [openUsb]; native owns the descriptor.
   void openHostUsb(int bus, int address, int source) {
-    final b = _bindings;
+    final Object b = _bindings;
     if (b is! SdrCoreHostBindings || !b.hasHostUsb) {
       throw UnsupportedError('Host USB layer not available in this library');
     }
@@ -358,8 +360,8 @@ final class _DynamicSdrCoreBindings
         Int32 Function(Pointer<_NativeHostUsbDevice>, Uint32, Pointer<Uint32>),
         int Function(Pointer<_NativeHostUsbDevice>, int, Pointer<Uint32>)
       >('sdr_host_usb_list');
-  late final int Function(Pointer<SdrHandle>, int, int, int) _hostOpen = _library
-      .lookupFunction<
+  late final int Function(Pointer<SdrHandle>, int, int, int) _hostOpen =
+      _library.lookupFunction<
         Int32 Function(Pointer<SdrHandle>, Uint8, Uint8, Uint32),
         int Function(Pointer<SdrHandle>, int, int, int)
       >('sdr_host_open_usb');
@@ -376,9 +378,7 @@ final class _DynamicSdrCoreBindings
       final code = _hostList(buf, capacity, count);
       if (code != 0) throw SdrCoreError(code);
       final n = count.value < capacity ? count.value : capacity;
-      return <SdrHostUsbDevice>[
-        for (var i = 0; i < n; i++) buf[i].toDevice(),
-      ];
+      return <SdrHostUsbDevice>[for (var i = 0; i < n; i++) buf[i].toDevice()];
     } finally {
       calloc.free(buf);
       calloc.free(count);
@@ -386,8 +386,12 @@ final class _DynamicSdrCoreBindings
   }
 
   @override
-  int hostOpenUsb(Pointer<SdrHandle> handle, int bus, int address, int source) =>
-      _hostOpen(handle, bus, address, source);
+  int hostOpenUsb(
+    Pointer<SdrHandle> handle,
+    int bus,
+    int address,
+    int source,
+  ) => _hostOpen(handle, bus, address, source);
   late final int Function(Pointer<SdrHandle>, int, int) _openFile = _library
       .lookupFunction<
         Int32 Function(Pointer<SdrHandle>, Int32, Uint32),

@@ -37,8 +37,7 @@ DSP передаются слотами нативного пула.
 создания handle, требует явный `dispose()`; диагностический синтетический поток
 не запускается автоматически и не воспроизводит звук. На Android arm64 используется
 `libsdrcore.so` из APK, на Linux можно передать `libraryPath` в `SdrCore.open()`
-или настроить путь загрузчика. Для других платформ этот core не собран;
-приложение по-прежнему работает через Dart-приёмник. На хосте с CMake 3.22+ каркас проверяется
+или настроить путь загрузчика (Linux-приложение — см. раздел L1 ниже). На хосте с CMake 3.22+ каркас проверяется
 командами `cmake -S native -B <build-dir>`, `cmake --build <build-dir>` и
 `ctest --test-dir <build-dir> --output-on-failure`. Build-dir должен быть вне исходников.
 `native/tests/abi_test.c` и `stream_test.cpp` проверяют ABI, состояния и fd.
@@ -59,6 +58,18 @@ SDRCORE_HOST_LIBRARY="$TMPDIR/sdrcore-host-build/libsdrcore.so" \
 `flutter test` не собирает CMake-библиотеку); с указанным неверным путём тест
 падает, а не выдаёт подменённый ответ. Это проверка Linux host, не вызов FFI
 на Android и не аппаратный приём.
+
+### Linux desktop (L1, dev/test target)
+
+`flutter build linux --debug` builds `native/` together with the runner and
+puts `libsdrcore.so` into `build/linux/x64/debug/bundle/lib/`. On Linux the
+app uses the native engine (`HostIqRadioController`, real RTL-SDR/HackRF via
+`/dev/bus/usb`, IQ only until N2); the Dart receive engine is not used there.
+If the library is missing, the app shows an honest "native core required"
+state. The user needs rw access to `/dev/bus/usb/*` (plugdev + librtlsdr udev
+rule). Real-RX checks: `sdrcore_host_rx_diag` (from a standalone `native/`
+CMake build) and `SDR_HW_TEST=1 flutter test test/platform/host_iq_hw_test.dart`.
+Details and results: `STATUS-linux-host.md`.
 
 Тулчейн (Flutter, JDK, Android SDK) установлен в `~/sdk`, sudo не нужен:
 

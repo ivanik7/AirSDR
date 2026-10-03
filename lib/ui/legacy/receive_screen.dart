@@ -564,11 +564,14 @@ String linkStatusText(DeviceLinkState s) => switch (s) {
 
 /// Short receive-screen stats: "2.40 MS/s · USB drops 99 · audio drops 0".
 /// The full list lives in the Settings status sheet; this line is always ellipsized.
+/// The Linux native host engine (L1) reports ring drops and has no audio/DSP yet.
 String compactStatsLine(RadioController radio) {
   final st = radio.stats;
   return [
     '${(radio.sampleRate / 1e6).toStringAsFixed(2)} MS/s',
     if (st['droppedBuffers'] is num) 'USB drops ${st['droppedBuffers']}',
     if (st['audioDropped'] is num) 'audio drops ${st['audioDropped']}',
+    if (st['ringDrops'] is num) 'ring drops ${st['ringDrops']}',
+    if (st['engine'] == 'native IQ (Linux host)') 'IQ only, no audio (N2)',
   ].join(' · ');
 }
