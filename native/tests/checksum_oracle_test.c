@@ -11,8 +11,7 @@
 // digest's definition and the input==processed+dropped accounting
 // invariant for a complete run with no backpressure.
 //
-// NOT wired into native/CMakeLists.txt; build and run via
-// native/tests/run_host_tests.sh.
+// Wired into CTest and run directly via native/tests/run_host_tests.sh.
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
 #endif
@@ -23,6 +22,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <unistd.h>
 
 // FNV-1a 64-bit, per http://www.isthe.com/chongo/tech/comp/fnv/ : offset
@@ -49,7 +49,11 @@ static void FillDeterministic(uint8_t* data, size_t n, uint32_t seed) {
 
 static void RunChecksumCase(size_t byte_count, uint32_t seed,
                              const char* label) {
-  char path[] = "/tmp/sdrcore_oracle_XXXXXX";
+  const char* dir = getenv("TMPDIR");
+  if (!dir || !*dir) dir = "/tmp";
+  char* path = malloc(strlen(dir) + sizeof("/sdrcore_oracle_XXXXXX"));
+  assert(path);
+  sprintf(path, "%s/sdrcore_oracle_XXXXXX", dir);
   int fd = mkstemp(path);
   assert(fd >= 0);
   uint8_t* data = (uint8_t*)malloc(byte_count);
@@ -79,6 +83,7 @@ static void RunChecksumCase(size_t byte_count, uint32_t seed,
   sdr_destroy(h);
   close(read_fd);
   unlink(path);
+  free(path);
 
   size_t even_len = byte_count & ~(size_t)1;  // Trailing odd byte ignored.
   uint64_t expected = Fnv1a64(data, even_len);

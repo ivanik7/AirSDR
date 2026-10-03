@@ -1,16 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
-// Standalone host test for fd ownership, backpressure, and lifecycle
-// behavior of the ABI 2 file source. NOT wired into native/CMakeLists.txt
-// (that file is owned by the native implementation lead); build and run it
-// with native/tests/run_host_tests.sh, which also runs the CMake-built
-// sdrcore_abi/sdrcore_stream tests.
+// Host test for fd ownership, backpressure, and lifecycle of the ABI 2
+// file source. CTest and native/tests/run_host_tests.sh both run it.
 //
 // Every scenario here drives the real libsdrcore.so through its public C
 // ABI (native/include/sdrcore.h) with host file descriptors (pipes,
 // AF_UNIX socket pairs, regular files). None of it is a USB device, and
 // none of it is presented as one: sdr_v2_open_usb must reject a non-USB
-// descriptor (see the dedicated check below). A socket pair
+// descriptor (see the dedicated check below). A TCP loopback connection
 // closed with SO_LINGER{on,0} is used only as a fake fd that fails with
 // ECONNRESET, standing in for "the transport fd died mid-read" without
 // claiming it reproduces real USB unplug semantics (which go through
@@ -100,15 +97,20 @@ void TestFdDupOwnershipSurvivesCallerClose() {
   printf("[ok] fd dup survives caller close\n");
 }
 
-// --- close() is idempotent per the header ("close exactly once"); calling
-// it twice must be rejected rather than double-closing the duplicate fd.
+// --- A second close must be rejected and must not close an unrelated fd
+// that the OS allocated into the first close's vacated descriptor number.
 void TestDoubleCloseRejected() {
   int fds[2];
   assert(pipe(fds) == 0);
   SdrHandle* h = sdr_create();
   assert(sdr_v2_open_file(h, fds[0], 1000) == SDR_OK);
   assert(sdr_v2_close(h) == SDR_OK);
+  int sentinel = open("/dev/null", O_RDONLY);
+  assert(sentinel >= 0);
   assert(sdr_v2_close(h) == SDR_INVALID_STATE);  // Already SDR_IDLE.
+  assert(fcntl(sentinel, F_GETFD) >= 0);
+  close(sentinel);
+  assert(fcntl(fds[0], F_GETFD) >= 0);  // Borrowed original is still live.
   // The handle must still be reusable after close(), proving the first
   // close() did not corrupt state.
   assert(sdr_v2_open_file(h, fds[0], 1000) == SDR_OK);
@@ -128,7 +130,12 @@ void TestOpenUsbNeverFakesSuccess() {
   assert(sdr_v2_open_usb(h, fds[0], SDR_RTLSDR) != SDR_OK);
   assert(sdr_v2_open_usb(h, fds[0], SDR_HACKRF) != SDR_OK);
   assert(sdr_v2_open_usb(h, fds[0], SDR_SYNTHETIC) == SDR_INVALID_ARGUMENT);
-  assert(Snapshot(h).state == SDR_IDLE);  // No state change on rejection.
+  const auto failed = Snapshot(h);
+  assert(failed.state == SDR_IDLE && failed.source == SDR_NONE);
+  assert(failed.input_samples == 0 && failed.last_error == SDR_OK);
+  assert(fcntl(fds[0], F_GETFD) >= 0);  // Failed open did not take ownership.
+  assert(sdr_v2_open_file(h, fds[0], 1000) == SDR_OK);
+  assert(sdr_v2_close(h) == SDR_OK);  // Failed USB open left handle reusable.
   sdr_destroy(h);
   close(fds[0]);
   close(fds[1]);
@@ -156,7 +163,28 @@ void TestAbnormalFdFailureSurfacesAsIoError() {
   assert(s.last_error == SDR_IO_ERROR);
   assert(s.last_error != SDR_DEVICE_GONE);  // Only ENODEV maps to that code.
   assert(sdr_v2_stop(h) == SDR_OK);  // stop() accepts RUNNING or ERROR.
-  assert(Snapshot(h).state == SDR_OPEN);
+  s = Snapshot(h);
+  assert(s.state == SDR_OPEN && s.last_error == SDR_IO_ERROR);
+  CheckInvariant(s);
+  assert(sdr_v2_close(h) == SDR_OK);
+  // A fresh transport requires a fresh open. This models recovery of the
+  // handle, not the real USB attach/permission path on Android.
+  int replug[2];
+  assert(pipe(replug) == 0);
+  assert(sdr_v2_open_file(h, replug[0], 1000) == SDR_OK);
+  assert(Snapshot(h).last_error == SDR_OK);
+  assert(sdr_v2_start(h) == SDR_OK);
+  const uint8_t iq[] = {0, 255, 1, 254};
+  assert(write(replug[1], iq, sizeof iq) == sizeof iq);
+  close(replug[1]);
+  for (int i = 0; i < 100 && Snapshot(h).input_samples < 2; ++i)
+    std::this_thread::sleep_for(std::chrono::milliseconds(5));
+  assert(sdr_v2_stop(h) == SDR_OK);
+  s = Snapshot(h);
+  assert(s.input_samples == 2 && s.processed_samples == 2);
+  assert(s.last_error == SDR_OK);
+  assert(sdr_v2_close(h) == SDR_OK);
+  close(replug[0]);
   sdr_destroy(h);
   close(accepted);
   printf("[ok] abnormal fd failure surfaces as SDR_IO_ERROR\n");
