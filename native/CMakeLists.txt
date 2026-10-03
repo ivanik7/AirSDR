@@ -42,4 +42,11 @@ if(NOT ANDROID)
     target_compile_features(sdrcore_ring_boundary_test PRIVATE cxx_std_17)
     target_link_libraries(sdrcore_ring_boundary_test PRIVATE sdrcore_rtlsdr sdrcore_hackrf Threads::Threads)
     add_test(NAME sdrcore_ring_boundary COMMAND sdrcore_ring_boundary_test)
+    add_executable(sdrcore_rtl_libusb_init_failure_test tests/rtl_libusb_init_failure_test.c)
+    target_include_directories(sdrcore_rtl_libusb_init_failure_test PRIVATE
+        third_party/rtl-sdr/include
+        third_party/libusb/libusb)
+    target_link_libraries(sdrcore_rtl_libusb_init_failure_test PRIVATE sdrcore_rtlsdr sdrcore_libusb m)
+    target_link_options(sdrcore_rtl_libusb_init_failure_test PRIVATE -Wl,--wrap=libusb_init)
+    add_test(NAME sdrcore_rtl_libusb_init_failure COMMAND sdrcore_rtl_libusb_init_failure_test)
 endif()

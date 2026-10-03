@@ -63,17 +63,20 @@ native/tests/run_host_tests.sh [build_dir]
 ```
 
 Builds `libsdrcore.so` for the host with CMake (default
-`<repo>/build/native-host-tests`), runs the CMake-wired `ctest` suite
+`<repo>/build/native-host-tests`), runs the six CMake-wired tests
 (`sdrcore_abi`, `sdrcore_stream`, `sdrcore_fd_lifecycle`,
-`sdrcore_checksum_oracle`, and `sdrcore_ring_boundary`), then builds and runs the two standalone
-programs (`fd_lifecycle_test`, `checksum_oracle_test`) against the same
-`.so`. It looks for `cmake` on `PATH` first and falls back to the Android
+`sdrcore_checksum_oracle`, `sdrcore_ring_boundary`, and
+`sdrcore_rtl_libusb_init_failure`), then reruns the fd/checksum tests against
+the same `.so`, exercises pinned RTL-SDR libusb initialization failure, and
+compares the vendored Blog V4 C trace with the original C golden. It looks for
+`cmake` on `PATH` first and falls back to the Android
 SDK's bundled copy (`~/sdk/android/cmake/*/bin/cmake`) if none is found —
 this host build is plain Linux x86_64, not an Android/NDK build; the SDK
 copy is just a convenient, already-present CMake binary.
 
-Observed output below is from the standalone test branch before integration;
-the integrated `ctest` has five cases and passed 5/5 separately.
+The historical example below is from the standalone test branch before
+integration; the current six-case CTest and oracle comparison passed through
+`native/tests/run_host_tests.sh` in the N1 integration worktree.
 
 ```
 == Running CMake-wired ctest suite (sdrcore_abi, sdrcore_stream) ==
@@ -120,8 +123,9 @@ flutter analyze                            # repo-wide, 0 issues (checked during
   teardown on a phone remain unverified.
 - **Kotlin fd-handoff lifecycle** has JVM fake-bridge tests and a real JNI
   bridge, but neither the fake nor a host descriptor proves phone USB behavior.
-- **CMake integration:** the standalone programs are now also registered as
-  CTest targets; `run_host_tests.sh` runs them again for detailed output.
+- **CMake integration:** the fd/checksum and pinned RTL initialization-failure
+  tests are registered as CTest targets; `run_host_tests.sh` also runs them
+  directly for detailed output.
 - **Ring-overflow determinism.** See "What is intentionally not claimed"
   above — the backpressure test's drop assertion is a soft warning, not a
   hard failure, because it depends on host scheduling.
