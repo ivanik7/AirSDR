@@ -2,8 +2,15 @@
 //
 // Kotlin enumerates devices, requests permission and owns UsbDeviceConnection.
 // The current receiver still uses Dart usbfs ioctl (lib/usb/usbfs_transport.dart).
-// Native USB streaming is NOT wired in yet: when introduced it must exclusively
-// own a duplicate fd and must finish before close/detach releases the connection.
+// Dart's "open"/"close"/"hasPermission"/"initialDevice" and the "sdr/usb/events" EventChannel
+// are UNCHANGED (existing contract). Added on top, additive only: "nativeOpen"/"nativeConfigure"/
+// "nativeStart"/"nativeStop"/"nativeStats"/"nativeClose" let a native sdrcore engine
+// (native/include/sdrcore.h ABI 2, via SdrNativeBridge/NativeUsbSession) borrow the SAME
+// UsbDeviceConnection fd Dart would otherwise use. [ownership] enforces that only one side
+// (Dart xor native) holds a given device at a time — see UsbSessionOwnership — so Dart and
+// native never stream the same device simultaneously. Native does NOT duplicate the fd itself;
+// sdr_v2_open_usb() does that internally per the header, and native close/stop/join is awaited
+// synchronously (NativeUsbSession.close) before this plugin closes the Java connection.
 //
 // Replaces SDR++ android/app/src/main/java/MainActivity.kt (single SDR_FD field,
 // PendingIntent flags=0, unexported receiver without flags — only works with
@@ -17,6 +24,17 @@
 //     close({deviceName})       -> null             closes the UsbDeviceConnection (and fd)
 //     hasPermission({deviceName}) -> Boolean
 //     initialDevice()           -> device map or null (activity launched by USB_DEVICE_ATTACHED)
+//     -- native-only, not called by lib/usb/android_usb.dart today; see NativeUsbSession --
+//     nativeOpen({deviceName, source: "rtlsdr"|"hackrf"}) -> {fd, vid, pid, result}
+//     nativeConfigure({deviceName, frequencyHz, samplesPerSecond, gainTenthsDb}) -> {result}
+//     nativeStart({deviceName})  -> {result}
+//     nativeStop({deviceName})   -> {result}
+//     nativeStats({deviceName})  -> stats map or null
+//     nativeClose({deviceName})  -> {result}
+//     `result` is the raw `enum SdrResult` code from native/include/sdrcore.h (SdrResult.kt),
+//     or SdrResult.BRIDGE_UNAVAILABLE's code (-1000) if libsdrcore.so doesn't export the JNI
+//     entry points yet. "BUSY" errors mean the other side (Dart vs native) currently holds the
+//     device; this is reported honestly, never silently queued or overridden.
 //   EventChannel "sdr/usb/events": {event: "attached"|"detached", device: {...}}
 //
 // UsbDeviceConnection objects are kept in [connections] for as long as Dart uses
@@ -77,8 +95,21 @@ class UsbSdrPlugin :
     /** deviceName -> open connection. Keeps the fd alive (do not let it be GC'd). */
     private val connections = HashMap<String, UsbDeviceConnection>()
 
-    /** deviceName -> results waiting for the permission dialog. */
-    private val pendingOpens = HashMap<String, MutableList<MethodChannel.Result>>()
+    /** deviceName -> results waiting for the permission dialog, tagged with which side
+     * (Dart/native) requested the open and, for native, the ABI source kind. */
+    private val pendingOpens = HashMap<String, MutableList<PendingOpen>>()
+
+    private data class PendingOpen(
+        val result: MethodChannel.Result,
+        val owner: UsbSessionOwnership.Owner,
+        val nativeSource: SdrSource? = null,
+    )
+
+    /** Arbitrates which side (Dart vs native) may currently stream a given device's fd. */
+    private val ownership = UsbSessionOwnership()
+
+    /** One lazily created native sdrcore engine per device; see NativeUsbSession. */
+    private val nativeSessions = NativeUsbSessionRegistry { JniSdrNativeBridge() }
 
     /** Device that launched the activity via USB_DEVICE_ATTACHED (not consumed). */
     private var initialDevice: UsbDevice? = null
@@ -108,9 +139,12 @@ class UsbSdrPlugin :
         eventSink = null
         unregisterReceiver()
         for ((_, results) in pendingOpens) {
-            for (r in results) r.error("DETACHED", "plugin detached from engine", null)
+            for (p in results) p.result.error("DETACHED", "plugin detached from engine", null)
         }
         pendingOpens.clear()
+        // Stop/close/join any native engines before releasing the Java connections they
+        // borrowed fds from (same ordering as onDetached below).
+        nativeSessions.closeAll()
         for ((_, c) in connections) {
             try { c.close() } catch (_: Exception) {}
         }
@@ -204,11 +238,16 @@ class UsbSdrPlugin :
 
     private fun onDetached(dev: UsbDevice) {
         val name = dev.deviceName
+        // Native must stop/join before the Java connection (and its fd) is closed: once the
+        // device is gone, neither Dart nor native may keep "holding" it (see
+        // UsbSessionOwnership.forceRelease doc and native/include/sdrcore.h's close ordering).
+        ownership.forceRelease(name)
+        nativeSessions.closeAndRemove(name)
         // Closing the connection makes pending ioctls on the fd fail with ENODEV
         // (they already do once the device is gone); Dart handles that.
         connections.remove(name)?.let { try { it.close() } catch (_: Exception) {} }
         pendingOpens.remove(name)?.forEach {
-            it.error("NOT_FOUND", "device $name detached", null)
+            it.result.error("NOT_FOUND", "device $name detached", null)
         }
         if (initialDevice?.deviceName == name) initialDevice = null
         emit("detached", dev)
@@ -218,8 +257,8 @@ class UsbSdrPlugin :
         val results = pendingOpens.remove(name) ?: return
         val device = dev ?: findDevice(name)
         if (!granted || device == null) {
-            for (r in results) {
-                r.error(
+            for (p in results) {
+                p.result.error(
                     if (device == null) "NOT_FOUND" else "PERMISSION_DENIED",
                     "USB permission for $name ${if (device == null) "device gone" else "denied"}",
                     null,
@@ -273,6 +312,13 @@ class UsbSdrPlugin :
                     result.error("BAD_ARGS", "deviceName required", null)
                     return
                 }
+                // Refuse to pull the fd out from under an active native session: exclusivity
+                // means only the side that opened the device may close it (see nativeClose).
+                if (ownership.currentOwner(name) == UsbSessionOwnership.Owner.NATIVE) {
+                    result.error("BUSY", "device $name is in use by the native receiver", null)
+                    return
+                }
+                ownership.release(name, UsbSessionOwnership.Owner.DART)
                 connections.remove(name)?.let { try { it.close() } catch (_: Exception) {} }
                 result.success(null)
             }
@@ -285,6 +331,12 @@ class UsbSdrPlugin :
                 val dev = initialDevice?.let { findDevice(it.deviceName) }
                 result.success(dev?.let { deviceToMap(it) })
             }
+            "nativeOpen" -> nativeOpen(call, result)
+            "nativeConfigure" -> nativeConfigure(call, result)
+            "nativeStart" -> withNativeSession(call, result) { session -> session.start() }
+            "nativeStop" -> withNativeSession(call, result) { session -> session.stop() }
+            "nativeStats" -> nativeStats(call, result)
+            "nativeClose" -> nativeClose(call, result)
             else -> result.notImplemented()
         }
     }
@@ -293,22 +345,160 @@ class UsbSdrPlugin :
         val mgr = usbManager ?: return result.error("NO_USB_HOST", "no UsbManager", null)
         val dev = findDevice(name) ?: return result.error("NOT_FOUND", "no device $name", null)
 
+        if (!ownership.tryAcquire(name, UsbSessionOwnership.Owner.DART)) {
+            result.error("BUSY", "device $name is in use by the native receiver", null)
+            return
+        }
         connections[name]?.let { c ->
             // Already open: hand out the same fd (single owner of the connection).
             result.success(openResult(c, dev))
             return
         }
         if (mgr.hasPermission(dev)) {
-            openGranted(dev, mutableListOf(result))
+            openGranted(dev, mutableListOf(PendingOpen(result, UsbSessionOwnership.Owner.DART)))
             return
         }
         val waiting = pendingOpens[name]
         if (waiting != null) {
-            waiting.add(result) // dialog already shown
+            waiting.add(PendingOpen(result, UsbSessionOwnership.Owner.DART)) // dialog already shown
             return
         }
-        pendingOpens[name] = mutableListOf(result)
+        pendingOpens[name] = mutableListOf(PendingOpen(result, UsbSessionOwnership.Owner.DART))
         requestPermission(dev)
+    }
+
+    // ------------------------------------------------------------------
+    // Native sdrcore control (additive; see the ABI notes at the top of this file)
+    // ------------------------------------------------------------------
+
+    private fun parseNativeSource(value: String?): SdrSource? = when (value) {
+        "rtlsdr" -> SdrSource.RTLSDR
+        "hackrf" -> SdrSource.HACKRF
+        else -> null
+    }
+
+    private fun nativeOpen(call: MethodCall, result: MethodChannel.Result) {
+        val mgr = usbManager ?: return result.error("NO_USB_HOST", "no UsbManager", null)
+        val name = call.argument<String>("deviceName")
+            ?: return result.error("BAD_ARGS", "deviceName required", null)
+        val source = parseNativeSource(call.argument<String>("source"))
+            ?: return result.error("BAD_ARGS", "source must be \"rtlsdr\" or \"hackrf\"", null)
+        val dev = findDevice(name) ?: return result.error("NOT_FOUND", "no device $name", null)
+
+        if (!ownership.tryAcquire(name, UsbSessionOwnership.Owner.NATIVE)) {
+            result.error("BUSY", "device $name is in use by the Dart receiver", null)
+            return
+        }
+        connections[name]?.let { c ->
+            openNativeSession(name, c, source, dev.vendorId, dev.productId, result)
+            return
+        }
+        if (mgr.hasPermission(dev)) {
+            openGranted(dev, mutableListOf(PendingOpen(result, UsbSessionOwnership.Owner.NATIVE, source)))
+            return
+        }
+        val waiting = pendingOpens[name]
+        if (waiting != null) {
+            waiting.add(PendingOpen(result, UsbSessionOwnership.Owner.NATIVE, source))
+            return
+        }
+        pendingOpens[name] = mutableListOf(PendingOpen(result, UsbSessionOwnership.Owner.NATIVE, source))
+        requestPermission(dev)
+    }
+
+    /** Hands [conn]'s fd to sdr_v2_open_usb() through NativeUsbSession. Native duplicates the
+     * fd itself (sdrcore.h); this plugin keeps [conn] open and alive regardless of the result.
+     * Idempotent: if a session for [name] is already opened/running, this reports success
+     * without a second sdr_v2_open_usb() call (mirrors the Dart "already open" fast path in
+     * [open]) instead of surfacing SDR_INVALID_STATE and incorrectly releasing ownership. */
+    private fun openNativeSession(
+        name: String,
+        conn: UsbDeviceConnection,
+        source: SdrSource,
+        vid: Int,
+        pid: Int,
+        result: MethodChannel.Result,
+    ) {
+        val existing = nativeSessions.existing(name)
+        if (existing != null && existing.phase != NativeUsbSession.Phase.IDLE &&
+            existing.phase != NativeUsbSession.Phase.CLOSED
+        ) {
+            result.success(mapOf("fd" to conn.fileDescriptor, "vid" to vid, "pid" to pid, "result" to SdrResult.OK.code))
+            return
+        }
+        val session = nativeSessions.sessionFor(name)
+        val rc = session.open(conn.fileDescriptor, source)
+        if (rc != SdrResult.OK) {
+            // Opening failed (or a session for this device was already open/closed): don't
+            // leave the device marked as native-owned when nothing is actually streaming.
+            ownership.release(name, UsbSessionOwnership.Owner.NATIVE)
+        }
+        result.success(mapOf("fd" to conn.fileDescriptor, "vid" to vid, "pid" to pid, "result" to rc.code))
+    }
+
+    private fun withNativeSession(
+        call: MethodCall,
+        result: MethodChannel.Result,
+        action: (NativeUsbSession) -> SdrResult,
+    ) {
+        val name = call.argument<String>("deviceName")
+            ?: return result.error("BAD_ARGS", "deviceName required", null)
+        val session = nativeSessions.existing(name)
+            ?: return result.error("NOT_FOUND", "no native session for $name", null)
+        result.success(mapOf("result" to action(session).code))
+    }
+
+    private fun nativeConfigure(call: MethodCall, result: MethodChannel.Result) {
+        val frequencyHz = call.argument<Number>("frequencyHz")?.toLong()
+        val samplesPerSecond = call.argument<Number>("samplesPerSecond")?.toInt()
+        val gainTenthsDb = call.argument<Number>("gainTenthsDb")?.toInt()
+        if (frequencyHz == null || samplesPerSecond == null || gainTenthsDb == null) {
+            result.error("BAD_ARGS", "frequencyHz, samplesPerSecond, gainTenthsDb required", null)
+            return
+        }
+        withNativeSession(call, result) { session ->
+            session.configure(frequencyHz, samplesPerSecond, gainTenthsDb)
+        }
+    }
+
+    private fun nativeStats(call: MethodCall, result: MethodChannel.Result) {
+        val name = call.argument<String>("deviceName")
+            ?: return result.error("BAD_ARGS", "deviceName required", null)
+        val session = nativeSessions.existing(name)
+        val snapshot = session?.stats()
+        if (snapshot == null) {
+            result.success(null)
+            return
+        }
+        result.success(
+            mapOf(
+                "state" to snapshot.state.code,
+                "source" to snapshot.source.code,
+                "lastError" to snapshot.lastError.code,
+                "sampleRate" to snapshot.sampleRate,
+                "frequencyHz" to snapshot.frequencyHz,
+                "gainTenthsDb" to snapshot.gainTenthsDb,
+                "inputSamples" to snapshot.inputSamples,
+                "processedSamples" to snapshot.processedSamples,
+                "droppedSamples" to snapshot.droppedSamples,
+                "checksum" to snapshot.checksum,
+            ),
+        )
+    }
+
+    private fun nativeClose(call: MethodCall, result: MethodChannel.Result) {
+        val name = call.argument<String>("deviceName")
+            ?: return result.error("BAD_ARGS", "deviceName required", null)
+        val heldByNative = ownership.currentOwner(name) == UsbSessionOwnership.Owner.NATIVE
+        // Synchronous: sdr_v2_stop/sdr_v2_close/sdr_destroy all return before this call does
+        // (NativeUsbSession.close), so the Java connection below is only closed after native
+        // has fully joined its worker thread(s).
+        val rc = nativeSessions.closeAndRemove(name)
+        ownership.release(name, UsbSessionOwnership.Owner.NATIVE)
+        if (heldByNative) {
+            connections.remove(name)?.let { try { it.close() } catch (_: Exception) {} }
+        }
+        result.success(mapOf("result" to rc.code))
     }
 
     private fun requestPermission(dev: UsbDevice) {
@@ -324,12 +514,13 @@ class UsbSdrPlugin :
             mgr.requestPermission(dev, pi)
         } catch (e: Exception) {
             pendingOpens.remove(dev.deviceName)?.forEach {
-                it.error("PERMISSION_DENIED", "requestPermission failed: ${e.message}", null)
+                ownership.release(dev.deviceName, it.owner)
+                it.result.error("PERMISSION_DENIED", "requestPermission failed: ${e.message}", null)
             }
         }
     }
 
-    private fun openGranted(dev: UsbDevice, results: List<MethodChannel.Result>) {
+    private fun openGranted(dev: UsbDevice, results: List<PendingOpen>) {
         val mgr = usbManager
         val existing = connections[dev.deviceName]
         val conn = existing ?: try {
@@ -339,12 +530,20 @@ class UsbSdrPlugin :
             null
         }
         if (conn == null) {
-            for (r in results) r.error("OPEN_FAILED", "openDevice(${dev.deviceName}) returned null", null)
+            for (p in results) {
+                ownership.release(dev.deviceName, p.owner)
+                p.result.error("OPEN_FAILED", "openDevice(${dev.deviceName}) returned null", null)
+            }
             return
         }
         connections[dev.deviceName] = conn
-        val payload = openResult(conn, dev)
-        for (r in results) r.success(payload)
+        for (p in results) {
+            if (p.owner == UsbSessionOwnership.Owner.NATIVE) {
+                openNativeSession(dev.deviceName, conn, p.nativeSource!!, dev.vendorId, dev.productId, p.result)
+            } else {
+                p.result.success(openResult(conn, dev))
+            }
+        }
     }
 
     private fun openResult(conn: UsbDeviceConnection, dev: UsbDevice): Map<String, Any> =
