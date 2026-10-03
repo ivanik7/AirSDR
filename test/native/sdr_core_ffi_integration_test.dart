@@ -18,6 +18,21 @@ void main() {
       try {
         expect(first.isDisposed, isFalse);
         expect(second.isDisposed, isFalse);
+        first.openSynthetic(2400000);
+        first.start();
+        expect(first.stats.state, 2); // SDR_RUNNING
+        sleep(const Duration(milliseconds: 50));
+        first.stop();
+        final stopped = first.stats;
+        expect(stopped.state, 1); // SDR_OPEN
+        expect(stopped.source, 2); // SDR_SYNTHETIC
+        expect(stopped.inputSamples, greaterThan(0));
+        expect(
+          stopped.inputSamples,
+          stopped.processedSamples + stopped.droppedSamples,
+        );
+        first.close();
+        expect(first.stats.state, 0); // SDR_IDLE
       } finally {
         first.dispose();
         second.dispose();

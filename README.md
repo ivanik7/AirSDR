@@ -3,8 +3,9 @@
 Карманный SDR-приёмник для Android с RTL-SDR и HackRF через USB OTG. Модули
 [SDR++](https://github.com/AlexandreRouma/SDRPlusPlus) портированы на Dart близко к оригиналу
 (1:1 по структуре). Этот рабочий путь сохраняется на время поэтапного перехода на C++/NDK
-(план — `~/prj/docs/40-native-core-plan.md`). `native/` пока содержит только собираемый
-каркас C ABI без USB, DSP и приёма; UI продолжает работать через Dart-приёмник.
+(план — `~/prj/docs/40-native-core-plan.md`). `native/` содержит ABI 2 с диагностическими
+file/synthetic IQ источниками, но без нативного USB, DSP и аудио. Аппаратный приём и UI
+по-прежнему работают через Dart; состояние N1 — `docs/native-n1-status.md`.
 
 Путь сигнала: USB OTG → драйвер RTL-SDR/HackRF (Dart, через usbfs `ioctl`) → сигнальный путь
 SDR++ (IQ-фронтенд, FFT, VFO) → демодуляторы (WFM/NFM/AM/USB/LSB/DSB/CW/RAW) → звук, спектр
@@ -31,16 +32,16 @@ DSP передаются слотами нативного пула.
 ## Сборка
 
 `android/app` собирает `native/CMakeLists.txt` через `externalNativeBuild` для arm64-v8a;
-`lib/native/sdr_core.dart` загружает библиотеку по запросу и предоставляет только N0
-`sdr_version`/`sdr_create`/`sdr_destroy`: проверяет ABI 1 до создания handle,
-требует явный `dispose()`; приём не запускает. На Android arm64 используется
+`lib/native/sdr_core.dart` загружает библиотеку по запросу, проверяет ABI 2 до
+создания handle, требует явный `dispose()`; диагностический синтетический поток
+не запускается автоматически и не воспроизводит звук. На Android arm64 используется
 `libsdrcore.so` из APK, на Linux можно передать `libraryPath` в `SdrCore.open()`
 или настроить путь загрузчика. Для других платформ этот core не собран;
 приложение по-прежнему работает через Dart-приёмник. На хосте с CMake 3.22+ каркас проверяется
 командами `cmake -S native -B <build-dir>`, `cmake --build <build-dir>` и
 `ctest --test-dir <build-dir> --output-on-failure`. Build-dir должен быть вне исходников.
-`native/tests/abi_test.c` — C-тест публичного ABI: версия, отдельные handle,
-`destroy(NULL)`, освобождение и повторное создание. Для реального вызова из
+`native/tests/abi_test.c` и `stream_test.cpp` проверяют ABI, состояния и fd.
+Для реального вызова из
 Flutter-теста на Linux задайте абсолютный путь к собранной host-библиотеке
 (Android SDK содержит CMake 3.22.1, системный `cmake` не обязателен):
 

@@ -14,7 +14,7 @@
   } while (0)
 
 int main(void) {
-  CHECK(sdr_version() == 1u);
+  CHECK(sdr_version() == 2u);
   sdr_destroy(NULL);
 
   SdrHandle* first = sdr_create();

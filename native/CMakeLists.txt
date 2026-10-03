@@ -3,6 +3,8 @@ project(sdrcore VERSION 1.0.0 LANGUAGES C CXX)
 
 add_library(sdrcore SHARED src/sdrcore.cpp)
 target_compile_features(sdrcore PRIVATE cxx_std_17)
+find_package(Threads REQUIRED)
+target_link_libraries(sdrcore PRIVATE Threads::Threads)
 set_target_properties(sdrcore PROPERTIES
     CXX_EXTENSIONS OFF
     CXX_VISIBILITY_PRESET hidden
@@ -14,4 +16,7 @@ if(NOT ANDROID)
     add_executable(sdrcore_abi_test tests/abi_test.c)
     target_link_libraries(sdrcore_abi_test PRIVATE sdrcore)
     add_test(NAME sdrcore_abi COMMAND sdrcore_abi_test)
+    add_executable(sdrcore_stream_test tests/stream_test.cpp)
+    target_link_libraries(sdrcore_stream_test PRIVATE sdrcore)
+    add_test(NAME sdrcore_stream COMMAND sdrcore_stream_test)
 endif()

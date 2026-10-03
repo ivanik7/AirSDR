@@ -1,8 +1,9 @@
 // UsbSdrPlugin — Android USB host glue for sdr_flutter.
 //
-// Kotlin only does what Dart cannot: enumerate devices, obtain the user's
-// permission and open the device to get a usbfs file descriptor. All USB I/O is
-// done in Dart via dart:ffi ioctl(fd, USBDEVFS_*) (lib/usb/usbfs_transport.dart).
+// Kotlin enumerates devices, requests permission and owns UsbDeviceConnection.
+// The current receiver still uses Dart usbfs ioctl (lib/usb/usbfs_transport.dart).
+// Native USB streaming is NOT wired in yet: when introduced it must exclusively
+// own a duplicate fd and must finish before close/detach releases the connection.
 //
 // Replaces SDR++ android/app/src/main/java/MainActivity.kt (single SDR_FD field,
 // PendingIntent flags=0, unexported receiver without flags — only works with
