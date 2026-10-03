@@ -1,14 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
-// Host Dart FFI coverage for the parts of ABI 2 (native/include/sdrcore.h)
-// that lib/native/sdr_core.dart does not wrap yet: sdr_v2_open_file,
-// sdr_v2_open_usb, sdr_v2_configure, and sdr_v2_close. This file binds the
-// C ABI directly with dart:ffi (same approach as
-// test/usb/usbfs_sys_test.dart binding libc directly) instead of going
-// through lib/native/sdr_core.dart, because that wrapper's public surface
-// (SdrCoreV2Bindings) only exposes openSynthetic/start/stop/close/stats.
-// Extending that wrapper is lib/ work owned by the native core task, not
-// this test-only task; see docs/native-n1-tests.md for the boundary.
+// Direct host ABI tests complement the SdrCore wrapper integration test:
+// raw dart:ffi can assert exact C result codes, struct layout, and fd ownership.
 //
 // Build the host .so first and point SDRCORE_HOST_LIBRARY at it:
 //   native/tests/run_host_tests.sh <build_dir>

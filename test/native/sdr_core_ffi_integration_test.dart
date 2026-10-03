@@ -19,6 +19,13 @@ void main() {
         expect(first.isDisposed, isFalse);
         expect(second.isDisposed, isFalse);
         first.openSynthetic(2400000);
+        first.configure(100000000, 2400000, 125);
+        final configured = first.stats;
+        expect(configured.frequencyHz, 100000000);
+        expect(configured.sampleRate, 2400000);
+        expect(configured.gainTenthsDb, 125);
+        expect(configured.lastError, 0);
+        expect(() => first.openUsb(-1, 3), throwsStateError);
         first.start();
         expect(first.stats.state, 2); // SDR_RUNNING
         sleep(const Duration(milliseconds: 50));
@@ -26,6 +33,7 @@ void main() {
         final stopped = first.stats;
         expect(stopped.state, 1); // SDR_OPEN
         expect(stopped.source, 2); // SDR_SYNTHETIC
+        expect(stopped.checksum, isNot(0));
         expect(stopped.inputSamples, greaterThan(0));
         expect(
           stopped.inputSamples,
@@ -33,6 +41,7 @@ void main() {
         );
         first.close();
         expect(first.stats.state, 0); // SDR_IDLE
+        expect(() => first.openFile(-1, 2400000), throwsStateError);
       } finally {
         first.dispose();
         second.dispose();

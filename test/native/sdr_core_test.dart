@@ -3,7 +3,7 @@ import 'dart:ffi';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sdr_flutter/native/sdr_core.dart';
 
-final class FakeBindings implements SdrCoreBindings {
+class FakeBindings implements SdrCoreBindings {
   FakeBindings({this.abi = 2, this.failCreate = false});
 
   final int abi;
@@ -26,6 +26,44 @@ final class FakeBindings implements SdrCoreBindings {
 
   @override
   void destroy(Pointer<SdrHandle> handle) => destroyed.add(handle.address);
+}
+
+final class FakeV2Bindings extends FakeBindings implements SdrCoreV2Bindings {
+  final calls = <String>[];
+
+  @override
+  int openFile(Pointer<SdrHandle> handle, int fd, int rate) {
+    calls.add('file:$fd:$rate');
+    return 0;
+  }
+
+  @override
+  int openSynthetic(Pointer<SdrHandle> handle, int rate) => 0;
+
+  @override
+  int openUsb(Pointer<SdrHandle> handle, int fd, int source) {
+    calls.add('usb:$fd:$source');
+    return -5;
+  }
+
+  @override
+  int configure(Pointer<SdrHandle> handle, int hz, int rate, int gain) {
+    calls.add('configure:$hz:$rate:$gain');
+    return 0;
+  }
+
+  @override
+  int start(Pointer<SdrHandle> handle) => 0;
+
+  @override
+  int stop(Pointer<SdrHandle> handle) => 0;
+
+  @override
+  int close(Pointer<SdrHandle> handle) => 0;
+
+  @override
+  SdrCoreStats stats(Pointer<SdrHandle> handle) =>
+      const SdrCoreStats(1, 3, 0, 0, 0, 0, 2400000, 100000000, 125, 0);
 }
 
 void main() {
@@ -61,4 +99,20 @@ void main() {
       expect(bindings.versionCalls, 2);
     },
   );
+
+  test('ABI 2 dispatches fd and configuration units and propagates errors', () {
+    final bindings = FakeV2Bindings();
+    final instance = SdrCore.withBindings(bindings).create();
+    instance.openFile(9, 2400000);
+    instance.configure(100000000, 2400000, 125);
+    expect(instance.stats.frequencyHz, 100000000);
+    expect(() => instance.openUsb(10, 3), throwsStateError);
+    expect(bindings.calls, [
+      'file:9:2400000',
+      'configure:100000000:2400000:125',
+      'usb:10:3',
+    ]);
+    instance.dispose();
+    expect(() => instance.configure(100000000, 2400000, 125), throwsStateError);
+  });
 }
