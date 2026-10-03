@@ -39,6 +39,24 @@ DSP передаются слотами нативного пула.
 приложение по-прежнему работает через Dart-приёмник. На хосте с CMake 3.22+ каркас проверяется
 командами `cmake -S native -B <build-dir>`, `cmake --build <build-dir>` и
 `ctest --test-dir <build-dir> --output-on-failure`. Build-dir должен быть вне исходников.
+`native/tests/abi_test.c` — C-тест публичного ABI: версия, отдельные handle,
+`destroy(NULL)`, освобождение и повторное создание. Для реального вызова из
+Flutter-теста на Linux задайте абсолютный путь к собранной host-библиотеке
+(Android SDK содержит CMake 3.22.1, системный `cmake` не обязателен):
+
+```sh
+source ~/prj/env.sh
+"$ANDROID_HOME/cmake/3.22.1/bin/cmake" -S native -B "$TMPDIR/sdrcore-host-build"
+"$ANDROID_HOME/cmake/3.22.1/bin/cmake" --build "$TMPDIR/sdrcore-host-build"
+"$ANDROID_HOME/cmake/3.22.1/bin/ctest" --test-dir "$TMPDIR/sdrcore-host-build" --output-on-failure
+SDRCORE_HOST_LIBRARY="$TMPDIR/sdrcore-host-build/libsdrcore.so" \
+  flutter test test/native/sdr_core_ffi_integration_test.dart
+```
+
+Без `SDRCORE_HOST_LIBRARY` интеграционный тест явно пропускается (обычный
+`flutter test` не собирает CMake-библиотеку); с указанным неверным путём тест
+падает, а не выдаёт подменённый ответ. Это проверка Linux host, не вызов FFI
+на Android и не аппаратный приём.
 
 Тулчейн (Flutter, JDK, Android SDK) установлен в `~/sdk`, sudo не нужен:
 
