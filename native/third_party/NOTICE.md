@@ -52,6 +52,10 @@ internal interface that bridges these drivers into the engine.
     two small upstream bugfixes to that same patch (uninitialized-variable
     use, missing early return), applied by hand since they post-date
     `40a1598` and are not optional correctness fixes.
+  - Local failure-path correction in `rtlsdr_create_device()`: if
+    `libusb_init()` fails, free the allocated device rather than the
+    output-pointer address and clear that output pointer. Preserve the
+    libusb error code. This is separate from the archived open-by-fd patch.
   - Net new public API: `int rtlsdr_open_sys_dev(rtlsdr_dev_t **dev, int fd)`
     declared in `include/rtl-sdr.h`.
   - Our adapter (`native/src/usb_rtlsdr_adapter.cpp`) `dup()`s the fd before

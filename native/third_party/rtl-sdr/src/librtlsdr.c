@@ -1457,8 +1457,9 @@ int rtlsdr_create_device(rtlsdr_dev_t **dev) {
 
 	r = libusb_init(&(*dev)->ctx);
 	if(r < 0){
-		free(dev);
-		return -1;
+		free(*dev);
+		*dev = NULL;
+		return r;
 	}
 
 	(*dev)->dev_lost = 1;
