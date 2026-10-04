@@ -56,6 +56,12 @@ void TestParseSpec() {
   CHECK(parse_audio_sink_spec("null", &spec));
   CHECK(spec.kind == AudioSinkKind::kNull);
 
+  CHECK(parse_audio_sink_spec("aaudio", &spec));
+  CHECK(spec.kind == AudioSinkKind::kAAudio);
+#ifndef __ANDROID__
+  CHECK(sdrcore::make_audio_sink(spec) == nullptr);
+#endif
+
   spec = AudioSinkSpec{};
   CHECK(parse_audio_sink_spec("wav:/tmp/out.wav", &spec));
   CHECK(spec.kind == AudioSinkKind::kWav);

@@ -174,6 +174,13 @@ class UsbSdrPlugin :
         lc.stopAllNative(done)
     }
 
+    /** Service-level Stop must close native sessions and Java USB connections, not just
+     * pause playback. Completion arrives on main after the control-thread teardown. */
+    fun closeNativeStreams(done: () -> Unit) {
+        val lc = lifecycle ?: return done()
+        lc.closeAllNative(done)
+    }
+
     // ------------------------------------------------------------------
     // ActivityAware (USB_DEVICE_ATTACHED launch + onNewIntent)
     // ------------------------------------------------------------------

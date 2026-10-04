@@ -7,6 +7,10 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.media.AudioAttributes
+import android.media.AudioFocusRequest
+import android.media.AudioManager
+import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
@@ -16,8 +20,8 @@ import android.util.Log
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 
-/** Foreground lifetime for the Activity-independent Dart engine. The receiver and USB fd
- * remain in that engine; a partial wake lock keeps Dart DSP/AAudio running with screen off.
+/** Foreground lifetime for the Activity-independent radio engine. A partial wake lock keeps
+ * reception running with the screen off; native USB/audio are released before this ends.
  */
 class ReceptionService : Service() {
     companion object {
@@ -44,6 +48,13 @@ class ReceptionService : Service() {
     private var frequency = 0
     private var mode = ""
     private var stopping = false
+    private var teardownComplete = false
+    private var teardown: ReceptionTeardown? = null
+    private var focusRequest: AudioFocusRequest? = null
+    private var focusHeld = false
+    private val focusListener = AudioManager.OnAudioFocusChangeListener { change ->
+        if (change <= 0) handler.post { if (!stopping) requestStop() }
+    }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -62,6 +73,7 @@ class ReceptionService : Service() {
         when (intent?.action) {
             STOP_REQUEST -> requestStop()
             START -> {
+                if (stopping) return START_NOT_STICKY
                 frequency = intent.getIntExtra("frequency", 0)
                 mode = intent.getStringExtra("mode") ?: ""
                 try {
@@ -71,8 +83,11 @@ class ReceptionService : Service() {
                             .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "$packageName:reception")
                             .also { it.acquire() }
                     }
+                    if (!focusHeld && !acquireFocus()) {
+                        throw IllegalStateException("Audio focus denied")
+                    }
                 } catch (e: Exception) {
-                    Log.e("ReceptionService", "Foreground start failed", e)
+                    Log.e("ReceptionService", "Foreground/audio start failed", e)
                     // startForegroundService() succeeded, but promotion failed later in
                     // onStartCommand. Tell Dart to stop USB/DSP instead of leaving a
                     // receiver running without a foreground service.
@@ -80,10 +95,10 @@ class ReceptionService : Service() {
                         MethodChannel(engine.dartExecutor.binaryMessenger, "sdr/background")
                             .invokeMethod("serviceFailed", null)
                     }
-                    stopSelf()
+                    requestStop()
                 }
             }
-            else -> stopSelf() // never revive reception on a system restart
+            else -> requestStop() // never revive reception on a system restart
         }
         return START_NOT_STICKY
     }
@@ -120,32 +135,72 @@ class ReceptionService : Service() {
         if (stopping) return
         stopping = true
         val engine = (application as SdrApplication).radioEngine
-        if (engine == null) { stopSelf(); return }
-        // Native sdrcore streams stop on the plugin's control thread, in parallel with Dart.
-        usbPlugin()?.stopNativeStreams {}
-        // If Dart cannot acknowledge Stop, kill this process to close USB/AAudio rather
-        // than leaving an invisible, still-running receiver after the notification vanishes.
+        // Never drop foreground/wakelock until BOTH the Dart controller and native USB/audio
+        // owner have stopped and closed. A missing engine has no Dart receiver to await.
         val watchdog = Runnable { Process.killProcess(Process.myPid()) }
         handler.postDelayed(watchdog, 15000)
-        MethodChannel(engine.dartExecutor.binaryMessenger, "sdr/background")
-            .invokeMethod("stopReception", null, object : MethodChannel.Result {
-                override fun success(result: Any?) { handler.removeCallbacks(watchdog); stopSelf() }
-                override fun error(code: String, message: String?, details: Any?) {
-                    handler.removeCallbacks(watchdog)
-                    Process.killProcess(Process.myPid())
+        teardown = ReceptionTeardown(
+            closeNative = { done ->
+                val plugin = usbPlugin()
+                if (plugin == null) done() else plugin.closeNativeStreams(done)
+            },
+            stopReceiver = { done ->
+                if (engine == null) done(true)
+                else MethodChannel(engine.dartExecutor.binaryMessenger, "sdr/background")
+                    .invokeMethod("stopReception", null, object : MethodChannel.Result {
+                        override fun success(result: Any?) = done(true)
+                        override fun error(code: String, message: String?, details: Any?) = done(false)
+                        override fun notImplemented() = done(false)
+                    })
+            },
+            finish = { ok ->
+                handler.removeCallbacks(watchdog)
+                if (!ok) Process.killProcess(Process.myPid())
+                else {
+                    teardownComplete = true
+                    stopSelf()
                 }
-                override fun notImplemented() {
-                    handler.removeCallbacks(watchdog)
-                    Process.killProcess(Process.myPid())
-                }
-            })
+            },
+        ).also { it.requestStop() }
+    }
+
+    private fun acquireFocus(): Boolean {
+        val audio = getSystemService(AUDIO_SERVICE) as AudioManager
+        val result = if (Build.VERSION.SDK_INT >= 26) {
+            val request = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
+                .setAudioAttributes(AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_MEDIA)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC).build())
+                .setOnAudioFocusChangeListener(focusListener).build()
+            focusRequest = request
+            audio.requestAudioFocus(request)
+        } else {
+            @Suppress("DEPRECATION")
+            audio.requestAudioFocus(focusListener, AudioManager.STREAM_MUSIC, AudioManager.AUDIOFOCUS_GAIN)
+        }
+        focusHeld = result == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
+        return focusHeld
+    }
+
+    private fun releaseFocus() {
+        if (!focusHeld) return
+        val audio = getSystemService(AUDIO_SERVICE) as AudioManager
+        val request = focusRequest
+        if (Build.VERSION.SDK_INT >= 26 && request != null) audio.abandonAudioFocusRequest(request)
+        else {
+            @Suppress("DEPRECATION")
+            audio.abandonAudioFocus(focusListener)
+        }
+        focusRequest = null
+        focusHeld = false
     }
 
     override fun onDestroy() {
         if (current === this) current = null
-        // No native stream may keep running once the foreground lifetime ends (the process can
-        // then be frozen or killed mid-transfer). Sessions stay open; the owner restarts them.
-        usbPlugin()?.stopNativeStreams {}
+        // Forced service destruction (not the ordered Stop above) cannot await a main-thread
+        // callback here. Closing the process is the only safe fallback against zombie audio.
+        if (!teardownComplete) Process.killProcess(Process.myPid())
+        releaseFocus()
         wakeLock?.let { if (it.isHeld) it.release() }
         wakeLock = null
         super.onDestroy()

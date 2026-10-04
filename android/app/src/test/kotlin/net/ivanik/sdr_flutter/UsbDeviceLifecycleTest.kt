@@ -246,6 +246,47 @@ class UsbDeviceLifecycleTest {
     }
 
     @Test
+    fun `service Stop closes every native session and fd before acknowledging`() {
+        val first = FakeConnection(41)
+        val second = FakeConnection(42)
+        openNative("a", first)
+        openNative("b", second)
+        lifecycle.nativeCommand("a", { it.start() }) {}
+        lifecycle.nativeCommand("b", { it.start() }) {}
+        drain()
+        events.clear()
+        var done = false
+        lifecycle.closeAllNative { done = true; events += "service.done" }
+        assertFalse(done)
+        assertFalse(lifecycle.tryAcquire("a", UsbSessionOwnership.Owner.DART))
+        control.runAll()
+        assertFalse(done)
+        main.runAll()
+        assertTrue(done)
+        assertEquals(1, first.closeCount)
+        assertEquals(1, second.closeCount)
+        assertTrue(events.indexOf("service.done") > events.indexOf("java.close(41)"))
+        assertTrue(events.indexOf("service.done") > events.indexOf("java.close(42)"))
+        assertTrue(lifecycle.tryAcquire("a", UsbSessionOwnership.Owner.DART))
+        lifecycle.closeAllNative { events += "again.done" }
+        drain()
+        assertEquals(1, first.closeCount)
+    }
+
+    @Test
+    fun `service Stop racing detach waits until Java fd closes`() {
+        val conn = FakeConnection(41)
+        openNative("a", conn)
+        lifecycle.onDeviceDetached("a")
+        var done = false
+        lifecycle.closeAllNative { done = true }
+        drain()
+        assertTrue(done)
+        assertEquals(1, conn.closeCount)
+        assertEquals(1, events.count { it == "native.destroy" })
+    }
+
+    @Test
     fun `shutdown closes native sessions before their Java connections and Dart ones directly`() {
         val nativeConn = FakeConnection(41)
         openNative("n", nativeConn)

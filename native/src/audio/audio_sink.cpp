@@ -9,6 +9,9 @@
 #ifdef SDRCORE_HAVE_ALSA
 #include "alsa_sink.h"
 #endif
+#ifdef __ANDROID__
+#include "aaudio_sink.h"
+#endif
 
 namespace sdrcore {
 
@@ -17,6 +20,11 @@ bool parse_audio_sink_spec(const char* spec, AudioSinkSpec* out) {
 
   if (s.empty() || s == "null") {
     out->kind = AudioSinkKind::kNull;
+    out->target.clear();
+    return true;
+  }
+  if (s == "aaudio") {
+    out->kind = AudioSinkKind::kAAudio;
     out->target.clear();
     return true;
   }
@@ -57,6 +65,12 @@ std::unique_ptr<AudioSink> make_audio_sink(const AudioSinkSpec& spec) {
       return make_alsa_sink(spec.target.empty() ? "default" : spec.target);
 #else
       // ALSA backend not compiled on this platform (e.g. Android).
+      return nullptr;
+#endif
+    case AudioSinkKind::kAAudio:
+#ifdef __ANDROID__
+      return make_aaudio_sink();
+#else
       return nullptr;
 #endif
   }

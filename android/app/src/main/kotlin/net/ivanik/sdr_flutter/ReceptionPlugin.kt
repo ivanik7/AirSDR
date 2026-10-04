@@ -76,7 +76,9 @@ class ReceptionPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHa
                     result.success(null)
                 }
                 "stop" -> {
-                    ctx.stopService(Intent(ctx, ReceptionService::class.java))
+                    // Route UI Stop through the same ordered teardown as notification Stop.
+                    ctx.startService(Intent(ctx, ReceptionService::class.java)
+                        .setAction(ReceptionService.STOP_REQUEST))
                     result.success(null)
                 }
                 else -> result.notImplemented()
