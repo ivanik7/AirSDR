@@ -14,6 +14,7 @@
 // NativeRequiredRadioController when the library cannot be loaded. The Dart
 // receive engine is not used on Linux.
 
+import 'dart:ffi';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -21,6 +22,8 @@ import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 
 import 'native/sdr_core.dart';
+import 'native/native_radio_api.dart';
+import 'native/native_radio_controller.dart';
 import 'platform/linux/host_iq_radio_controller.dart';
 import 'platform/linux/native_required_radio_controller.dart';
 import 'runtime/device_sources.dart';
@@ -48,8 +51,48 @@ Future<void> main() async {
   runApp(SdrApp(controller: controller));
 }
 
+/// Receive engine requested for this run: `dart` (default) or `native`.
+/// The environment wins over the compile-time define so Linux QA can switch
+/// engines without rebuilding.
+String requestedEngine({Map<String, String>? environment}) {
+  const defined = String.fromEnvironment('SDR_ENGINE', defaultValue: 'dart');
+  final env = (environment ?? Platform.environment)['SDR_ENGINE'];
+  final value = (env == null || env.isEmpty ? defined : env).toLowerCase();
+  return value == 'native' ? 'native' : 'dart';
+}
+
 /// Linux desktop: native host engine, or an honest "native required" state.
 RadioController createLinuxRadioController({String? configDir}) {
+  // The Dart DSP engine (HostIqRadioController over ABI 2 IQ) stays the
+  // default until comparative Linux-host acceptance of the N2 engine. The
+  // native ABI 3 engine is opt-in: SDR_ENGINE=native in the environment or
+  // --dart-define=SDR_ENGINE=native.
+  if (requestedEngine() == 'native') {
+    try {
+      final library = openSdrCoreLibrary();
+      final version = library.lookupFunction<Uint32 Function(), int Function()>(
+        'sdr_version',
+      )();
+      if (version != nativeRadioAbi) {
+        return NativeRequiredRadioController(
+          reason:
+              'SDR_ENGINE=native needs sdrcore ABI $nativeRadioAbi, '
+              'library reports $version',
+        );
+      }
+      final api = FfiNativeRadioApi(library);
+      // ADR default on Linux is the headless "null" sink; desktop users pick
+      // "alsa" or "alsa:<pcm>" (or "wav:<path>" for QA) via SDR_AUDIO_SINK.
+      final sink = Platform.environment['SDR_AUDIO_SINK'];
+      return NativeRadioController(
+        api: api,
+        source: HostNativeDeviceSource(api),
+        audioSink: sink == null || sink.isEmpty ? 'null' : sink,
+      );
+    } catch (e) {
+      return NativeRequiredRadioController(reason: '$e');
+    }
+  }
   final SdrCore core;
   try {
     core = SdrCore.open();
