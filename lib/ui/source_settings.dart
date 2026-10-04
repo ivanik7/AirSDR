@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Source-specific SDR++ settings and demodulator options, rendered from the
-// selected SourceSetting list; protocol IDs and option indices are unchanged.
+// Source-specific SDR++ settings; protocol IDs and option indices are unchanged.
 import 'package:flutter/material.dart';
 
 import 'radio_controller.dart';
@@ -24,12 +23,6 @@ Future<void> showSourceSettingsSheet(
   );
 }
 
-const Map<String, String> _demodBoolOptions = <String, String>{
-  'stereo': 'Стерео',
-  'lowPass': 'Фильтр НЧ',
-  'carrierAgc': 'АРУ несущей',
-};
-
 const _settingLabels = <String, String>{
   'gain': 'Усиление RF',
   'tunerAgc': 'АРУ тюнера',
@@ -38,7 +31,7 @@ const _settingLabels = <String, String>{
   'biasT': 'Питание антенны (Bias-T)',
   'offsetTuning': 'Смещение настройки',
   'rtlAgc': 'АРУ RTL',
-  'bandwidth': 'Полоса фильтра',
+  'bandwidth': 'Полоса RF-фильтра',
   'lnaGain': 'Усиление LNA',
   'vgaGain': 'Усиление VGA',
   'amp': 'Усилитель HackRF',
@@ -73,7 +66,6 @@ class SourceSettingsPanel extends StatelessWidget {
       builder: (context, _) {
         final theme = Theme.of(context);
         final settings = radio.sourceSettings;
-        final demod = radio.demodOptions;
         final children = <Widget>[
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
@@ -101,23 +93,6 @@ class SourceSettingsPanel extends StatelessWidget {
                 setting: s,
                 running: radio.running,
                 radio: radio,
-              ),
-          const Divider(),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
-            child: Text(
-              'Демодулятор ${radio.mode.label}',
-              style: theme.textTheme.titleSmall,
-            ),
-          ),
-          for (final e in _demodBoolOptions.entries)
-            if (demod[e.key] is bool)
-              SwitchListTile(
-                key: ValueKey<String>('demod:${e.key}'),
-                dense: true,
-                title: Text(e.value),
-                value: demod[e.key]! as bool,
-                onChanged: (v) => radio.setDemodOption(e.key, v),
               ),
           const Divider(),
           Padding(

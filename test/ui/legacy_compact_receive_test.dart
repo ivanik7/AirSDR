@@ -91,7 +91,7 @@ void main() {
       await pump(tester, radio, channels, Size(width, 882), 1);
       final freq = find.byKey(const ValueKey('legacyFrequency'));
       final field = find.byKey(const ValueKey('legacyFrequencyField'));
-      final mode = find.byKey(const ValueKey('legacyModeSelect'));
+      final mode = find.byKey(const ValueKey('legacyModeStatus'));
       final spectrum = find.byKey(const ValueKey('legacySpectrumDrag'));
       double? fontSize() =>
           tester.renderObject<RenderParagraph>(freq).text.style!.fontSize;
@@ -143,7 +143,7 @@ void main() {
     });
   }
 
-  testWidgets('mode, step and digit entry share compact controls', (
+  testWidgets('mode moves to Decoder; step and digit entry stay compact', (
     tester,
   ) async {
     final radio = DemoRadioController();
@@ -161,6 +161,9 @@ void main() {
     await tester.tap(find.byTooltip('Очистить ввод'));
     await tester.pump();
     expect(find.byKey(const ValueKey('legacyMute')), findsOneWidget);
+    expect(find.byKey(const ValueKey('legacyModeSelect')), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('tab-3')));
+    await tester.pump();
     await tester.tap(find.byKey(const ValueKey('legacyModeSelect')));
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('legacyMode-USB')), findsOneWidget);
@@ -169,6 +172,8 @@ void main() {
     expect(radio.mode, DemodMode.usb);
     expect(find.byKey(const ValueKey('legacyModeSelect')), findsOneWidget);
     expect(find.byKey(const ValueKey('legacyMode-USB')), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('tab-0')));
+    await tester.pump();
     await tester.tap(find.byKey(const ValueKey('legacyStep')));
     await tester.pump();
     expect(radio.vfoOffset, 0);

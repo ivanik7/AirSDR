@@ -302,7 +302,9 @@ void main() {
     expect(env.radio.centerFrequency, 101200000);
     expect(env.radio.vfoOffset, 0);
     expect(env.radio.mode, DemodMode.wfm);
-    // Mode chip changes only the active channel.
+    // The Decoder mode control changes only the active channel.
+    await tester.tap(find.byKey(const ValueKey('tab-3')));
+    await tester.pump();
     await tester.tap(find.byKey(const ValueKey('legacyModeSelect')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('legacyMode-NFM')));

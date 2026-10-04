@@ -142,7 +142,7 @@ void main() {
       expect(find.byKey(const ValueKey('src:rtlAgc')), findsOneWidget);
       expect(find.text('Прямая дискретизация'), findsOneWidget);
       expect(find.text('Коррекция PPM'), findsOneWidget);
-      expect(find.text('Стерео'), findsOneWidget);
+      expect(find.text('Стерео'), findsNothing);
       expect(find.textContaining('USB потери 2'), findsOneWidget);
       expect(tester.takeException(), isNull);
       await tester.tap(find.text('АРУ RTL'));
@@ -190,6 +190,7 @@ void main() {
         expect(find.byKey(ValueKey('src:$id')), findsOneWidget);
       }
       expect(find.text('Авто'), findsOneWidget);
+      expect(find.text('Полоса RF-фильтра'), findsOneWidget);
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox());
       radio.dispose();
@@ -233,7 +234,8 @@ void main() {
         find.descendant(of: status, matching: find.textContaining('WFM')),
         findsNothing,
       );
-      expect(find.byKey(const ValueKey('legacyModeSelect')), findsOneWidget);
+      expect(find.byKey(const ValueKey('legacyModeSelect')), findsNothing);
+      expect(find.byKey(const ValueKey('legacyModeStatus')), findsOneWidget);
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox());
       radio.dispose();

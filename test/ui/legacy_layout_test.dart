@@ -43,7 +43,7 @@ void main() {
 
   // Fold cover: 904 px / 2.625 ≈ 344 dp; inner: 1812 px / 2.625 ≈ 690 dp.
   for (final size in const [Size(344, 882), Size(690, 829), Size(300, 640)]) {
-    for (final tab in const [0, 1, 2]) {
+    for (final tab in const [0, 1, 2, 3]) {
       testWidgets('no overflow at ${size.width}dp, tab $tab, long status', (
         tester,
       ) async {

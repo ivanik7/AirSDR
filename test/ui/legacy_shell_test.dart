@@ -38,7 +38,7 @@ void main() {
     favorites.dispose();
   });
 
-  testWidgets('squelch controls live only in Settings, not Receive', (
+  testWidgets('squelch controls live only in Decoder, not Settings or Receive', (
     tester,
   ) async {
     final radio = DemoRadioController();
@@ -58,7 +58,7 @@ void main() {
       ),
       findsNothing,
     );
-    await tester.tap(find.byKey(const ValueKey('tab-2')));
+    await tester.tap(find.byKey(const ValueKey('tab-3')));
     await tester.pump();
     await tester.scrollUntilVisible(
       find.byKey(const ValueKey('squelchStatus')),
@@ -198,12 +198,16 @@ void main() {
         home: LegacyAppShell(controller: radio, favorites: favorites),
       ),
     );
+    await tester.tap(find.byKey(const ValueKey('tab-3')));
+    await tester.pump();
     await tester.tap(find.byKey(const ValueKey('legacyModeSelect')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('legacyMode-USB')));
     await tester.pump();
     expect(radio.mode.label, 'USB');
     expect(radio.vfoOffset, 0);
+    await tester.tap(find.byKey(const ValueKey('tab-0')));
+    await tester.pump();
     await tester.tap(find.byKey(const ValueKey('legacyStep')));
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('legacyStep-25000')), findsOneWidget);
@@ -240,7 +244,7 @@ void main() {
   });
 
   testWidgets(
-    'three tabs, MHz keypad, presets apply to the single centered tuner',
+    'four tabs, MHz keypad, presets apply to the single centered tuner',
     (tester) async {
       final radio = DemoRadioController();
       radio.setTuning(centerFrequency: 100000000, vfoOffset: 15000);
@@ -256,6 +260,7 @@ void main() {
       expect(find.text('Приём'), findsOneWidget);
       expect(find.text('Пресеты'), findsOneWidget);
       expect(find.text('Настройки'), findsOneWidget);
+      expect(find.text('Decoder'), findsOneWidget);
       // The Приём tab now has real channel slots, not an inert "позже" card.
       expect(find.byKey(const ValueKey('channelsSection')), findsOneWidget);
       expect(find.text('КАНАЛЫ · 1'), findsOneWidget);
