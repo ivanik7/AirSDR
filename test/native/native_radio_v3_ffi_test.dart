@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Opt-in FFI smoke against a real, complete ABI v3 host library. The current
-// master remains ABI 2; set SDRCORE_V3_PROBE_LIBRARY only for a v3 test build.
+// Opt-in FFI smoke against a real, complete ABI v3 host library. Set
+// SDRCORE_V3_PROBE_LIBRARY to a host libsdrcore.so build (sdr_version()==3).
+// SDR_HW_WAV keeps the hardware WFM recording at that path for listening.
 import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
@@ -133,7 +134,9 @@ void main() {
     'Blog V4 hardware: native WFM unmuted writes non-silent WAV, no IQ/PCM in Dart',
     () async {
       final api = FfiNativeRadioApi.open(libraryPath: library);
-      final wav = '${Directory.systemTemp.path}/n2_hw_${pid}_wfm.wav';
+      final wav =
+          Platform.environment['SDR_HW_WAV'] ??
+          '${Directory.systemTemp.path}/n2_hw_${pid}_wfm.wav';
       final controller = NativeRadioController(
         api: api,
         source: HostNativeDeviceSource(api),

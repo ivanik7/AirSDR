@@ -87,7 +87,7 @@ SDRCORE_API int32_t sdr_v2_configure(SdrHandle* handle, uint64_t frequency_hz,
 // preserves counters/last_error. close: OPEN/RUNNING/ERROR -> IDLE, joins workers
 // and releases native fd; a second close in IDLE is INVALID_STATE. destroy
 // performs stop/close if needed. After stop, input=processed+dropped for complete
-// IQ pairs. The bounded eight-slot, 8192-byte/slot native ring drops *new* pairs
+// IQ pairs. The bounded 64-slot, 8192-byte/slot native ring drops *new* pairs
 // on overflow; no FFI callback or Dart object ever owns its IQ buffers.
 SDRCORE_API int32_t sdr_v2_start(SdrHandle* handle);
 SDRCORE_API int32_t sdr_v2_stop(SdrHandle* handle);

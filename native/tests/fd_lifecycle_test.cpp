@@ -190,7 +190,7 @@ void TestAbnormalFdFailureSurfacesAsIoError() {
   printf("[ok] abnormal fd failure surfaces as SDR_IO_ERROR\n");
 }
 
-// --- Bounded ring (8 slots x 8192 bytes): sustained write pressure that
+// --- Bounded ring (kSlots x 8192 bytes): sustained write pressure that
 // outruns the consumer must drop samples but never corrupt the accounting
 // invariant input == processed + dropped.
 struct WriterArgs {
@@ -206,7 +206,7 @@ void* SustainedWriter(void* arg) {
     ssize_t n = write(a->fd, buf, sizeof buf);
     if (n < 0) break;
     if (std::chrono::steady_clock::now() - start >
-        std::chrono::milliseconds(80)) {
+        std::chrono::milliseconds(300)) {
       break;
     }
   }

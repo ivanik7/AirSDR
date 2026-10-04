@@ -24,7 +24,9 @@
 #include <unistd.h>
 
 namespace {
-constexpr size_t kSlots = 8;
+// 64 x 8 KiB = 512 KiB, ~109 ms of CU8 at 2.4 MS/s. Eight slots (27 ms) dropped
+// IQ on ordinary scheduler stalls in the 600 s Blog V4 soak (t_848e6a1c).
+constexpr size_t kSlots = 64;
 constexpr size_t kBytes = 8192;
 constexpr uint64_t kFnvOffset = 14695981039346656037ULL;
 constexpr uint64_t kFnvPrime = 1099511628211ULL;

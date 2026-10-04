@@ -15,7 +15,7 @@
 // Each phase emits {"event": ...}. The final line is {"event":"summary",...}
 // with totals; the exit status is 0 only if every command succeeded, the
 // engine never entered ERROR, and the measured input rate stayed within 1 %
-// of the configured rate. Ring drops (overflow of the native 8-slot ring) are
+// of the configured rate. Ring drops (overflow of the native 64-slot ring) are
 // reported; they are not USB transfer loss (see sdrcore.h).
 #include <inttypes.h>
 #include <stdio.h>

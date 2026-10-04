@@ -36,7 +36,8 @@ class CallbackAdapter final : public UsbRxAdapter {
 
 int main() {
   SdrHandle h;
-  std::vector<uint8_t> transfer(262144);
+  // One callback larger than the whole ring (independent of kSlots).
+  std::vector<uint8_t> transfer((kSlots + 24) * kBytes);
   for (size_t i = 0; i < transfer.size(); ++i) transfer[i] = i & 0xff;
   h.stats.source = SDR_RTLSDR;
   h.push(transfer.data(), transfer.size());

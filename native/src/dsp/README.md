@@ -18,7 +18,7 @@ the ABI-v3 owner in `sdrcore.cpp` on one DSP consumer thread.
   learned auto threshold (NFM discriminator-noise or low-percentile level),
   with a ramped audio gate. Mute and squared volume operate in the DSP path.
 - File IQ (CU8) is paced at its declared rate in ABI v3. Synthetic IQ and
-  RTL-SDR/HackRF feed the same bounded eight-slot ingress; the two USB
+  RTL-SDR/HackRF feed the same bounded 64-slot (512 KiB) ingress; the two USB
   adapters and host-only open-by-bus path remain source-built from the N1
   drivers. One process-wide native USB claim prevents a second native handle
   from opening hardware. Dart/native exclusivity must also be enforced by

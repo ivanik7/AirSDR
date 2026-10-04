@@ -47,7 +47,7 @@ The Kotlin `UsbSdrPlugin` owns the original `UsbDeviceConnection` and fd. It ser
 
 ## Streaming, counters, and sources
 
-Native owns an eight-slot ring of 8192-byte CU8 IQ blocks and producer/consumer threads. RTL-SDR callback buffers are split into 8192-byte ring chunks; HackRF CS8 bytes are offset into CU8. Full ring drops new complete IQ pairs and increments `dropped_samples`. `input_samples == processed_samples + dropped_samples` after a stopped, drained stream. `checksum` is diagnostic FNV-1a of consumed bytes; it is not demodulation or audio. The counters do not include losses inside the device/USB controller, so a zero ring-drop value alone cannot prove lossless reception. File and synthetic sources remain host diagnostics. This is a single source/one receive channel, not a multi-device receiver.
+Native owns a bounded ring of 8192-byte CU8 IQ blocks (eight slots in N1; 64 slots, ~109 ms at 2.4 MS/s, since the N2 integration) and producer/consumer threads. RTL-SDR callback buffers are split into 8192-byte ring chunks; HackRF CS8 bytes are offset into CU8. Full ring drops new complete IQ pairs and increments `dropped_samples`. `input_samples == processed_samples + dropped_samples` after a stopped, drained stream. `checksum` is diagnostic FNV-1a of consumed bytes; it is not demodulation or audio. The counters do not include losses inside the device/USB controller, so a zero ring-drop value alone cannot prove lossless reception. File and synthetic sources remain host diagnostics. This is a single source/one receive channel, not a multi-device receiver.
 
 The producer copies complete IQ pairs into its bounded native ring; the
 consumer returns each slot to that ring after processing. On overflow it drops

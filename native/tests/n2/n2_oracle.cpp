@@ -1651,6 +1651,9 @@ void case_hw_soak() {
                         {"wfm_retune", SDR_V3_WFM, 150000, -1000000, 380}, {"wfm", SDR_V3_WFM, 150000, 0, 300}};
   const double phase_s = std::max(5.0, O.hw_seconds / 24);
   std::map<std::string, uint64_t> nonsilent;
+  // Ring drops attributed to the phase (including its set_controls/retune) and
+  // to the mid-run stop/restart, so a failing ratio points at its cause.
+  std::map<std::string, uint64_t> dropped;
   const double cpu0 = cpu_seconds();
   const long rss_start = rss_kib();
   const auto t0 = Clock::now();
@@ -1665,6 +1668,7 @@ void case_hw_soak() {
     c.bandwidth_hz = ph.bw;
     c.center_frequency_hz = O.hw_freq + ph.lo_delta;
     c.gain_tenths_db = ph.gain;
+    const uint64_t dr0 = snap(h).dropped_samples;
     const int32_t rc = A.set_controls(h, &c);
     CHECK(rc == SDR_OK, "phase %s set_controls rc=%d", ph.name, rc);
     const uint64_t ns0 = snap(h).audio_nonsilent_frames;
@@ -1677,14 +1681,17 @@ void case_hw_soak() {
       sleep_ms(33);
     }
     nonsilent[ph.name] += snap(h).audio_nonsilent_frames - ns0;
+    dropped[ph.name] += snap(h).dropped_samples - dr0;
     CHECK(s.state == SDR_RUNNING, "phase %s: state %u err %d", ph.name, s.state, s.last_error);
     if (s.state != SDR_RUNNING) break;
     // One stop/restart halfway through (switches the WAV to null after the first WFM cut).
     if (!restarted && seconds_since(t0) > O.hw_seconds / 2) {
+      const uint64_t rd0 = snap(h).dropped_samples;
       CHECK_RC(A.stop(h), SDR_OK);
       if (wav_only_first) CHECK_RC(set_sink(h, "null"), SDR_OK);
       wav_only_first = false;
       CHECK_RC(A.start(h), SDR_OK);
+      dropped["restart"] += snap(h).dropped_samples - rd0;
       restarted = true;
     }
   }
@@ -1711,6 +1718,7 @@ void case_hw_soak() {
     R.metric("nonsilent_" + kv.first, kv.second);
     CHECK(kv.second > 0, "mode %s produced no non-silent audio", kv.first.c_str());
   }
+  for (const auto& kv : dropped) R.metric("dropped_" + kv.first, kv.second);
   CHECK(restarted || O.hw_seconds < 20, "stop/restart not exercised");
   CHECK(f.last_error == 0, "async error %d during soak", f.last_error);
   CHECK(std::fabs(in_rate - rate) <= 0.02 * rate, "average input %.0f S/s vs %u (incl. retune gaps)", in_rate, rate);
