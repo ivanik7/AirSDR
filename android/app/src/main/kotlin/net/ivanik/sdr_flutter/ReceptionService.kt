@@ -41,6 +41,9 @@ class ReceptionService : Service() {
             current?.update(call.argument<Int>("frequency") ?: 0,
                 call.argument<String>("mode") ?: "")
         }
+
+        /** A receiver-owned USB detach must end the foreground lifetime, even without UI. */
+        fun stopIfRunning() { current?.requestStop() }
     }
 
     private var wakeLock: PowerManager.WakeLock? = null

@@ -272,7 +272,9 @@ class UsbSdrPlugin :
         // do once the device is gone); Dart handles that. Native-held: the native session is
         // stopped/closed on the control thread first, then the Java connection is closed. A
         // reconnect gets a new permission/open and a fresh session.
+        val owned = lifecycle?.currentOwner(name) != null
         lifecycle?.onDeviceDetached(name)
+        if (owned) ReceptionService.stopIfRunning()
         pendingOpens.remove(name)?.forEach {
             it.result.error("NOT_FOUND", "device $name detached", null)
         }
