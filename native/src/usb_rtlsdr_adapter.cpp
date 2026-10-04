@@ -49,8 +49,16 @@ int RtlSdrAdapter::configure(uint64_t frequency_hz, uint32_t sample_rate,
 int RtlSdrAdapter::set_frequency(uint64_t frequency_hz) {
   if (!dev_) return SDR_INVALID_STATE;
   if (frequency_hz > 0xFFFFFFFFull) return SDR_INVALID_ARGUMENT;
-  return rtlsdr_set_center_freq(dev_, static_cast<uint32_t>(frequency_hz)) == 0
-      ? SDR_OK : SDR_IO_ERROR;
+  // Same retry policy as SDR++'s rtl_sdr source tune() and the old Dart
+  // engine: while bulk transfers stream, a tuner I2C control transfer can
+  // fail transiently (LIBUSB_ERROR_PIPE seen on the Blog V4); librtlsdr then
+  // sets dev->freq = 0 and a repeated attempt usually succeeds.
+  const uint32_t freq = static_cast<uint32_t>(frequency_hz);
+  for (int i = 0; i < 10; ++i) {
+    if (rtlsdr_set_center_freq(dev_, freq) == 0 &&
+        rtlsdr_get_center_freq(dev_) == freq) return SDR_OK;
+  }
+  return SDR_IO_ERROR;
 }
 
 int RtlSdrAdapter::set_gain(int32_t gain_tenths_db) {

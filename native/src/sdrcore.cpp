@@ -79,22 +79,37 @@ struct SdrHandle {
   std::atomic<bool> stopping{false};
   std::thread producer;
   std::thread consumer;
+  // Live tuner worker (RUNNING sessions on adapters with live tuning). It
+  // owns every tuner control transfer while the stream runs, so
+  // sdr_v3_set_controls never waits for USB I2C on the caller's (Flutter UI)
+  // thread. The request slot is latest-wins; all fields guarded by `mutex`.
+  std::thread tuner;
+  std::condition_variable tune_cv;
+  SdrV3Controls tune_request{};
+  bool tune_pending = false;  // tune_request not yet picked up
+  bool tune_busy = false;     // worker is issuing control transfers
+  bool tune_quit = false;
   std::array<std::array<uint8_t, kBytes>, kSlots> ring{};
   std::array<size_t, kSlots> lengths{};
+  // Per-slot flag: IQ captured before/while the tuner was reprogrammed. Such
+  // blocks are still demodulated (audio continues through the channel
+  // filters, as in SDR++ and the old Dart engine) but never produce FFT rows
+  // or squelch decisions for the new tune.
+  std::array<bool, kSlots> slot_stale{};
   size_t head = 0, tail = 0, queued = 0;
   bool producer_done = false;
-  // Live retune (sdr_v3_set_controls without a stream restart): input bytes
-  // still to discard because they were captured before the new tune (guarded
-  // by mutex), and an epoch that invalidates any ring block dequeued before
-  // the retune (written with dsp_mutex and mutex both held).
-  size_t discard_bytes = 0;
-  uint64_t ring_epoch = 0;
+  // Live retune: input bytes still in flight in the driver's USB transfers
+  // when the tuner was reprogrammed (marked stale on arrival), and a counter
+  // of applied LO retunes; both guarded by mutex.
+  size_t stale_bytes = 0;
+  uint64_t lo_retunes = 0;
   int fd = -1;  // exclusively owned duplicate; Java/FFI retains original
   std::unique_ptr<UsbRxAdapter> usb_adapter;  // set only for SDR_RTLSDR/HACKRF
   bool owns_usb_claim = false;
   bool v3_active = false;
   bool v3_configured = false;
-  SdrV3Controls controls{};
+  SdrV3Controls controls{};      // latest accepted controls
+  SdrV3Controls dsp_controls{};  // controls the receiver currently runs with
   SdrV3Display display{};
   std::string sink_spec =
 #ifdef __ANDROID__
@@ -134,6 +149,7 @@ struct SdrHandle {
     v3_active = false;
     v3_configured = false;
     controls = SdrV3Controls{};
+    dsp_controls = SdrV3Controls{};
     display = SdrV3Display{};
     fft_bins.clear();
     fft_unread = false;
@@ -155,16 +171,9 @@ struct SdrHandle {
     length &= ~size_t{1};
     for (size_t offset = 0; offset < length;) {
       std::lock_guard<std::mutex> lock(mutex);
-      if (discard_bytes) {
-        // Pre-retune IQ still in flight in the driver's USB transfers:
-        // counted as input, never demodulated or displayed.
-        const size_t skip = std::min(discard_bytes, length - offset);
-        discard_bytes -= skip;
-        stats.input_samples += skip / 2;
-        offset += skip;
-        continue;
-      }
       const size_t chunk = std::min(kBytes, length - offset);
+      const bool stale = stale_bytes > 0 || tune_in_progress();
+      stale_bytes -= std::min(stale_bytes, chunk);
       stats.input_samples += chunk / 2;
       if (queued == kSlots) {
         stats.dropped_samples += chunk / 2;
@@ -176,6 +185,7 @@ struct SdrHandle {
           std::memcpy(ring[tail].data(), bytes + offset, chunk);
         }
         lengths[tail] = chunk;
+        slot_stale[tail] = stale;
         tail = (tail + 1) % kSlots;
         ++queued;
         ready.notify_one();
@@ -279,16 +289,106 @@ struct SdrHandle {
     ready.notify_all();
   }
 
+  bool tune_in_progress() const { return tune_pending || tune_busy; }
+
+  // Applies queued live retunes in order, coalescing to the newest request.
+  void tune_loop() {
+    std::unique_lock<std::mutex> lock(mutex);
+    for (;;) {
+      tune_cv.wait(lock, [this] { return tune_quit || tune_pending; });
+      if (tune_quit) break;
+      const SdrV3Controls req = tune_request;
+      tune_pending = false;
+      tune_busy = true;
+      const bool retune_freq = req.center_frequency_hz != stats.frequency_hz;
+      const bool retune_gain = req.gain_tenths_db != stats.gain_tenths_db;
+      lock.unlock();
+      // No core lock is held during control transfers: the USB event thread
+      // may need `mutex` inside push() before a synchronous control transfer
+      // issued here can complete. join() stops this worker before it stops
+      // or closes the adapter, so the adapter stays valid.
+      int rc = SDR_OK;
+      if (retune_freq) rc = usb_adapter->set_frequency(req.center_frequency_hz);
+      if (rc == SDR_OK && retune_gain) rc = usb_adapter->set_gain(req.gain_tenths_db);
+      std::unique_lock<std::mutex> dsp_lock(dsp_mutex);
+      lock.lock();
+      tune_busy = false;
+      if (rc != SDR_OK) {
+        // The hardware may be partially retuned; never advertise either the
+        // old or the requested tune as valid after that failure.
+        tune_pending = false;
+        controls = dsp_controls;
+        if (stats.state == SDR_RUNNING) async_error(rc);
+        continue;
+      }
+      // The tuner really holds `req` now, even if the stream is stopping.
+      stats.frequency_hz = req.center_frequency_hz;
+      stats.gain_tenths_db = req.gain_tenths_db;
+      snapshot.center_frequency_hz = req.center_frequency_hz;
+      snapshot.gain_tenths_db = req.gain_tenths_db;
+      if (stats.state != SDR_RUNNING) continue;
+      try {
+        if (retune_freq) {
+          // IQ queued in the ring and the driver's in-flight transfers that
+          // will still be delivered were captured before the new tune.
+          for (size_t i = 0, s = head; i < queued; ++i, s = (s + 1) % kSlots)
+            slot_stale[s] = true;
+          stale_bytes = usb_adapter->retune_settle_bytes();
+          ++lo_retunes;
+        }
+        receiver->configure(req, display);
+        dsp_controls = req;
+      } catch (...) {
+        async_error(SDR_INTERNAL_ERROR);
+        continue;
+      }
+      snapshot.vfo_offset_hz = req.vfo_offset_hz;
+      snapshot.mode = req.mode;
+      snapshot.bandwidth_hz = req.bandwidth_hz;
+      snapshot.squelch_ready = 0;
+      snapshot.squelch_open = 0;
+      fft_unread = false;
+      fft_bins.clear();
+    }
+    // Requests not yet applied are dropped; accepted state falls back to
+    // what the receiver and hardware actually run.
+    tune_pending = false;
+    controls = dsp_controls;
+  }
+
+  void stop_tuner() {
+    if (!tuner.joinable()) return;
+    {
+      std::lock_guard<std::mutex> lock(mutex);
+      tune_quit = true;
+      tune_pending = false;
+    }
+    tune_cv.notify_all();
+    tuner.join();  // waits for an in-flight control transfer sequence
+  }
+
   void consume_loop() {
     std::array<uint8_t, kBytes> block{};
     sdrcore::dsp::ProcessResult result;
+    uint64_t seen_retunes = 0;
+    {
+      std::lock_guard<std::mutex> lock(mutex);
+      seen_retunes = lo_retunes;
+    }
     for (;;) {
       std::unique_lock<std::mutex> lock(mutex);
       ready.wait(lock, [this] { return queued || producer_done; });
       if (!queued && producer_done) return;
       const size_t length = lengths[head];
       const bool dsp = v3_active;
-      const uint64_t epoch = ring_epoch;
+      // A row may only be published under the control epoch it was computed
+      // in, and never from IQ captured before or during a live retune.
+      const uint64_t dequeued_sequence = snapshot.control_sequence;
+      const bool stale = slot_stale[head] || tune_in_progress();
+      // First block of a new LO: forget the old station's FFT accumulation,
+      // squelch history and pilot lock (filters/audio keep running).
+      const bool new_station = !stale && seen_retunes != lo_retunes;
+      if (new_station) seen_retunes = lo_retunes;
       if (dsp) std::memcpy(block.data(), ring[head].data(), length);
       else for (size_t i = 0; i < length; ++i)
         stats.checksum = (stats.checksum ^ ring[head][i]) * kFnvPrime;
@@ -297,14 +397,9 @@ struct SdrHandle {
       if (!dsp) { stats.processed_samples += length / 2; continue; }
       lock.unlock();
       sdrcore::AudioSinkStats audio_stats;
-      uint64_t processed_sequence = 0;
       try {
-        // ring_epoch and control_sequence are written only with both
-        // dsp_mutex and mutex held, so reading them under dsp_mutex is safe.
         std::lock_guard<std::mutex> dsp_lock(dsp_mutex);
-        // A block dequeued before a live retune carries the old tune.
-        if (epoch != ring_epoch) continue;
-        processed_sequence = snapshot.control_sequence;
+        if (new_station) receiver->retune();
         receiver->process(block.data(), length, result);
         if (!result.audio.empty())
           audio_sink->write(result.audio.data(), result.audio.size() / 2);
@@ -317,7 +412,8 @@ struct SdrHandle {
       lock.lock();
       // A control change committed between process() and here must not
       // stamp a row computed under the previous controls as current.
-      const bool current = processed_sequence == snapshot.control_sequence;
+      const bool current = dequeued_sequence == snapshot.control_sequence &&
+          !stale && !tune_in_progress();
       stats.processed_samples += length / 2;
       if (current) {
         snapshot.squelch_metric_db = result.signal_db;
@@ -341,7 +437,7 @@ struct SdrHandle {
         fft.control_sequence = snapshot.control_sequence;
         fft.monotonic_ns = static_cast<uint64_t>(std::chrono::duration_cast<
             std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count());
-        fft.low_hz = static_cast<int64_t>(controls.center_frequency_hz) +
+        fft.low_hz = static_cast<int64_t>(dsp_controls.center_frequency_hz) +
             display.view_offset_hz - static_cast<int64_t>(display.view_bandwidth_hz / 2);
         fft.high_hz = fft.low_hz + display.view_bandwidth_hz;
         fft.width = static_cast<uint32_t>(fft_bins.size());
@@ -351,6 +447,8 @@ struct SdrHandle {
   }
 
   void join() {
+    // The tuner worker must be idle before the adapter is stopped or closed.
+    stop_tuner();
     stopping = true;
     if (usb_adapter && producer.joinable()) usb_adapter->stop();
     if (producer.joinable()) producer.join();
@@ -491,7 +589,7 @@ extern "C" int32_t sdr_v2_start(SdrHandle* h) {
     if (h->stats.state != SDR_OPEN || h->v3_active) return SDR_INVALID_STATE;
     if (h->usb_adapter && h->stats.sample_rate == 0) return SDR_INVALID_STATE;
     h->head = h->tail = h->queued = 0;
-    h->discard_bytes = 0;
+    h->stale_bytes = 0;
     h->producer_done = false;
     h->stopping = false;
     h->stats.state = SDR_RUNNING;
@@ -556,77 +654,45 @@ extern "C" int32_t sdr_v2_stats(SdrHandle* h, SdrStats* out) {
 extern "C" int32_t sdr_v3_set_controls(SdrHandle* h, const SdrV3Controls* in) {
   if (!h || !in || !valid_controls(*in)) return SDR_INVALID_ARGUMENT;
   if (in->agc) return SDR_UNSUPPORTED;  // Hardware AGC is not implemented by the v2 adapters.
-  bool restart = false, live = false;
-  bool live_freq = false, live_gain = false;
+  bool restart = false;
   {
     std::lock_guard<std::mutex> lock(h->mutex);
     if (h->stats.state != SDR_OPEN && h->stats.state != SDR_RUNNING) return SDR_INVALID_STATE;
     if (h->stats.state == SDR_RUNNING && !h->v3_active) return SDR_INVALID_STATE;
     if (h->stats.source == SDR_RTLSDR && in->center_frequency_hz > UINT32_MAX)
       return SDR_UNSUPPORTED;
-    live_freq = h->stats.frequency_hz != in->center_frequency_hz;
-    live_gain = h->stats.gain_tenths_db != in->gain_tenths_db;
-    const bool hardware = live_freq || live_gain ||
-        h->stats.sample_rate != in->sample_rate;
     // LO/gain changes on a device that tunes while streaming are applied in
     // place (as SDR++ does): a full restart cancels USB transfers, joins both
     // threads and closes/reopens the audio device, which took ~420 ms per
-    // retune on Android and blocked the calling UI thread. Sample-rate
+    // retune on Android and blocked the calling UI thread. Even the tuner
+    // I2C alone (~29 ms on SM-F936B + Blog V4) is too long for the UI
+    // thread, so the request is only accepted here and the tuner worker
+    // applies it (latest wins). While a retune is outstanding every later
+    // request takes the same queue, so requests apply in order. Sample-rate
     // changes still restart because they reshape the whole DSP chain.
-    live = h->stats.state == SDR_RUNNING && hardware && h->v3_configured &&
-        h->usb_adapter && h->usb_adapter->supports_live_tuning() &&
-        h->stats.sample_rate == in->sample_rate;
-    restart = h->stats.state == SDR_RUNNING && hardware && !live;
-  }
-  if (live) {
-    // Serialized by the caller with every other control/lifecycle call, so
-    // the adapter cannot be stopped or closed underneath. No core lock is
-    // held: the USB event thread may need h->mutex inside push() before a
-    // synchronous control transfer issued here can complete.
-    int rc = SDR_OK;
-    if (live_freq) rc = h->usb_adapter->set_frequency(in->center_frequency_hz);
-    if (rc == SDR_OK && live_gain) rc = h->usb_adapter->set_gain(in->gain_tenths_db);
-    try {
-      std::lock_guard<std::mutex> dsp_lock(h->dsp_mutex);
-      std::lock_guard<std::mutex> lock(h->mutex);
-      if (rc != SDR_OK) {
-        // The hardware may be partially retuned; never advertise the old
-        // tune as still valid after that failure.
-        h->async_error(rc);
-        return rc;
-      }
-      if (h->stats.state != SDR_RUNNING) {
-        // The stream died asynchronously during the retune. Keep the error
-        // state; the requested tune is not applied.
-        return h->stats.last_error ? h->stats.last_error : SDR_INVALID_STATE;
-      }
-      // Drop IQ captured before the new tune: whatever is queued in the ring
-      // or in a block the consumer already dequeued, plus the driver's
-      // in-flight transfers that will still be delivered.
-      h->head = h->tail = h->queued = 0;
-      h->discard_bytes = h->usb_adapter->retune_settle_bytes();
-      ++h->ring_epoch;
-      h->receiver->configure(*in, h->display);
-      h->receiver->reset();
+    const bool live_capable = h->stats.state == SDR_RUNNING && h->v3_configured &&
+        h->tuner.joinable() && h->stats.sample_rate == in->sample_rate;
+    if (live_capable && (h->tune_in_progress() ||
+        h->controls.center_frequency_hz != in->center_frequency_hz ||
+        h->controls.gain_tenths_db != in->gain_tenths_db)) {
       h->controls = *in;
-      h->stats.frequency_hz = in->center_frequency_hz;
-      h->stats.gain_tenths_db = in->gain_tenths_db;
-      h->snapshot.center_frequency_hz = in->center_frequency_hz;
-      h->snapshot.vfo_offset_hz = in->vfo_offset_hz;
-      h->snapshot.mode = in->mode;
-      h->snapshot.bandwidth_hz = in->bandwidth_hz;
-      h->snapshot.gain_tenths_db = in->gain_tenths_db;
+      h->tune_request = *in;
+      h->tune_pending = true;
+      // The epoch advances now: rows and squelch decisions of the previous
+      // controls are invalid at once; rows of the new tune are published
+      // only after the worker has applied it.
+      ++h->snapshot.control_sequence;
       h->snapshot.squelch_ready = 0;
       h->snapshot.squelch_open = 0;
-      ++h->snapshot.control_sequence;
       h->fft_unread = false;
       h->fft_bins.clear();
-    } catch (...) {
-      std::lock_guard<std::mutex> lock(h->mutex);
-      h->async_error(SDR_INTERNAL_ERROR);
-      return SDR_INTERNAL_ERROR;
+      h->tune_cv.notify_one();
+      return SDR_OK;
     }
-    return SDR_OK;
+    const bool hardware = h->stats.frequency_hz != in->center_frequency_hz ||
+        h->stats.gain_tenths_db != in->gain_tenths_db ||
+        h->stats.sample_rate != in->sample_rate;
+    restart = h->stats.state == SDR_RUNNING && hardware;
   }
   if (restart) {
     const int rc = sdr_v3_stop(h);
@@ -660,6 +726,7 @@ extern "C" int32_t sdr_v3_set_controls(SdrHandle* h, const SdrV3Controls* in) {
     }
     h->receiver->configure(*in, display);
     h->controls = *in;
+    h->dsp_controls = *in;
     h->display = display;
     h->v3_configured = true;
     h->stats.frequency_hz = in->center_frequency_hz;
@@ -694,7 +761,7 @@ extern "C" int32_t sdr_v3_set_display(SdrHandle* h, const SdrV3Display* in) {
     if (!valid_display(*in, h->v3_configured ? h->controls.sample_rate : h->stats.sample_rate))
       return SDR_INVALID_ARGUMENT;
     h->display = *in;
-    if (h->v3_configured) h->receiver->configure(h->controls, *in);
+    if (h->v3_configured) h->receiver->configure(h->dsp_controls, *in);
     ++h->snapshot.control_sequence;
     h->fft_unread = false;
     h->fft_bins.clear();
@@ -759,7 +826,7 @@ extern "C" int32_t sdr_v3_start(SdrHandle* h) {
       h->audio_sink = std::move(sink);
       h->v3_active = true;
       h->head = h->tail = h->queued = 0;
-      h->discard_bytes = 0;
+      h->stale_bytes = 0;
       // A recording restarts from its beginning (Dart FileSource rewinds on
       // stop). Sockets/pipes cannot seek and simply continue.
       if (h->stats.source == SDR_FILE && h->fd >= 0) (void)lseek(h->fd, 0, SEEK_SET);
@@ -775,6 +842,14 @@ extern "C" int32_t sdr_v3_start(SdrHandle* h) {
     }
     h->consumer = std::thread([h] { h->consume_loop(); });
     h->producer = std::thread([h] { h->read_loop(); });
+    if (h->usb_adapter && h->usb_adapter->supports_live_tuning()) {
+      {
+        std::lock_guard<std::mutex> lock(h->mutex);
+        h->tune_quit = false;
+        h->tune_pending = h->tune_busy = false;
+      }
+      h->tuner = std::thread([h] { h->tune_loop(); });
+    }
   } catch (...) {
     h->join();
     std::lock_guard<std::mutex> lock(h->mutex);

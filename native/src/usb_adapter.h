@@ -41,8 +41,8 @@
 //   set_frequency(..) / set_gain(..) retune the LO or gain of an open device
 //                  WHILE start() may be streaming on the producer thread
 //                  (live tuning, like SDR++'s rtl_sdr source). Only used when
-//                  supports_live_tuning() is true. Called from a control
-//                  thread that holds neither the core ring mutex nor any
+//                  supports_live_tuning() is true. Called from the core's
+//                  tuner worker thread, which holds neither the core ring mutex nor any
 //                  lock the push callback needs (the libusb event thread may
 //                  be inside push() while a synchronous control transfer
 //                  waits for it), never concurrently with configure(),

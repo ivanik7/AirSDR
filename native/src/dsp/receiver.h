@@ -35,6 +35,11 @@ class Receiver {
   // Called by the same DSP owner mutex as configure/process; no IQ restart.
   virtual void set_wfm_stereo(bool enabled) = 0;
   virtual void reset() = 0;
+  // Live LO retune on a continuing stream: forgets what belonged to the old
+  // station (FFT accumulation, squelch learning, WFM pilot lock) but keeps
+  // the channel filters, audio resampler and deemphasis running, so the
+  // audio stream continues without a reset gap or click.
+  virtual void retune() = 0;
   virtual void process(const uint8_t* cu8, size_t bytes,
                        ProcessResult& result) = 0;
 };

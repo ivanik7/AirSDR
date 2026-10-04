@@ -102,6 +102,13 @@ if(NOT ANDROID AND PROJECT_IS_TOP_LEVEL)
     add_test(NAME sdrcore_host_rtl_gain COMMAND sdrcore_host_rtl_gain_test)
     add_executable(sdrcore_host_rx_diag tests/host_rx_diag.c)
     target_link_libraries(sdrcore_host_rx_diag PRIVATE sdrcore)
+    # Manual real-hardware diagnostic (needs an attached RTL-SDR); not a ctest.
+    add_executable(sdrcore_host_retune_latency tests/host_retune_latency.c)
+    target_link_libraries(sdrcore_host_retune_latency PRIVATE sdrcore)
+    # Manual probe of stale IQ after a live tuner retune (vendored librtlsdr).
+    add_executable(sdrcore_host_retune_settle tests/host_retune_settle.c)
+    target_include_directories(sdrcore_host_retune_settle PRIVATE third_party/rtl-sdr/include)
+    target_link_libraries(sdrcore_host_retune_settle PRIVATE sdrcore_rtlsdr Threads::Threads m)
     # DSP-only, white-box: links receiver.cpp directly against the public
     # sdrcore::dsp::Receiver interface (no ABI/sdrcore.cpp, no USB adapters,
     # no Dart/FFI) so the WFM stereo decoder is checkable in isolation with

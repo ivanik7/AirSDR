@@ -215,6 +215,13 @@ class ReceiverImpl final : public Receiver {
     reset_squelch();
   }
 
+  void retune() override {
+    fft_count_ = 0;
+    fft_since_row_ = 0;
+    reset_pilot();
+    reset_squelch();
+  }
+
   void process(const uint8_t* cu8, size_t bytes, ProcessResult& result) override {
     result.audio.clear();
     result.fft.clear();

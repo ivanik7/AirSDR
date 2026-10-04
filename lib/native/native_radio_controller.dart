@@ -599,8 +599,10 @@ class NativeRadioController extends RadioController {
           (previous.centerHz != desired.centerHz ||
               previous.gainTenthsDb != desired.gainTenthsDb ||
               previous.sampleRate != desired.sampleRate)) {
-        // Synchronous on the UI isolate: keep hardware retune cost visible
-        // in logcat (tool/retune_jank/logcat_retune_stalls.py).
+        // Runs on the UI isolate. Live LO/gain retunes are only queued for
+        // the native tuner worker; a sample-rate change still restarts the
+        // stream here. Keep the cost visible in logcat
+        // (tool/retune_jank/logcat_retune_stalls.py).
         debugPrint(
           'sdr: hardware controls ${timer.elapsedMicroseconds} us '
           '(center ${desired.centerHz} Hz)',

@@ -120,7 +120,15 @@ typedef struct SdrV3Fft {
 // reconfigures DSP without USB retune. On a RUNNING session whose USB driver
 // tunes while streaming (RTL-SDR), an LO and/or gain change with an unchanged
 // sample rate is applied live: the stream, audio sink and stream_generation
-// are kept, queued pre-retune IQ is discarded, and control_sequence advances.
+// are kept and queued pre-retune IQ is discarded. Such a live change is only
+// ACCEPTED synchronously (control_sequence advances before return, no USB
+// control transfer on the calling thread); a native tuner worker applies the
+// newest accepted request (latest wins, intermediate requests may be
+// skipped). snapshot.center_frequency_hz/gain_tenths_db switch when the tuner
+// has really been reprogrammed, and FFT rows carrying the new control_sequence
+// are computed only from IQ captured after that. A failed live retune is an
+// async SDR_ERROR (error_sequence advances). stop/close/destroy wait for an
+// in-flight tuner write and drop requests not yet applied.
 // Other hardware changes (sample rate; LO/gain on HackRF and non-USB sources)
 // serialize an internal stop -> configure -> restart before returning. On
 // failure report the error;
