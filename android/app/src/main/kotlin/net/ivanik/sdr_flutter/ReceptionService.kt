@@ -17,6 +17,7 @@ import android.os.Looper
 import android.os.PowerManager
 import android.os.Process
 import android.util.Log
+import androidx.core.content.ContextCompat
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 
@@ -28,9 +29,20 @@ class ReceptionService : Service() {
         const val START = "net.ivanik.sdr_flutter.START_RECEPTION"
         const val STOP_REQUEST = "net.ivanik.sdr_flutter.STOP_RECEPTION"
         const val OPEN_RECEIVE = "net.ivanik.sdr_flutter.OPEN_RECEIVE"
+        const val PROMOTE = "net.ivanik.sdr_flutter.PROMOTE_RECEPTION"
         private const val CHANNEL = "sdr_reception"
         private const val ID = 412
+        private const val PROMOTION_TIMEOUT_MS = 10_000L
         private var current: ReceptionService? = null
+
+        /** `promote` calls queued while the service process is still starting (no [current]
+         * instance exists yet); drained by the fresh instance's PROMOTE onStartCommand. */
+        private data class QueuedPromotion(
+            val frequency: Int,
+            val mode: String,
+            val callback: (ReceptionPromotion.Outcome) -> Unit,
+        )
+        private val pendingPromotions = mutableListOf<QueuedPromotion>()
 
         fun intent(ctx: Context, action: String, call: MethodCall): Intent =
             Intent(ctx, ReceptionService::class.java).setAction(action)
@@ -44,6 +56,37 @@ class ReceptionService : Service() {
 
         /** A receiver-owned USB detach must end the foreground lifetime, even without UI. */
         fun stopIfRunning() { current?.requestStop() }
+
+        /** `promote` on MethodChannel sdr/background: start the service if needed and reply
+         * only after startForeground, the wake lock and AUDIOFOCUS_GAIN are all held, or with
+         * PROMOTION_FAILED on any failure (see ReceptionPromotion for the exact semantics). */
+        fun requestPromotion(
+            ctx: Context,
+            call: MethodCall,
+            callback: (ReceptionPromotion.Outcome) -> Unit,
+        ) {
+            val hz = call.argument<Int>("frequency") ?: 0
+            val demod = call.argument<String>("mode") ?: ""
+            val svc = current
+            if (svc != null) {
+                svc.promote(hz, demod, callback)
+                return
+            }
+            val queued = QueuedPromotion(hz, demod, callback)
+            pendingPromotions += queued
+            try {
+                ContextCompat.startForegroundService(ctx, intent(ctx, PROMOTE, call))
+            } catch (e: Exception) {
+                pendingPromotions.remove(queued)
+                callback(ReceptionPromotion.Outcome.Failure(e.message ?: "startForegroundService failed"))
+            }
+        }
+
+        /** `release`: idempotent no-op (success) when no service instance is running. */
+        fun requestRelease(callback: () -> Unit) {
+            val svc = current
+            if (svc == null) callback() else svc.release(callback)
+        }
     }
 
     private var wakeLock: PowerManager.WakeLock? = null
@@ -55,6 +98,7 @@ class ReceptionService : Service() {
     private var teardown: ReceptionTeardown? = null
     private var focusRequest: AudioFocusRequest? = null
     private var focusHeld = false
+    private var promotion: ReceptionPromotion? = null
     private val focusListener = AudioManager.OnAudioFocusChangeListener { change ->
         if (change <= 0) handler.post { if (!stopping) requestStop() }
     }
@@ -101,9 +145,87 @@ class ReceptionService : Service() {
                     requestStop()
                 }
             }
+            PROMOTE -> {
+                val queued = drainPendingPromotions()
+                queued.forEach { promote(it.frequency, it.mode, it.callback) }
+            }
             else -> requestStop() // never revive reception on a system restart
         }
         return START_NOT_STICKY
+    }
+
+    /** Companion entry point for `promote` when this instance is already running, and also
+     * used to drain calls queued while the process was still starting (see PROMOTE above). */
+    fun promote(hz: Int, demod: String, callback: (ReceptionPromotion.Outcome) -> Unit) {
+        frequency = hz
+        mode = demod
+        val p = ensurePromotion()
+        // Already promoted: succeed immediately but refresh the notification with the new
+        // frequency/mode, as the contract requires.
+        if (p.isPromoted) getSystemService(NotificationManager::class.java).notify(ID, notification())
+        p.requestPromotion(callback)
+    }
+
+    /** Companion entry point for `release`. Always replies immediately; cleanup (if any) runs
+     * synchronously first. Never touches stopReception or native USB -- see the ADR. */
+    fun release(callback: () -> Unit) {
+        promotion?.requestRelease()
+        callback()
+    }
+
+    private fun ensurePromotion(): ReceptionPromotion {
+        promotion?.let { return it }
+        val created = ReceptionPromotion(
+            attemptStart = { attemptForegroundPromotion() },
+            scheduleTimeout = { r -> handler.postDelayed(r, PROMOTION_TIMEOUT_MS) },
+            cancelTimeout = { r -> handler.removeCallbacks(r) },
+            requestCleanup = { cleanupPromotion() },
+        )
+        // Defensive: a teardown already in progress at the service level (stopping) must be
+        // reflected immediately in a freshly created state machine too.
+        if (stopping) created.onTeardownStarted()
+        promotion = created
+        return created
+    }
+
+    /** Side effects behind ReceptionPromotion's PROMOTING -> PROMOTED transition: acquire
+     * startForeground, the partial wake lock and AUDIOFOCUS_GAIN, in that order. */
+    private fun attemptForegroundPromotion() {
+        try {
+            startForeground(ID, notification())
+            if (wakeLock?.isHeld != true) {
+                wakeLock = (getSystemService(POWER_SERVICE) as PowerManager)
+                    .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "$packageName:reception")
+                    .also { it.acquire() }
+            }
+            if (!focusHeld && !acquireFocus()) {
+                throw IllegalStateException("Audio focus denied")
+            }
+            promotion?.onForegroundReady()
+        } catch (e: Exception) {
+            Log.e("ReceptionService", "Native promotion failed", e)
+            promotion?.onPromotionFailed(e.message ?: "promotion failed")
+        }
+    }
+
+    /** Drops focus, wake lock and foreground and stops the service, for both a failed
+     * promotion attempt and a `release` call. Never invokes stopReception or
+     * UsbSdrPlugin.closeNativeStreams -- Dart already stopped/closed the native handle and
+     * released the USB fd. */
+    private fun cleanupPromotion() {
+        releaseFocus()
+        wakeLock?.let { if (it.isHeld) it.release() }
+        wakeLock = null
+        // Mark the teardown clean so onDestroy (below) does not kill the process.
+        teardownComplete = true
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        stopSelf()
+    }
+
+    private fun drainPendingPromotions(): List<QueuedPromotion> {
+        val list = pendingPromotions.toList()
+        pendingPromotions.clear()
+        return list
     }
 
     private fun update(hz: Int, demod: String) {
@@ -137,6 +259,10 @@ class ReceptionService : Service() {
     private fun requestStop() {
         if (stopping) return
         stopping = true
+        // A promote() still waiting for readiness cannot succeed once an ordered teardown
+        // (notification Stop / focus loss / USB detach) has started; a later `release` must
+        // also see `stopping` and do nothing, letting this teardown finish uncontested.
+        promotion?.onTeardownStarted()
         val engine = (application as SdrApplication).radioEngine
         // Never drop foreground/wakelock until BOTH the Dart controller and native USB/audio
         // owner have stopped and closed. A missing engine has no Dart receiver to await.
