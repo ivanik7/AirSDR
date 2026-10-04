@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import 'package:flutter/material.dart';
 
-import '../../runtime/sdr_radio_controller.dart';
 import '../bands/bands.dart';
 import '../channels/channel_controller.dart';
 import '../channels/channel_scanner.dart';
@@ -58,7 +57,7 @@ class _LegacyAppShellState extends State<LegacyAppShell> {
   void _showReceive() => setState(() => tab = 0);
 
   void _init() {
-    radioReady = widget.controller is! SdrRadioController;
+    radioReady = true;
     receiver = CenteredReceiver(widget.controller);
     bands = widget.bands ?? BandsRepository();
     ownBands = widget.bands == null;
@@ -84,25 +83,14 @@ class _LegacyAppShellState extends State<LegacyAppShell> {
     final boundReceiver = receiver;
     // The step (= frequency grid) is persisted; snapping waits for it.
     final stepLoaded = receiver.loadStep();
-    // The production controller loads persisted LO/offset asynchronously.
-    // Recenter only after ready, not before its first persisted state arrives.
-    final Future<void> radioLoaded;
-    if (radio case final SdrRadioController real) {
-      radioLoaded = Future.wait([real.ready, stepLoaded]).then((_) {
-        if (mounted && identical(widget.controller, real)) {
-          radioReady = true;
-          receiver.resetOffset();
-        }
-      });
-    } else {
-      receiver.resetOffset();
-      radioLoaded = stepLoaded.then((_) {
-        if (mounted && identical(receiver, boundReceiver)) {
-          receiver.resetOffset();
-          setState(() {});
-        }
-      });
-    }
+    // NativeRadioController loads persisted tuning before its first device scan.
+    receiver.resetOffset();
+    final radioLoaded = stepLoaded.then((_) {
+      if (mounted && identical(receiver, boundReceiver)) {
+        receiver.resetOffset();
+        setState(() {});
+      }
+    });
     favorites.load();
     final bandsLoaded = bands.load();
     // The active channel drives the receiver only once the radio's own

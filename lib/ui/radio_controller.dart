@@ -12,8 +12,7 @@
 //
 // Implementations:
 //   * DemoRadioController (demo_radio_controller.dart) — synthetic rows, no DSP.
-//   * The real controller (integrator) — on top of the DSP isolate
-//     (lib/runtime/…), see docs/10-architecture.md §5.
+//   * NativeRadioController — ABI v3 native USB, DSP, demodulation and audio.
 //
 // Threading: all members are called on, and all notifications/stream events
 // are delivered on, the UI isolate.
@@ -22,9 +21,9 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
-import '../sdrpp/signal_path/source_handler.dart' show SourceSetting;
+import 'source_setting.dart' show SourceSetting;
 
-export '../sdrpp/signal_path/source_handler.dart'
+export 'source_setting.dart'
     show SourceSetting, ChoiceSetting, SliderSetting, BoolSetting;
 
 /// Demodulator modes. [id] is the SDR++ radio mode id
@@ -71,8 +70,10 @@ enum SquelchType {
   /// radio_config.json / protocol key.
   final String key;
 
-  static SquelchType fromKey(Object? key) =>
-      SquelchType.values.firstWhere((m) => m.key == key, orElse: () => SquelchType.off);
+  static SquelchType fromKey(Object? key) => SquelchType.values.firstWhere(
+    (m) => m.key == key,
+    orElse: () => SquelchType.off,
+  );
 }
 
 /// Automatic squelch detector: noise squelch (FM) or level squelch (AM/SSB/CW).
@@ -81,7 +82,11 @@ enum AutoSquelchKind { noise, level }
 /// Live state of the automatic squelch.
 @immutable
 class AutoSquelchStatus {
-  const AutoSquelchStatus({required this.open, this.metricDb, this.thresholdDb});
+  const AutoSquelchStatus({
+    required this.open,
+    this.metricDb,
+    this.thresholdDb,
+  });
 
   final bool open;
 
@@ -428,7 +433,8 @@ abstract class RadioController extends ChangeNotifier {
   // the mode mirrors [squelchEnabled], Auto is not offered.
 
   /// Off / manual (SDR++ power squelch, [squelchLevel]) / auto.
-  SquelchType get squelchType => squelchEnabled ? SquelchType.manual : SquelchType.off;
+  SquelchType get squelchType =>
+      squelchEnabled ? SquelchType.manual : SquelchType.off;
   void setSquelchType(SquelchType type) {
     if (type != SquelchType.auto) setSquelchEnabled(type == SquelchType.manual);
   }

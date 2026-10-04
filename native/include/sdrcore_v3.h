@@ -114,7 +114,7 @@ typedef struct SdrV3Fft {
 
 // Reuse sdr_create, v2 open_file/open_synthetic/open_usb or sdr_host_open_usb.
 // The v2 open functions still duplicate borrowed fds. Exactly one handle may
-// claim a physical USB device (including the retained Dart engine).
+// claim a physical USB device.
 // set_controls: OPEN or RUNNING; validates all fields before committing. With
 // unchanged LO/rate/gain, a RUNNING VFO/mode/bandwidth/squelch/audio change
 // reconfigures DSP without USB retune. Hardware changes serialize an internal
@@ -158,6 +158,29 @@ SDRCORE_API int32_t sdr_v3_read_fft(SdrHandle* handle,
                                       uint64_t after_sequence,
                                       SdrV3Fft* metadata,
                                       float* bins, uint32_t capacity);
+
+// Returns the RTL-SDR tuner's supported gain values in tenths of a dB,
+// sorted ascending, exactly matching the old Dart engine's
+// `RtlSdrDev.getTunerGains()..sort()` table and index order. Requires the
+// handle to already be OPEN/RUNNING on a native SDR_RTLSDR USB session
+// (sdr_v2_open_usb/sdr_host_open_usb with source=SDR_RTLSDR, or the v3
+// equivalent once set_controls has committed the hardware claim); this call
+// never performs a second USB device claim, only queries the existing
+// open rtlsdr handle. `capacity`==0 with `gains`==NULL is a valid
+// count-only probe: `count` receives the required capacity and the call
+// returns SDR_OK without touching `gains`. Insufficient nonzero capacity
+// returns SDR_V3_BUFFER_SMALL, `count` still receives the required
+// capacity, and `gains` is left unmodified. A non-RTL-SDR source (file,
+// synthetic, HackRF) or unknown/undiscoverable tuner returns
+// SDR_UNSUPPORTED with `count`=0. NULL handle or NULL `count` returns
+// SDR_INVALID_ARGUMENT; wrong state (e.g. IDLE, no USB claim) returns
+// SDR_INVALID_STATE. Thread-safe and serialized with the rest of the v3
+// control lifecycle: like other v3 commands, callers serialize this call
+// with set_controls/start/stop/close on the same handle; it does not race
+// destroy.
+SDRCORE_API int32_t sdr_v3_rtl_tuner_gains(SdrHandle* handle, int32_t* gains,
+                                             uint32_t capacity,
+                                             uint32_t* count);
 
 #ifdef __cplusplus
 }

@@ -35,7 +35,6 @@ dependencies:
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
   ffi: ^2.2.0
-  mp_audio_stream: ^0.3.0
   path_provider: ^2.1.6
   shared_preferences: ^2.5.3
   # Pinned below 2.3: 2.3.x switched to package:jni (extra native lib + JNI glue) for no gain here.

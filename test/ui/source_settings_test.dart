@@ -1,17 +1,15 @@
 // Source settings sheet + error snackbar + status line (lib/ui/source_settings.dart, main_screen.dart)
-// on a DemoRadioController extended with source settings; and the same extras on the real
-// SdrRadioController (synth source in the DSP isolate).
+// on a DemoRadioController extended with declarative source settings.
 //
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sdr_flutter/ui/main_screen.dart';
-import 'package:sdr_flutter/main.dart';
-import 'package:sdr_flutter/runtime/sdr_radio_controller.dart';
+
 import 'package:sdr_flutter/ui/demo_radio_controller.dart';
 import 'package:sdr_flutter/ui/radio_controller.dart';
-import 'package:sdr_flutter/ui/source_settings.dart';
+
 
 class _SettingsDemo extends DemoRadioController {
   final applied = <(String, Object)>[];
@@ -126,23 +124,4 @@ void main() {
       await tester.pumpAndSettle(const Duration(seconds: 7));
     },
   );
-
-  test('SdrRadioController exposes source settings, demod options and stats (synth)', () async {
-    final c = createRadioController(audio: 'null');
-    await c.ready;
-    expect(c.selectedDevice, SynthDeviceProvider.device);
-    await c.selectDevice(c.devices.first);
-    await c.start();
-    expect(c.running, isTrue, reason: c.lastError);
-    await Future<void>.delayed(const Duration(milliseconds: 700));
-    expect(c.sourceSettings.map((s) => s.id), contains('sampleRate'));
-    expect(c.demodOptions['stereo'], isA<bool>()); // WFM default mode
-    c.setDemodOption('stereo', true);
-    await Future<void>.delayed(const Duration(milliseconds: 200));
-    expect(c.demodOptions['stereo'], isTrue);
-    expect(c.stats['audioOutput'], 'null');
-    expect(statsLine(c), contains('выход null'));
-    await c.stop();
-    c.dispose();
-  });
 }

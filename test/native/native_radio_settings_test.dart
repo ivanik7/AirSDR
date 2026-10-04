@@ -10,7 +10,9 @@ void main() {
   late Directory tempDir;
 
   setUp(() {
-    tempDir = Directory.systemTemp.createTempSync('native_radio_settings_test_');
+    tempDir = Directory.systemTemp.createTempSync(
+      'native_radio_settings_test_',
+    );
   });
 
   tearDown(() {
@@ -28,20 +30,14 @@ void main() {
     expect(settings.gainDb, defaults.gainDb);
     expect(settings.squelchKey, defaults.squelchKey);
     // No file should have been created by a plain load.
-    expect(
-      File('${dir()}/$nativeRadioSettingsFileName').existsSync(),
-      isFalse,
-    );
+    expect(File('${dir()}/$nativeRadioSettingsFileName').existsSync(), isFalse);
   });
 
   test('round-trips every persisted field through save and load', () {
     final settings = NativeRadioSettings(
       tunedFrequencyHz: 101300000,
       modeId: DemodMode.nfm.id,
-      bandwidthByMode: {
-        DemodMode.nfm.id: 25000,
-        DemodMode.usb.id: 2400,
-      },
+      bandwidthByMode: {DemodMode.nfm.id: 25000, DemodMode.usb.id: 2400},
       sampleRateHz: 3200000,
       gainDb: 32.5,
       squelchKey: SquelchType.auto.key,
@@ -71,9 +67,8 @@ void main() {
   });
 
   test('unknown mode id falls back to WFM default', () {
-    File('${dir()}/$nativeRadioSettingsFileName').writeAsStringSync(
-      jsonEncode({'version': 1, 'modeId': 999}),
-    );
+    File('${dir()}/$nativeRadioSettingsFileName')
+        .writeAsStringSync(jsonEncode({'version': 1, 'modeId': 999}));
     final loaded = loadNativeRadioSettings(dir());
     expect(loaded.modeId, DemodMode.wfm.id);
   });
@@ -111,7 +106,10 @@ void main() {
         .writeAsStringSync('{not valid json');
     expect(() => loadNativeRadioSettings(dir()), returnsNormally);
     final loaded = loadNativeRadioSettings(dir());
-    expect(loaded.tunedFrequencyHz, NativeRadioSettings.defaults().tunedFrequencyHz);
+    expect(
+      loaded.tunedFrequencyHz,
+      NativeRadioSettings.defaults().tunedFrequencyHz,
+    );
   });
 
   test('non-object JSON (e.g. a JSON array) falls back to defaults', () {
@@ -121,14 +119,57 @@ void main() {
   });
 
   test('negative/garbage sample rate falls back to default sample rate', () {
-    File('${dir()}/$nativeRadioSettingsFileName').writeAsStringSync(
-      jsonEncode({'version': 1, 'sampleRateHz': -5}),
-    );
+    File('${dir()}/$nativeRadioSettingsFileName')
+        .writeAsStringSync(jsonEncode({'version': 1, 'sampleRateHz': -5}));
     final loaded = loadNativeRadioSettings(dir());
     expect(loaded.sampleRateHz, NativeRadioSettings.defaults().sampleRateHz);
   });
 
   group('migration from the old Dart engine files', () {
+    test(
+      'upgrade keeps legacy settings and ignores a stored engine selector',
+      () {
+        final core = jsonEncode({
+          'engine': 'dart',
+          'frequency': 118180000,
+          'vfoOffsets': {'Radio': 5000},
+          'sources': {
+            'rtl_sdr': {
+              'devices': {
+                'Blog V4': {'sampleRate': 2400000, 'gain': 7},
+              },
+            },
+          },
+        });
+        final radio = jsonEncode({
+          'Radio': {
+            'selectedDemodId': DemodMode.am.id,
+            'AM': {
+              'bandwidth': 9000,
+              'squelchMode': 'power',
+              'squelchLevel': -35,
+            },
+          },
+        });
+        File('${dir()}/config.json').writeAsStringSync(core);
+        File('${dir()}/radio_config.json').writeAsStringSync(radio);
+        final first = loadNativeRadioSettings(dir());
+        expect(first.tunedFrequencyHz, 118185000);
+        expect(first.modeId, DemodMode.am.id);
+        expect(first.bandwidthByMode[DemodMode.am.id], 9000);
+        expect(first.sampleRateHz, 2400000);
+        expect(first.gainDb, NativeRadioSettings.defaults().gainDb);
+        expect(first.squelchKey, SquelchType.manual.key);
+        expect(first.squelchLevelDb, -35);
+        expect(File('${dir()}/config.json').readAsStringSync(), core);
+        expect(File('${dir()}/radio_config.json').readAsStringSync(), radio);
+        // An upgrade/restart uses the native snapshot; the legacy files remain
+        // available for rollback, but never select an old engine.
+        final second = loadNativeRadioSettings(dir());
+        expect(second.toJson(), first.toJson());
+      },
+    );
+
     test('migrates tuned frequency (center + vfoOffsets.Radio)', () {
       File('${dir()}/config.json').writeAsStringSync(
         jsonEncode({
@@ -141,44 +182,51 @@ void main() {
       expect(migrated!.tunedFrequencyHz, 100250000.0);
     });
 
-    test('migrates selected mode and per-mode bandwidth from radio_config.json', () {
-      File('${dir()}/config.json').writeAsStringSync(jsonEncode({'frequency': 100e6}));
-      File('${dir()}/radio_config.json').writeAsStringSync(
-        jsonEncode({
-          'Radio': {
-            'selectedDemodId': DemodMode.usb.id,
-            'WFM': {'bandwidth': 150000.0},
-            'USB': {
-              'bandwidth': 2700.0,
-              'squelchMode': 'power',
-              'squelchLevel': -35.0,
+    test(
+      'migrates selected mode and per-mode bandwidth from radio_config.json',
+      () {
+        File('${dir()}/config.json')
+            .writeAsStringSync(jsonEncode({'frequency': 100e6}));
+        File('${dir()}/radio_config.json').writeAsStringSync(
+          jsonEncode({
+            'Radio': {
+              'selectedDemodId': DemodMode.usb.id,
+              'WFM': {'bandwidth': 150000.0},
+              'USB': {
+                'bandwidth': 2700.0,
+                'squelchMode': 'power',
+                'squelchLevel': -35.0,
+              },
             },
-          },
-        }),
-      );
-      final migrated = migrateFromDartEngineFiles(dir());
-      expect(migrated, isNotNull);
-      expect(migrated!.modeId, DemodMode.usb.id);
-      expect(migrated.bandwidthByMode[DemodMode.usb.id], 2700.0);
-      expect(migrated.bandwidthByMode[DemodMode.wfm.id], 150000.0);
-      expect(migrated.squelchKey, SquelchType.manual.key);
-      expect(migrated.squelchLevelDb, -35.0);
-    });
+          }),
+        );
+        final migrated = migrateFromDartEngineFiles(dir());
+        expect(migrated, isNotNull);
+        expect(migrated!.modeId, DemodMode.usb.id);
+        expect(migrated.bandwidthByMode[DemodMode.usb.id], 2700.0);
+        expect(migrated.bandwidthByMode[DemodMode.wfm.id], 150000.0);
+        expect(migrated.squelchKey, SquelchType.manual.key);
+        expect(migrated.squelchLevelDb, -35.0);
+      },
+    );
 
-    test('migrates legacy squelchEnabled boolean when squelchMode is absent', () {
-      File('${dir()}/radio_config.json').writeAsStringSync(
-        jsonEncode({
-          'Radio': {
-            'selectedDemodId': DemodMode.nfm.id,
-            'FM': {'squelchEnabled': true, 'squelchLevel': -60.0},
-          },
-        }),
-      );
-      final migrated = migrateFromDartEngineFiles(dir());
-      expect(migrated, isNotNull);
-      expect(migrated!.squelchKey, SquelchType.manual.key);
-      expect(migrated.squelchLevelDb, -60.0);
-    });
+    test(
+      'migrates legacy squelchEnabled boolean when squelchMode is absent',
+      () {
+        File('${dir()}/radio_config.json').writeAsStringSync(
+          jsonEncode({
+            'Radio': {
+              'selectedDemodId': DemodMode.nfm.id,
+              'FM': {'squelchEnabled': true, 'squelchLevel': -60.0},
+            },
+          }),
+        );
+        final migrated = migrateFromDartEngineFiles(dir());
+        expect(migrated, isNotNull);
+        expect(migrated!.squelchKey, SquelchType.manual.key);
+        expect(migrated.squelchLevelDb, -60.0);
+      },
+    );
 
     test('migrates auto squelch only for a mode that supports it (NFM)', () {
       File('${dir()}/radio_config.json').writeAsStringSync(
@@ -214,7 +262,33 @@ void main() {
       expect(migrated!.sampleRateHz, 3200000.0);
       // Gain is a hardware gain-table index, not dB: must stay at default.
       expect(migrated.gainDb, NativeRadioSettings.defaults().gainDb);
+      expect(migrated.legacyRtlGainIndex, 5);
+      expect(migrated.legacyRtlDeviceName, 'Some RTL-SDR');
     });
+
+    test(
+      'pending RTL gain survives restart and cannot be confused with dB',
+      () {
+        File('${dir()}/config.json').writeAsStringSync(
+          jsonEncode({
+            'sources': {
+              'rtl_sdr': {
+                'device': 'RTL Blog [00000001]',
+                'devices': {
+                  'RTL Blog [00000001]': {'gain': 12},
+                },
+              },
+            },
+          }),
+        );
+        final first = loadNativeRadioSettings(dir());
+        final second = loadNativeRadioSettings(dir());
+        expect(first.legacyRtlGainIndex, 12);
+        expect(second.legacyRtlGainIndex, 12);
+        expect(second.legacyRtlDeviceName, 'RTL Blog [00000001]');
+        expect(second.gainDb, NativeRadioSettings.defaults().gainDb);
+      },
+    );
 
     test('returns null when neither legacy file exists', () {
       expect(migrateFromDartEngineFiles(dir()), isNull);
@@ -229,11 +303,15 @@ void main() {
       File('${dir()}/radio_config.json').writeAsStringSync(radioContent);
       migrateFromDartEngineFiles(dir());
       expect(File('${dir()}/config.json').readAsStringSync(), coreContent);
-      expect(File('${dir()}/radio_config.json').readAsStringSync(), radioContent);
+      expect(
+        File('${dir()}/radio_config.json').readAsStringSync(),
+        radioContent,
+      );
     });
 
     test('loadNativeRadioSettings migrates and persists native_radio.json', () {
-      File('${dir()}/config.json').writeAsStringSync(jsonEncode({'frequency': 97e6}));
+      File('${dir()}/config.json')
+          .writeAsStringSync(jsonEncode({'frequency': 97e6}));
       final loaded = loadNativeRadioSettings(dir());
       expect(loaded.tunedFrequencyHz, 97e6);
       expect(
@@ -242,7 +320,9 @@ void main() {
       );
       // config.json is untouched (migration source, not a sink).
       expect(
-        jsonDecode(File('${dir()}/config.json').readAsStringSync())['frequency'],
+        jsonDecode(
+          File('${dir()}/config.json').readAsStringSync(),
+        )['frequency'],
         97e6,
       );
     });
@@ -268,13 +348,15 @@ void main() {
       expect(migrated.bandwidthByMode[DemodMode.am.id], 9000.0);
     });
 
-    test('used by loadNativeRadioSettings only when Dart-engine files are absent', () {
-      File('${dir()}/linux_host_radio.json').writeAsStringSync(
-        jsonEncode({'frequency': 144390000.0}),
-      );
-      final loaded = loadNativeRadioSettings(dir());
-      expect(loaded.tunedFrequencyHz, 144390000.0);
-    });
+    test(
+      'used by loadNativeRadioSettings only when Dart-engine files are absent',
+      () {
+        File('${dir()}/linux_host_radio.json')
+            .writeAsStringSync(jsonEncode({'frequency': 144390000.0}));
+        final loaded = loadNativeRadioSettings(dir());
+        expect(loaded.tunedFrequencyHz, 144390000.0);
+      },
+    );
 
     test('returns null when the file does not exist', () {
       expect(migrateFromLinuxHostFile(dir()), isNull);
@@ -284,7 +366,10 @@ void main() {
       final content = jsonEncode({'frequency': 7100000.0});
       File('${dir()}/linux_host_radio.json').writeAsStringSync(content);
       migrateFromLinuxHostFile(dir());
-      expect(File('${dir()}/linux_host_radio.json').readAsStringSync(), content);
+      expect(
+        File('${dir()}/linux_host_radio.json').readAsStringSync(),
+        content,
+      );
     });
   });
 }

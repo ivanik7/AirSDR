@@ -6,8 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sdr_flutter/main.dart';
-import 'package:sdr_flutter/runtime/sdr_radio_controller.dart'
-    show SynthDeviceProvider;
+
 import 'package:sdr_flutter/ui/demo_radio_controller.dart';
 import 'package:sdr_flutter/ui/favorites/favorites.dart';
 import 'package:sdr_flutter/ui/legacy/app_shell.dart';
@@ -194,7 +193,15 @@ void main() {
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox());
       radio.dispose();
-      final empty = _SourceRadio(const [], device: SynthDeviceProvider.device);
+      final empty = _SourceRadio(
+        const [],
+        device: const SdrDeviceInfo(
+          id: 'demo:synth',
+          name: 'Генератор сигнала',
+          sampleRates: [2400000],
+          gain: GainRange(min: 0, max: 0),
+        ),
+      );
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(body: SourceSettingsPanel(radio: empty)),

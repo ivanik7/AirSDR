@@ -50,6 +50,9 @@ _Static_assert(_Generic(&sdr_v3_snapshot,
 _Static_assert(_Generic(&sdr_v3_read_fft,
                         int32_t (*)(SdrHandle*, uint64_t, SdrV3Fft*, float*, uint32_t): 1,
                         default: 0), "FFT signature");
+_Static_assert(_Generic(&sdr_v3_rtl_tuner_gains,
+                        int32_t (*)(SdrHandle*, int32_t*, uint32_t, uint32_t*): 1,
+                        default: 0), "RTL tuner gains signature");
 
 // Build this as an object only; linking would falsely claim N2 implementation.
 int sdrcore_v3_contract_compile_only(void) {

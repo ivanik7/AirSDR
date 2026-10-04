@@ -23,6 +23,11 @@ class RtlSdrAdapter final : public UsbRxAdapter {
   int start(PushFn push, void* ctx) override;
   void stop() override;
   void close() override;
+  // Returns the tuner's gain table (tenths of a dB, ascending) through the
+  // already-open rtlsdr_dev_t; see usb_adapter.h for the capacity-probe and
+  // BUFFER_SMALL contract. SDR_INVALID_STATE if not open.
+  int get_tuner_gains(int32_t* gains, uint32_t capacity,
+                       uint32_t* count) override;
 
  private:
   struct rtlsdr_dev* dev_ = nullptr;

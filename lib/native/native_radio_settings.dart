@@ -58,6 +58,8 @@ class NativeRadioSettings {
     required this.squelchKey,
     required this.squelchLevelDb,
     required this.autoOffsetDb,
+    this.legacyRtlGainIndex,
+    this.legacyRtlDeviceName,
   });
 
   factory NativeRadioSettings.defaults() => const NativeRadioSettings(
@@ -88,6 +90,10 @@ class NativeRadioSettings {
   final double squelchLevelDb;
   final double autoOffsetDb;
 
+  /// Pending tuner-table index, retained until the same RTL device opens.
+  final int? legacyRtlGainIndex;
+  final String? legacyRtlDeviceName;
+
   DemodMode get mode => DemodMode.fromId(modeId);
 
   NativeRadioSettings copyWith({
@@ -99,6 +105,8 @@ class NativeRadioSettings {
     String? squelchKey,
     double? squelchLevelDb,
     double? autoOffsetDb,
+    int? legacyRtlGainIndex,
+    String? legacyRtlDeviceName,
   }) => NativeRadioSettings(
     tunedFrequencyHz: tunedFrequencyHz ?? this.tunedFrequencyHz,
     modeId: modeId ?? this.modeId,
@@ -108,6 +116,8 @@ class NativeRadioSettings {
     squelchKey: squelchKey ?? this.squelchKey,
     squelchLevelDb: squelchLevelDb ?? this.squelchLevelDb,
     autoOffsetDb: autoOffsetDb ?? this.autoOffsetDb,
+    legacyRtlGainIndex: legacyRtlGainIndex ?? this.legacyRtlGainIndex,
+    legacyRtlDeviceName: legacyRtlDeviceName ?? this.legacyRtlDeviceName,
   );
 
   Map<String, Object?> toJson() => <String, Object?>{
@@ -122,6 +132,8 @@ class NativeRadioSettings {
     'squelchKey': squelchKey,
     'squelchLevelDb': squelchLevelDb,
     'autoOffsetDb': autoOffsetDb,
+    if (legacyRtlGainIndex != null) 'legacyRtlGainIndex': legacyRtlGainIndex,
+    if (legacyRtlDeviceName != null) 'legacyRtlDeviceName': legacyRtlDeviceName,
   };
 
   /// Parses a decoded JSON object, validating every field; any missing or
@@ -152,13 +164,16 @@ class NativeRadioSettings {
         if (entryMode == null) continue;
         final value = entry.value;
         if (value is num && value.isFinite) {
-          bandwidthByMode[id] = entryMode.params.clampBandwidth(value.toDouble());
+          bandwidthByMode[id] = entryMode.params.clampBandwidth(
+            value.toDouble(),
+          );
         }
       }
     }
 
     final sampleRateRaw = data['sampleRateHz'];
-    final sampleRate = (sampleRateRaw is num && sampleRateRaw.isFinite && sampleRateRaw > 0)
+    final sampleRate =
+        (sampleRateRaw is num && sampleRateRaw.isFinite && sampleRateRaw > 0)
         ? sampleRateRaw.toDouble()
         : defaults.sampleRateHz;
 
@@ -173,12 +188,14 @@ class NativeRadioSettings {
       squelch = SquelchType.off;
     }
 
-    final squelchLevel = numOr(data['squelchLevelDb'], defaults.squelchLevelDb)
-        .clamp(-100.0, 0.0)
-        .toDouble();
-    final autoOffset = numOr(data['autoOffsetDb'], defaults.autoOffsetDb)
-        .clamp(-10.0, 20.0)
-        .toDouble();
+    final squelchLevel = numOr(
+      data['squelchLevelDb'],
+      defaults.squelchLevelDb,
+    ).clamp(-100.0, 0.0).toDouble();
+    final autoOffset = numOr(
+      data['autoOffsetDb'],
+      defaults.autoOffsetDb,
+    ).clamp(-10.0, 20.0).toDouble();
 
     return NativeRadioSettings(
       tunedFrequencyHz: tuned,
@@ -189,6 +206,12 @@ class NativeRadioSettings {
       squelchKey: squelch.key,
       squelchLevelDb: squelchLevel,
       autoOffsetDb: autoOffset,
+      legacyRtlGainIndex: data['legacyRtlGainIndex'] is int
+          ? data['legacyRtlGainIndex'] as int
+          : null,
+      legacyRtlDeviceName: data['legacyRtlDeviceName'] is String
+          ? data['legacyRtlDeviceName'] as String
+          : null,
     );
   }
 }
@@ -215,7 +238,8 @@ NativeRadioSettings loadNativeRadioSettings(String configDir) {
   NativeRadioSettings? migrated;
   try {
     migrated =
-        migrateFromDartEngineFiles(configDir) ?? migrateFromLinuxHostFile(configDir);
+        migrateFromDartEngineFiles(configDir) ??
+        migrateFromLinuxHostFile(configDir);
   } catch (_) {
     migrated = null;
   }
@@ -231,13 +255,13 @@ NativeRadioSettings loadNativeRadioSettings(String configDir) {
 /// per-mode bandwidth, squelch of the selected mode). Returns null if
 /// neither file exists. Never modifies the legacy files. Never throws.
 ///
-/// Gain is intentionally NOT migrated: `rtl_sdr_source.dart` stores gain as
-/// an index into a hardware-discovered gain table (`gainList`, populated
-/// from `RtlSdrDev.getTunerGains()`), which is not known without opening the
-/// device; migrating the raw index as a dB value would be meaningless.
+/// RTL gain is a device-specific tuner-table index, not dB; retain it pending
+/// until the matching device opens and its native gain table is read.
 NativeRadioSettings? migrateFromDartEngineFiles(String configDir) {
   final coreFile = File('$configDir${Platform.pathSeparator}config.json');
-  final radioFile = File('$configDir${Platform.pathSeparator}radio_config.json');
+  final radioFile = File(
+    '$configDir${Platform.pathSeparator}radio_config.json',
+  );
   final hasCore = coreFile.existsSync();
   final hasRadio = radioFile.existsSync();
   if (!hasCore && !hasRadio) return null;
@@ -254,20 +278,35 @@ NativeRadioSettings? migrateFromDartEngineFiles(String configDir) {
             ? (vfoOffsets['Radio'] as num).toDouble()
             : 0.0;
         if (freq is num && freq.isFinite) {
-          settings = settings.copyWith(tunedFrequencyHz: freq.toDouble() + offset);
+          settings = settings.copyWith(
+            tunedFrequencyHz: freq.toDouble() + offset,
+          );
         }
         final sources = data['sources'];
         if (sources is Map && sources['rtl_sdr'] is Map) {
           final rtl = sources['rtl_sdr'] as Map;
           final devices = rtl['devices'];
           if (devices is Map) {
-            for (final v in devices.values) {
-              if (v is Map && v['sampleRate'] is num) {
+            final selected = rtl['device'];
+            final entry = selected is String && devices[selected] is Map
+                ? MapEntry(selected, devices[selected])
+                : devices.length == 1
+                ? devices.entries.first
+                : null;
+            if (entry != null && entry.value is Map) {
+              final v = entry.value as Map;
+              if (v['sampleRate'] is num) {
                 final sr = (v['sampleRate'] as num).toDouble();
                 if (sr.isFinite && sr > 0) {
                   settings = settings.copyWith(sampleRateHz: sr);
                 }
-                break; // one Android USB device is expected
+              }
+              final index = v['gain'];
+              if (entry.key is String && index is int) {
+                settings = settings.copyWith(
+                  legacyRtlGainIndex: index,
+                  legacyRtlDeviceName: entry.key as String,
+                );
               }
             }
           }
@@ -284,7 +323,9 @@ NativeRadioSettings? migrateFromDartEngineFiles(String configDir) {
       if (data is Map && data['Radio'] is Map) {
         final radio = data['Radio'] as Map;
         final selId = radio['selectedDemodId'];
-        final mode = (selId is num) ? DemodMode.fromId(selId.toInt()) : settings.mode;
+        final mode = (selId is num)
+            ? DemodMode.fromId(selId.toInt())
+            : settings.mode;
 
         final bandwidthByMode = Map<int, double>.from(settings.bandwidthByMode);
         for (final entry in _legacyDemodName.entries) {
@@ -292,7 +333,9 @@ NativeRadioSettings? migrateFromDartEngineFiles(String configDir) {
           if (demodConf is Map && demodConf['bandwidth'] is num) {
             final bw = (demodConf['bandwidth'] as num).toDouble();
             if (bw.isFinite) {
-              bandwidthByMode[entry.key.id] = entry.key.params.clampBandwidth(bw);
+              bandwidthByMode[entry.key.id] = entry.key.params.clampBandwidth(
+                bw,
+              );
             }
           }
         }
@@ -383,7 +426,10 @@ NativeRadioSettings? migrateFromLinuxHostFile(String configDir) {
         : mode.params.defaultBandwidth;
     settings = settings.copyWith(
       modeId: mode.id,
-      bandwidthByMode: <int, double>{...settings.bandwidthByMode, mode.id: clampedBw},
+      bandwidthByMode: <int, double>{
+        ...settings.bandwidthByMode,
+        mode.id: clampedBw,
+      },
     );
     return settings;
   } catch (_) {
@@ -393,7 +439,10 @@ NativeRadioSettings? migrateFromLinuxHostFile(String configDir) {
 
 /// Writes `<configDir>/native_radio.json` atomically (temp file + rename).
 /// Never throws.
-void saveNativeRadioSettingsSync(String configDir, NativeRadioSettings settings) {
+void saveNativeRadioSettingsSync(
+  String configDir,
+  NativeRadioSettings settings,
+) {
   try {
     final dir = Directory(configDir);
     dir.createSync(recursive: true);

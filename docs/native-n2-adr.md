@@ -1,5 +1,11 @@
 # ADR: N2 native radio contract (ABI revision 3)
 
+N5 supersession: ABI v3 is now the sole production receiver; the
+`SDR_ENGINE` selector, Dart receive fallback and Android API 24/25 support
+described in this N2 record were removed. Android minSdk is 26. The pre-N5
+sections below remain historical parity/acceptance evidence; see
+`docs/native-n5-inventory.md` and README for the current boundary.
+
 Status: **implemented and integrated (t_848e6a1c)**. The declarations in
 `native/include/sdrcore_v3.h` are the binary authority. `sdr_version()` returns
 **3** and all seven `sdr_v3_*` symbols are exported. ABI 3 is a strict superset:

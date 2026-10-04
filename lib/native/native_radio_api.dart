@@ -96,6 +96,9 @@ abstract interface class NativeRadioApi {
   void openFile(Pointer<SdrHandle> handle, int fd, int rate);
   void openUsb(Pointer<SdrHandle> handle, int fd, int source);
   void openHostUsb(Pointer<SdrHandle> handle, int bus, int address, int source);
+
+  /// Sorted RTL tuner gains in tenths of dB; requires an open RTL handle.
+  List<int> rtlTunerGains(Pointer<SdrHandle> handle);
   List<SdrHostUsbDevice> hostDevices();
   void controls(Pointer<SdrHandle> handle, NativeControls controls);
   void display(Pointer<SdrHandle> handle, NativeDisplay display);
@@ -285,6 +288,7 @@ final class FfiNativeRadioApi implements NativeRadioApi {
       'sdr_v3_stop',
       'sdr_v3_snapshot',
       'sdr_v3_read_fft',
+      'sdr_v3_rtl_tuner_gains',
     ]) {
       if (!library.providesSymbol(symbol)) {
         throw UnsupportedError('Incomplete native radio ABI: $symbol');
@@ -335,6 +339,16 @@ final class FfiNativeRadioApi implements NativeRadioApi {
         Int32 Function(Pointer<_HostDevice>, Uint32, Pointer<Uint32>),
         int Function(Pointer<_HostDevice>, int, Pointer<Uint32>)
       >('sdr_host_usb_list');
+  late final _rtlGains = _lib
+      .lookupFunction<
+        Int32 Function(
+          Pointer<SdrHandle>,
+          Pointer<Int32>,
+          Uint32,
+          Pointer<Uint32>,
+        ),
+        int Function(Pointer<SdrHandle>, Pointer<Int32>, int, Pointer<Uint32>)
+      >('sdr_v3_rtl_tuner_gains');
   late final _controls = _lib
       .lookupFunction<
         Int32 Function(Pointer<SdrHandle>, Pointer<_Controls>),
@@ -410,6 +424,30 @@ final class FfiNativeRadioApi implements NativeRadioApi {
   @override
   void openHostUsb(Pointer<SdrHandle> h, int bus, int address, int source) =>
       _check(_hostOpen(h, bus, address, source));
+  @override
+  List<int> rtlTunerGains(Pointer<SdrHandle> h) {
+    final count = calloc<Uint32>();
+    try {
+      _check(_rtlGains(h, nullptr, 0, count));
+      final required = count.value;
+      if (required == 0 || required > 256) {
+        throw StateError('Invalid RTL tuner gain count $required');
+      }
+      final values = calloc<Int32>(required);
+      try {
+        _check(_rtlGains(h, values, required, count));
+        if (count.value != required) {
+          throw StateError('RTL tuner gain list changed during query');
+        }
+        return List<int>.generate(required, (i) => values[i]);
+      } finally {
+        calloc.free(values);
+      }
+    } finally {
+      calloc.free(count);
+    }
+  }
+
   @override
   List<SdrHostUsbDevice> hostDevices() {
     final buf = calloc<_HostDevice>(64);

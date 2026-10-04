@@ -36,91 +36,74 @@ void main() {
         .setMockMethodCallHandler(channel, null);
   });
 
-  test('idle has no service; start and UI stop mirror reception', () async {
-    await flush();
-    expect(calls, isEmpty);
+  test('native controller owns foreground promotion and release', () async {
     await radio.start();
     await flush();
-    expect(calls.map((c) => c.method), ['start']);
-    expect(calls.single.arguments, {'frequency': 100000000, 'mode': 'WFM'});
+    expect(calls, isEmpty);
     await radio.stop();
     await flush();
-    expect(calls.map((c) => c.method), ['start', 'stop']);
+    expect(calls, isEmpty);
+  });
+
+  test('notification Stop calls radio.stop and permits restart', () async {
+    await radio.start();
+    await TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .handlePlatformMessage(
+          'sdr/background',
+          const StandardMethodCodec().encodeMethodCall(
+            const MethodCall('stopReception'),
+          ),
+          (_) {},
+        );
+    await flush();
+    expect(radio.running, false);
+    expect(calls, isEmpty);
+    await radio.start();
+    expect(radio.running, true);
+  });
+
+  test('rapid retunes coalesce notification updates', () async {
+    await radio.start();
+    radio.setTuning(centerFrequency: 101000000, vfoOffset: 0);
+    radio.setTuning(centerFrequency: 102000000, vfoOffset: 0);
+    radio.setTuning(centerFrequency: 103000000, vfoOffset: 0);
+    radio.setMode(DemodMode.nfm);
+    await flush();
+    expect(calls, isEmpty);
+    await Future<void>.delayed(const Duration(milliseconds: 130));
+    expect(calls.map((c) => c.method), ['update']);
+    expect(calls.single.arguments, {'frequency': 103000000, 'mode': 'NFM'});
   });
 
   test(
-    'notification Stop uses same controller path, and restart works',
-    () async {
-      await radio.start();
-      await flush();
-      await TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-          .handlePlatformMessage(
-            'sdr/background',
-            const StandardMethodCodec().encodeMethodCall(
-              const MethodCall('stopReception'),
-            ),
-            (_) {},
-          );
-      await flush();
-      expect(radio.running, false);
-      expect(calls.map((c) => c.method), ['start', 'stop']);
-      await radio.start();
-      await flush();
-      expect(calls.last.method, 'start');
-    },
-  );
-
-  test(
-    'rapid retunes are coalesced; mode and final frequency delivered',
-    () async {
-      await radio.start();
-      await flush();
-      radio.setTuning(centerFrequency: 101000000, vfoOffset: 0);
-      radio.setTuning(centerFrequency: 102000000, vfoOffset: 0);
-      radio.setTuning(centerFrequency: 103000000, vfoOffset: 0);
-      radio.setMode(DemodMode.nfm);
-      await flush();
-      expect(calls.length, 1);
-      await Future<void>.delayed(const Duration(milliseconds: 130));
-      expect(calls.map((c) => c.method), ['start', 'update']);
-      expect(calls.last.arguments, {'frequency': 103000000, 'mode': 'NFM'});
-    },
-  );
-
-  test(
-    'native service failure does not prevent stopping the receiver',
+    'failed notification update does not stop the native receiver',
     () async {
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(channel, (call) async {
             calls.add(call);
-            if (call.method == 'start') {
-              throw PlatformException(code: 'NO_SERVICE');
-            }
-            return null;
+            throw PlatformException(code: 'NO_SERVICE');
           });
       await radio.start();
+      radio.setTuning(centerFrequency: 101000000, vfoOffset: 0);
+      await Future<void>.delayed(const Duration(milliseconds: 130));
       await flush();
-      expect(radio.running, false);
-      expect(calls.map((c) => c.method), ['start', 'stop']);
+      expect(radio.running, true);
+      expect(calls.map((c) => c.method), ['update']);
     },
   );
 
-  test(
-    'asynchronous foreground promotion failure stops the receiver',
-    () async {
-      await radio.start();
-      await flush();
-      await TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-          .handlePlatformMessage(
-            'sdr/background',
-            const StandardMethodCodec().encodeMethodCall(
-              const MethodCall('serviceFailed'),
-            ),
-            (_) {},
-          );
-      await flush();
-      expect(radio.running, false);
-      expect(calls.map((c) => c.method), ['start', 'stop']);
-    },
-  );
+  test('asynchronous service failure stops the native receiver', () async {
+    await radio.start();
+    await TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .handlePlatformMessage(
+          'sdr/background',
+          const StandardMethodCodec().encodeMethodCall(
+            const MethodCall('serviceFailed'),
+          ),
+          (_) {},
+        );
+    await flush();
+    expect(radio.running, false);
+    expect(calls, isEmpty);
+  });
 }

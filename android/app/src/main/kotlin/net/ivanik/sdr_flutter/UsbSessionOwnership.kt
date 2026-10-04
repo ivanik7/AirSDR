@@ -1,7 +1,10 @@
 // UsbSessionOwnership — exclusivity gate for a USB device's borrowed fd.
 //
-// AGENTS.md/the N1 contract require that Dart's usbfs transport and a native sdr_v2_open_usb()
-// session never read the same device at once. UsbSdrPlugin owns the single UsbDeviceConnection
+// AGENTS.md/the N1 contract require that the fd-ownership contract behind "open"/"close"
+// (the ABI v3 FFI controller is tagged Owner.DART for protocol compatibility)
+// and the independent ABI 2 diagnostic sdr_v2_open_usb() session
+// (Owner.NATIVE, exercised by NativeUsbSession via lib/n1_qa.dart, not by the production app)
+// never stream the same device at once. UsbSdrPlugin owns the single UsbDeviceConnection
 // per device for the life of the process/service (see SdrApplication.getOrCreateEngine()); this
 // class only arbitrates which side is currently allowed to stream from it.
 //

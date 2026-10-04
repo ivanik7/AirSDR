@@ -1,5 +1,10 @@
-// UsbDeviceLifecycle — single owner of per-device USB connections, Dart/native exclusivity and
-// native sdrcore session ordering.
+// UsbDeviceLifecycle — single owner of per-device USB connections, DART/NATIVE exclusivity and
+// the ABI 2 diagnostic sdrcore session ordering.
+//
+// Owner.DART is the historical name for the ABI v3 FFI controller (which
+// dup()s the same fd into sdr_v2_open_usb() without this class's involvement). Owner.NATIVE is
+// the separate ABI 2 diagnostic bridge (NativeUsbSession/NativeUsbSessionRegistry), exercised in
+// production only by the opt-in lib/n1_qa.dart tool, not by lib/main.dart.
 //
 // Ownership rules (see docs/native-n1-android-lifecycle.md):
 //   * One Java connection object [C] (a UsbDeviceConnection in production) per deviceName lives
@@ -7,8 +12,8 @@
 //     closes it. The original fd belongs to that connection; neither Kotlin nor Dart dup()s or
 //     closes it. sdr_v2_open_usb() dup()s it internally and native closes only that duplicate.
 //   * [ownership] says which side (DART xor NATIVE) may stream a device. A device held by
-//     NATIVE stays held until the native session has been stopped, closed and destroyed and the
-//     Java connection has been closed; only then may Dart claim it again.
+//     NATIVE stays held until the diagnostic session has been stopped, closed and destroyed and the
+//     Java connection has been closed; only then may the ABI v3 controller claim it again.
 //   * Every sdrcore call runs on [nativeExecutor], a serial (single-thread) executor, so
 //     blocking stop/join/close never runs on the Android main thread and all commands on a
 //     handle are serialized as sdrcore.h requires. Completions are posted back via
@@ -159,8 +164,8 @@ class UsbDeviceLifecycle<C : Any>(
     }
 
     /**
-     * USB_DEVICE_DETACHED. A Dart-held device is released and its connection closed at once
-     * (the existing Dart behaviour; pending ioctls fail with ENODEV). A native-held device is
+     * USB_DEVICE_DETACHED. An ABI v3 device is released and its connection closed at once
+     * (native streaming observes ENODEV). A diagnostic-held device is
      * taken out of [connections] immediately, its session is closed on the native executor and
      * only then is the Java connection closed and the claim released.
      */

@@ -1,17 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
-// sdr_flutter entry point: the real SDR stack (docs/10-architecture.md).
-//
-//   Dart fallback: SdrRadioController — devices from UsbDeviceProvider (RTL-SDR / HackRF via the
-//                Android USB plugin) and SynthDeviceProvider (built-in test signal)
-//   DSP isolate: DspEngine (SDR++ signal path + radio + audio), sources from SourceRegistry
-//                + registerDeviceSources ('usb' → rtl_sdr_source / hackrf_source).
-//
+// ABI v3 is the only production receiver. No Dart USB, IQ, DSP or audio path.
 // DemoRadioController (lib/ui/demo_radio_controller.dart) is only used by UI tests.
-//
-// N2 defaults to ABI 3 native receive/DSP/audio on Linux and Android API 26+.
-// The Dart engine remains selectable until N5, and is the Android fallback on
-// API 24/25 or when the v3 core is unavailable. Linux reports a missing core.
 
 import 'dart:ffi';
 import 'dart:io';
@@ -20,20 +10,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 
-import 'native/sdr_core.dart';
+import 'native/android_native_device_source.dart';
 import 'native/native_radio_api.dart';
 import 'native/native_radio_controller.dart';
 import 'native/native_service_lifecycle.dart';
-import 'platform/linux/host_iq_radio_controller.dart';
+import 'native/sdr_core.dart';
 import 'platform/linux/native_required_radio_controller.dart';
-import 'runtime/device_sources.dart';
 import 'runtime/background_reception.dart';
-import 'runtime/dsp_engine.dart';
-import 'runtime/sdr_radio_controller.dart';
 import 'ui/legacy/app_shell.dart';
 import 'ui/legacy/theme.dart';
 import 'ui/radio_controller.dart';
-import 'usb/usb_device_provider.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -49,31 +35,19 @@ Future<void> main() async {
       ? createLinuxRadioController(configDir: configDir)
       : Platform.isAndroid
       ? await createAndroidRadioController(configDir: configDir)
-      : createRadioController(configDir: configDir);
+      : NativeRequiredRadioController(
+          reason: 'Native receiver requires Linux or Android',
+        );
   runApp(SdrApp(controller: controller));
 }
 
-/// Receive engine requested for this run: `native` (default) or `dart`.
-/// The environment wins over the compile-time define so Linux QA can switch
-/// engines without rebuilding.
-String requestedEngine({Map<String, String>? environment}) {
-  const defined = String.fromEnvironment('SDR_ENGINE', defaultValue: 'native');
-  final env = (environment ?? Platform.environment)['SDR_ENGINE'];
-  final value = (env == null || env.isEmpty ? defined : env).toLowerCase();
-  return value == 'dart' ? 'dart' : 'native';
-}
-
-/// AAudio is available from Android 8. Keep the working Dart receiver on older
-/// devices and when the complete v3 library/service contract is unavailable.
+/// AAudio requires Android API 26; Gradle minSdk enforces this at installation.
 bool androidNativeAvailable({required int sdkInt, required int abi}) =>
     sdkInt >= 26 && abi == nativeRadioAbi;
 
 Future<RadioController> createAndroidRadioController({
   String? configDir,
 }) async {
-  if (requestedEngine() == 'dart') {
-    return createRadioController(configDir: configDir);
-  }
   try {
     const channel = MethodChannel('sdr/background');
     final sdk = await channel.invokeMethod<int>('sdkInt');
@@ -82,17 +56,18 @@ Future<RadioController> createAndroidRadioController({
       'sdr_version',
     )();
     if (!androidNativeAvailable(sdkInt: sdk ?? 0, abi: version)) {
-      debugPrint(
-        'Native receiver unavailable (Android SDK $sdk, ABI $version); using Dart',
+      return NativeRequiredRadioController(
+        reason:
+            'Native receiver requires Android API 26+ and sdrcore ABI $nativeRadioAbi '
+            '(found SDK $sdk, ABI $version)',
       );
-      return createRadioController(configDir: configDir);
     }
     final api = FfiNativeRadioApi(library);
     final service = NativeServiceLifecycle(channel: channel);
     late NativeRadioController controller;
     controller = NativeRadioController(
       api: api,
-      source: AndroidNativeDeviceSource(UsbDeviceProvider()),
+      source: AndroidNativeDeviceSource(),
       audioSink: 'aaudio',
       configDir: configDir,
       beforeStart: () => service.promote(controller),
@@ -100,72 +75,39 @@ Future<RadioController> createAndroidRadioController({
     );
     return controller;
   } catch (e) {
-    debugPrint('Native receiver unavailable ($e); using Dart');
-    return createRadioController(configDir: configDir);
+    return NativeRequiredRadioController(
+      reason: 'Native receiver unavailable: $e',
+    );
   }
 }
 
 /// Linux desktop: native host engine, or an honest "native required" state.
 RadioController createLinuxRadioController({String? configDir}) {
-  // Keep the ABI 2/Dart path explicitly selectable until N5 removes it.
-  if (requestedEngine() == 'native') {
-    try {
-      final library = openSdrCoreLibrary();
-      final version = library.lookupFunction<Uint32 Function(), int Function()>(
-        'sdr_version',
-      )();
-      if (version != nativeRadioAbi) {
-        return NativeRequiredRadioController(
-          reason:
-              'SDR_ENGINE=native needs sdrcore ABI $nativeRadioAbi, '
-              'library reports $version',
-        );
-      }
-      final api = FfiNativeRadioApi(library);
-      // ADR default on Linux is the headless "null" sink; desktop users pick
-      // "alsa" or "alsa:<pcm>" (or "wav:<path>" for QA) via SDR_AUDIO_SINK.
-      final sink = Platform.environment['SDR_AUDIO_SINK'];
-      return NativeRadioController(
-        api: api,
-        source: HostNativeDeviceSource(api),
-        audioSink: sink == null || sink.isEmpty ? 'null' : sink,
-        configDir: configDir,
-      );
-    } catch (e) {
-      return NativeRequiredRadioController(reason: '$e');
-    }
-  }
-  final SdrCore core;
   try {
-    core = SdrCore.open();
+    final library = openSdrCoreLibrary();
+    final version = library.lookupFunction<Uint32 Function(), int Function()>(
+      'sdr_version',
+    )();
+    if (version != nativeRadioAbi) {
+      return NativeRequiredRadioController(
+        reason:
+            'Native receiver needs sdrcore ABI $nativeRadioAbi, '
+            'library reports $version',
+      );
+    }
+    final api = FfiNativeRadioApi(library);
+    // ADR default on Linux is the headless "null" sink; desktop users pick
+    // "alsa" or "alsa:<pcm>" (or "wav:<path>" for QA) via SDR_AUDIO_SINK.
+    final sink = Platform.environment['SDR_AUDIO_SINK'];
+    return NativeRadioController(
+      api: api,
+      source: HostNativeDeviceSource(api),
+      audioSink: sink == null || sink.isEmpty ? 'null' : sink,
+      configDir: configDir,
+    );
   } catch (e) {
     return NativeRequiredRadioController(reason: '$e');
   }
-  if (!core.hasHostUsb) {
-    return NativeRequiredRadioController(
-      reason: 'library has no sdr_host_usb_list/sdr_host_open_usb',
-    );
-  }
-  return HostIqRadioController(core: core, configDir: configDir);
-}
-
-/// The production controller: USB devices + synthetic generator (+ optional IQ files),
-/// config persisted under [configDir] (null = in memory).
-SdrRadioController createRadioController({
-  String? configDir,
-  List<Map<String, Object?>> files = const <Map<String, Object?>>[],
-  UsbDeviceProvider? usb,
-  String audio = 'auto',
-}) {
-  return SdrRadioController(
-    providers: <DeviceProvider>[
-      usb ?? UsbDeviceProvider(),
-      SynthDeviceProvider(),
-      if (files.isNotEmpty) FileDeviceProvider(files),
-    ],
-    options: DspEngineOptions(configDir: configDir, audio: audio),
-    registerSources: registerDeviceSources,
-  );
 }
 
 class SdrApp extends StatefulWidget {
@@ -217,13 +159,6 @@ class _SdrAppState extends State<SdrApp> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       SystemChrome.setSystemUIOverlayStyle(_systemBars);
-    }
-    if (widget.controller case final SdrRadioController real) {
-      if (state == AppLifecycleState.resumed) real.setFftVisible(true);
-      if (state == AppLifecycleState.paused ||
-          state == AppLifecycleState.hidden) {
-        real.setFftVisible(false);
-      }
     }
   }
 

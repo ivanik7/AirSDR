@@ -19,7 +19,8 @@ android {
         applicationId = "net.ivanik.sdr_flutter"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = flutter.minSdkVersion
+        // Native AAudio is the sole audio backend; it requires Android API 26.
+        minSdk = 26
         targetSdk = flutter.targetSdkVersion
         // Uses the version code from pubspec.yaml. When using split APKs, 1000 * ABI_VERSION
         // is added automatically by Flutter. (https://developer.android.com/studio/build/configure-apk-splits#configure-APK-versions)
@@ -51,10 +52,8 @@ android {
     }
 }
 
-// Release target is arm64-v8a only: the usbfs transport (lib/usb/usbfs_abi.dart) needs a 64-bit
-// process. Plugins with their own CMake build (mp_audio_stream) would otherwise ship
-// armeabi-v7a/x86_64 libraries without libflutter.so / libapp.so next to them.
-// Debug keeps every ABI (x86_64 emulator; on 32-bit the app shows a clear USB error).
+// Release target is arm64-v8a only: libsdrcore is built for arm64-v8a.
+// Debug keeps Flutter's emulator ABIs; missing native ABI is reported in the UI.
 androidComponents {
     onVariants(selector().withBuildType("release")) { variant ->
         variant.packaging.jniLibs.excludes.addAll(

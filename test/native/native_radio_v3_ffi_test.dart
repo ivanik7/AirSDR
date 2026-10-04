@@ -3,12 +3,14 @@
 // SDRCORE_V3_PROBE_LIBRARY to a host libsdrcore.so build (sdr_version()==3).
 // SDR_HW_WAV keeps the hardware WFM recording at that path for listening.
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sdr_flutter/native/native_radio_api.dart';
 import 'package:sdr_flutter/native/native_radio_controller.dart';
+import 'package:sdr_flutter/native/sdr_core.dart';
 import 'package:sdr_flutter/ui/radio_controller.dart';
 
 class _SyntheticSource implements NativeDeviceSource {
@@ -40,6 +42,7 @@ void main() {
       final h = api.create();
       try {
         api.openSynthetic(h, 2400000);
+        expect(() => api.rtlTunerGains(h), throwsA(isA<SdrCoreError>()));
         api.controls(
           h,
           const NativeControls(
@@ -128,6 +131,63 @@ void main() {
   );
 
   final hw = Platform.environment['SDR_HW_TEST'] == '1';
+  test(
+    'Blog V4 legacy index restores the exact native tuner gain on host',
+    () async {
+      final api = FfiNativeRadioApi.open(libraryPath: library);
+      final devices = await HostNativeDeviceSource(api).list();
+      final rtl = devices.where((d) => d.source == SdrSourceId.rtlsdr).first;
+      final serial = RegExp(r'\[([^\[\]]+)\]$')
+          .firstMatch(rtl.info.name)
+          ?.group(1);
+      expect(
+        serial,
+        isNotNull,
+        reason: 'RTL serial needed for exact migration',
+      );
+      final h = api.create();
+      late final int expected;
+      try {
+        api.openHostUsb(h, rtl.bus!, rtl.address!, rtl.source);
+        expected = api.rtlTunerGains(h)[7];
+        api.close(h);
+      } finally {
+        api.destroy(h);
+      }
+      final dir = Directory.systemTemp.createTempSync('n5_ffi_gain_');
+      final name = 'Old RTL [$serial]';
+      File('${dir.path}/config.json').writeAsStringSync(
+        jsonEncode({
+          'sources': {
+            'rtl_sdr': {
+              'device': name,
+              'devices': {
+                name: {'gain': 7},
+              },
+            },
+          },
+        }),
+      );
+      final controller = NativeRadioController(
+        api: api,
+        source: HostNativeDeviceSource(api),
+        configDir: dir.path,
+        autoStart: false,
+      );
+      try {
+        await controller.refreshDevices();
+        await controller.start();
+        expect(controller.running, isTrue, reason: controller.lastError);
+        expect((controller.gain * 10).round(), expected);
+        await controller.stop();
+        expect(File('${dir.path}/config.json').existsSync(), isTrue);
+      } finally {
+        controller.dispose();
+        dir.deleteSync(recursive: true);
+      }
+    },
+    skip: library == null || !hw ? 'Host RTL and SDR_HW_TEST=1 required' : null,
+  );
   final hwFreq =
       double.tryParse(Platform.environment['SDR_HW_FREQ'] ?? '') ?? 100500000;
   test(

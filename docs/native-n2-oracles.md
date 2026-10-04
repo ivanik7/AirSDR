@@ -1,5 +1,12 @@
 # N2 host oracles and parity tests
 
+N5 note: the Dart reference receiver, `test/n2_oracle/` comparison tests and
+their fixtures were removed with the Dart engine. The C++ harness below,
+`native/tests/n2/run_n2_oracles.sh`, its analytic fixtures and its hardware
+soak remain the native-only regression oracle. The Dart comparisons and
+pre-integration results below document historical N2 evidence, not runnable
+commands in this version. See `STATUS-n2-integration.md`.
+
 Phone-free acceptance oracles for the ABI v3 radio contract
 (`native/include/sdrcore_v3.h`, `docs/native-n2-adr.md`). Owned by card
 t_3a9a418d; production sources are untouched.

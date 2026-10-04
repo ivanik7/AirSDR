@@ -1,23 +1,30 @@
 // UsbSdrPlugin — Android USB host glue for sdr_flutter.
 //
 // Kotlin enumerates devices, requests permission and opens the UsbDeviceConnection that owns
-// the usbfs fd. USB I/O is no longer all done in Dart: the default receiver still streams via
-// Dart usbfs ioctls (lib/usb/usbfs_transport.dart) on the fd returned by "open", while the
-// opt-in native sdrcore engine (native/include/sdrcore.h ABI 2) streams through source-built
-// libusb/librtlsdr/libhackrf on a native dup() of the same connection's fd ("native*" calls).
-// The Dart path and its "open"/"close"/"hasPermission"/"initialDevice" contract are unchanged
-// and remain the default; nothing in this plugin activates the native engine by itself.
+// the usbfs fd. The ABI v3 native receiver hands that fd to sdr_v2_open_usb() over FFI;
+// Kotlin never sees the FFI call and tracks the connection as Owner.DART (historical name).
+// The separate "native*" MethodChannel calls (nativeOpen/nativeConfigure/nativeStart/
+// nativeStop/nativeStats/nativeClose) are an independent ABI 2 diagnostic bridge
+// (native/include/sdrcore.h) through NativeUsbSession/NativeUsbSessionRegistry/
+// JniSdrNativeBridge, tracked under Owner.NATIVE. They are not used by the production app
+// (lib/main.dart): only by the opt-in hardware diagnostic lib/n1_qa.dart and by the JVM unit
+// tests below (UsbDeviceLifecycleTest, NativeUsbSessionTest, NativeUsbSessionRegistryTest).
+// Nothing in this plugin activates that diagnostic engine by itself.
 //
 // Ownership and lifecycle (UsbDeviceLifecycle; docs/native-n1-android-lifecycle.md):
 //   * One UsbDeviceConnection per device, owned and closed exactly once by UsbDeviceLifecycle.
-//     Kotlin never dup()s or closes the raw fd; sdr_v2_open_usb() dup()s it and native closes
-//     only its duplicate. The Java connection stays open until native close/destroy returns.
-//   * Dart xor native per device: a device held by one side answers "BUSY" to the other, also
-//     while a native teardown for that device is still in flight.
+//     Kotlin never dup()s or closes the raw fd; the shared sdr_v2_open_usb() hook dup()s it and
+//     native closes only its duplicate. The Java connection stays open until native close/
+//     destroy (ABI 2 diagnostic session) or the ABI v3 FFI controller's "close" returns.
+//   * DART xor NATIVE per device: a device held by one side answers "BUSY" to the other, also
+//     while a diagnostic teardown for that device is in flight. Production ABI v3 uses
+//     Owner.DART; the opt-in ABI 2 diagnostic session uses Owner.NATIVE.
 //   * sdrcore commands (stop/close may block on thread joins) run on one serial background
 //     thread, never on the main thread; replies are posted back to the main thread.
 //   * The FlutterEngine is application-owned (SdrApplication), so Activity detach/recreation
-//     does not touch USB state. ReceptionService "Stop" also stops running native streams.
+//     does not touch USB state. ReceptionService "Stop" also stops running native* (ABI 2
+//     diagnostic) streams; the ABI v3 FFI controller's own stop/close releases its fd through
+//     the ordinary Dart "close" path instead (see ReceptionTeardown).
 //     USB detach closes the native session first, then the Java connection. Engine detach
 //     closes every native session and connection.
 //
@@ -26,14 +33,14 @@
 // targetSdk 28) and core/backends/android/backend.cpp getDeviceFD() (:282-324)
 // with a multi-device API. See docs/01 §3.4, §5.3-5.4 and docs/04 §1.1, §4, §7, §8.
 //
-// Channels (Dart side: lib/usb/android_usb.dart):
+// Channels (Dart side: lib/native/android_usb_channel.dart):
 //   MethodChannel "sdr/usb":
 //     listDevices()             -> [{deviceName, vid, pid, manufacturer, product, serial}]
 //     open({deviceName})        -> {fd, vid, pid}   requests permission if needed
 //     close({deviceName})       -> null             closes the UsbDeviceConnection (and fd)
 //     hasPermission({deviceName}) -> Boolean
 //     initialDevice()           -> device map or null (activity launched by USB_DEVICE_ATTACHED)
-//     -- native-only, not called by lib/usb/android_usb.dart today --
+//     -- ABI 2 diagnostic only; not called by the production app, only lib/n1_qa.dart --
 //     nativeOpen({deviceName, source: "rtlsdr"|"hackrf"}) -> {vid, pid, result}
 //     nativeConfigure({deviceName, frequencyHz, samplesPerSecond, gainTenthsDb}) -> {result}
 //     nativeStart({deviceName})  -> {result}
@@ -42,7 +49,7 @@
 //     nativeClose({deviceName})  -> {result}   stop+close+destroy, then closes the connection
 //     `result` is the raw `enum SdrResult` code from native/include/sdrcore.h (SdrAbi.kt),
 //     or SdrResult.BRIDGE_UNAVAILABLE's code (-1000) if JNI cannot load.
-//     "BUSY" errors mean the other side (Dart vs native) currently holds the device or a
+//     "BUSY" errors mean the other owner (ABI v3 vs diagnostic) holds the device or a
 //     native teardown is in flight; reported honestly, never silently queued or overridden.
 //   EventChannel "sdr/usb/events": {event: "attached"|"detached", device: {...}}
 //
@@ -158,20 +165,13 @@ class UsbSdrPlugin :
         }
         pendingOpens.clear()
         // Native sessions are stopped/closed/destroyed on the control thread before the Java
-        // connections they borrowed fds from are closed; Dart-held connections close now.
+        // connections they borrowed fds from are closed; ABI v3 connections close now.
         lifecycle?.shutdown()
         lifecycle = null
         nativeExecutor?.shutdown() // queued teardown still runs
         nativeExecutor = null
         context = null
         usbManager = null
-    }
-
-    /** Stops every running native stream (sessions stay open). Used by ReceptionService's
-     * notification "Stop" so a native stream never outlives the foreground service. */
-    fun stopNativeStreams(done: () -> Unit) {
-        val lc = lifecycle ?: return done()
-        lc.stopAllNative(done)
     }
 
     /** Service-level Stop must close native sessions and Java USB connections, not just
@@ -268,9 +268,8 @@ class UsbSdrPlugin :
 
     private fun onDetached(dev: UsbDevice) {
         val name = dev.deviceName
-        // Dart-held: the connection closes now, so pending ioctls fail with ENODEV (they already
-        // do once the device is gone); Dart handles that. Native-held: the native session is
-        // stopped/closed on the control thread first, then the Java connection is closed. A
+        // ABI v3: the connection closes now, so native streaming sees ENODEV.
+        // Diagnostic-held: the session stops/closes on the control thread before Java closes.
         // reconnect gets a new permission/open and a fresh session.
         val owned = lifecycle?.currentOwner(name) != null
         lifecycle?.onDeviceDetached(name)

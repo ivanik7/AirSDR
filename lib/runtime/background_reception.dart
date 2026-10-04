@@ -1,13 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Reception foreground-service bridge. The Dart controller remains the sole owner of DSP,
-// audio and USB; the Android service owns only the notification and CPU wake lock.
+// Reception foreground-service bridge. NativeRadioController promotes before
+// DSP start and releases the service after native USB/audio teardown.
 import 'dart:async';
 
 import 'package:flutter/services.dart';
 
-import '../native/native_radio_controller.dart';
 import '../ui/radio_controller.dart';
-import 'sdr_radio_controller.dart';
 
 class BackgroundReception {
   BackgroundReception(
@@ -40,17 +38,9 @@ class BackgroundReception {
     _serial = _serial.then((_) async {
       if (_disposed) return;
       try {
-        if (method == 'stop' && radio is SdrRadioController) {
-          await (radio as SdrRadioController).whenStopped;
-        }
-        if (method == 'stop' && radio.running) return; // rapid re-plug won
         await channel.invokeMethod<void>(method, args);
       } on PlatformException {
-        // Never leave a receiving DSP without a foreground service (e.g. FGS start
-        // rejected by Android). A denied notification permission isn't a failure here.
-        if (method == 'start' && radio.running) {
-          unawaited(radio.stop());
-        }
+        // A failed notification update does not own the receiver lifecycle.
       } on MissingPluginException {
         // Widget/host tests and other platforms have no Android service.
       }
@@ -63,10 +53,7 @@ class BackgroundReception {
       _updateTimer?.cancel();
       _updateTimer = null;
       _lastDetails = null;
-      if (_active) {
-        _active = false;
-        if (radio is! NativeRadioController) _enqueue('stop');
-      }
+      _active = false;
       return;
     }
     final details = _details;
@@ -74,7 +61,6 @@ class BackgroundReception {
     if (!_active) {
       _active = true;
       _lastDetails = key;
-      if (radio is! NativeRadioController) _enqueue('start', details);
     } else if (key != _lastDetails && _updateTimer == null) {
       _updateTimer = Timer(updateInterval, () {
         _updateTimer = null;
@@ -97,7 +83,7 @@ class BackgroundReception {
     }
     if (call.method != 'stopReception') throw MissingPluginException();
     // Same stop() invoked by the UI. The service stays alive until the controller has
-    // released the DSP audio/USB stream and the state listener has queued service stop.
+    // released native DSP/audio/USB and its afterStop hook has released the service.
     await radio.stop();
     await _serial;
   }
@@ -106,9 +92,7 @@ class BackgroundReception {
     radio.removeListener(_changed);
     _updateTimer?.cancel();
     channel.setMethodCallHandler(null);
-    if (_active && radio is! NativeRadioController) {
-      unawaited(channel.invokeMethod<void>('stop'));
-    }
+
     _disposed = true;
   }
 }

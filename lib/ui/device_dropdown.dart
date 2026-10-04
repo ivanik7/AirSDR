@@ -5,7 +5,7 @@ import 'radio_controller.dart';
 /// Value for a `DropdownButton<SdrDeviceInfo>` whose items are [RadioController.devices].
 ///
 /// DropdownButton asserts that its value matches exactly one item. The controller keeps
-/// `selectedDevice ∈ devices` (SdrRadioController), but the list comes from USB hot-plug
+/// `selectedDevice ∈ devices`, but the list comes from USB hot-plug
 /// events: never let a vanished dongle turn the whole screen into a red error box.
 SdrDeviceInfo? dropdownDeviceValue(RadioController r) {
   final d = r.selectedDevice;

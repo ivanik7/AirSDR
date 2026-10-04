@@ -5,13 +5,11 @@ import 'dart:async';
 import 'dart:ffi';
 import 'dart:io';
 
-import '../runtime/device_sources.dart';
-import '../sdrpp/modules/sources/usb_source_factory.dart';
 import '../ui/radio_controller.dart';
-import '../usb/usb_device_provider.dart';
 import 'native_radio_api.dart';
 import 'native_radio_settings.dart';
 import 'sdr_core.dart';
+import 'usb_device_catalog.dart';
 
 final class NativeDevice {
   const NativeDevice(this.info, this.source, {this.bus, this.address, this.fd});
@@ -21,7 +19,7 @@ final class NativeDevice {
 }
 
 /// Provides the exclusive borrowed USB fd (Android), host address (Linux),
-/// or synthetic source. open/close must not be shared with the Dart engine.
+/// or synthetic source. The original Android fd stays owned by Kotlin.
 abstract interface class NativeDeviceSource {
   Stream<void> get changes;
   Future<List<NativeDevice>> list();
@@ -70,54 +68,8 @@ class HostNativeDeviceSource implements NativeDeviceSource {
   Future<void> close(NativeDevice device) async {}
 }
 
-class AndroidNativeDeviceSource implements NativeDeviceSource {
-  AndroidNativeDeviceSource(this.provider);
-  final UsbDeviceProvider provider;
-  final Map<String, NativeDevice> _known = {};
-  @override
-  Stream<void> get changes => provider.changes;
-  @override
-  Future<List<NativeDevice>> list() async {
-    final devices = await provider.listDevices();
-    _known.clear();
-    for (final info in devices) {
-      // Device kind is determined after permission by the provider's VID/PID.
-      // ABI v3 cannot enable tuner AGC; do not show the Dart driver's AGC
-      // switch as if the native source accepted it.
-      _known[info.id] = NativeDevice(
-        SdrDeviceInfo(
-          id: info.id,
-          name: info.name,
-          sampleRates: info.sampleRates,
-          gain: info.gain,
-          hasAgc: false,
-          minFrequency: info.minFrequency,
-          maxFrequency: info.maxFrequency,
-        ),
-        0,
-      );
-    }
-    return _known.values.toList();
-  }
-
-  @override
-  Future<NativeDevice> open(NativeDevice device) async {
-    final result = await provider.open(device.info);
-    final params = result.params;
-    final kind = usbSdrKind(
-      (params['vid'] as num).toInt(),
-      (params['pid'] as num).toInt(),
-    );
-    return NativeDevice(
-      device.info,
-      kind == UsbSdrKind.hackrf ? SdrSourceId.hackrf : SdrSourceId.rtlsdr,
-      fd: (params['fd'] as num).toInt(),
-    );
-  }
-
-  @override
-  Future<void> close(NativeDevice device) => provider.close(device.info);
-}
+// AndroidNativeDeviceSource (standalone, no lib/usb/lib/runtime/lib/sdrpp
+// dependency) lives in android_native_device_source.dart.
 
 class NativeRadioController extends RadioController {
   NativeRadioController({
@@ -146,6 +98,8 @@ class NativeRadioController extends RadioController {
       _offset = 0;
       _rate = settings.sampleRateHz;
       _gain = settings.gainDb;
+      _legacyRtlGainIndex = settings.legacyRtlGainIndex;
+      _legacyRtlDeviceName = settings.legacyRtlDeviceName;
       _mode = settings.mode;
       _bandwidthByMode = Map<int, double>.from(settings.bandwidthByMode);
       _bandwidth = _mode.params.clampBandwidth(
@@ -198,6 +152,9 @@ class NativeRadioController extends RadioController {
   NativeControls? _appliedControls;
   NativeDisplay? _appliedDisplay;
   Map<String, Object?> _stats = const {};
+  int? _legacyRtlGainIndex;
+  String? _legacyRtlDeviceName;
+  String? _gainMigrationWarning;
 
   double _center = 100000000, _offset = 0, _rate = 2400000, _gain = 20;
   double _bandwidth = DemodMode.wfm.params.defaultBandwidth;
@@ -256,6 +213,8 @@ class NativeRadioController extends RadioController {
         squelchKey: _squelch.key,
         squelchLevelDb: _squelchLevel,
         autoOffsetDb: _autoOffset,
+        legacyRtlGainIndex: _legacyRtlGainIndex,
+        legacyRtlDeviceName: _legacyRtlDeviceName,
       ),
     );
   }
@@ -348,6 +307,8 @@ class NativeRadioController extends RadioController {
   Future<void> _startLocked() async {
     final selected = _selected;
     if (selected == null) return;
+    final gainBeforeStart = _gain;
+    var gainMigrationCommitted = false;
     _link = DeviceLinkState.connecting;
     _notify();
     try {
@@ -366,6 +327,40 @@ class NativeRadioController extends RadioController {
       } else {
         api.openSynthetic(h, _rate.round());
       }
+      double? resolvedGain;
+      final index = _legacyRtlGainIndex;
+      final oldName = _legacyRtlDeviceName;
+      if (index != null && oldName != null) {
+        // The old config is per dongle. Never apply its tuner index to an
+        // unidentifiable or different RTL (nor reinterpret it as dB).
+        final oldSerial = RegExp(r'\[([^\[\]]+)\]$')
+            .firstMatch(oldName)
+            ?.group(1);
+        final newSerial = RegExp(r'\[([^\[\]]+)\]$')
+            .firstMatch(opened.info.name)
+            ?.group(1);
+        if (opened.source != SdrSourceId.rtlsdr ||
+            oldSerial == null ||
+            oldSerial == 'No Serial' ||
+            oldSerial != newSerial) {
+          _gainMigrationWarning = 'Legacy RTL gain pending: device identity unavailable or different';
+        } else {
+          try {
+            final gains = api.rtlTunerGains(h);
+            if (index >= 0 && index < gains.length) {
+              resolvedGain = gains[index] / 10.0;
+              _gain = resolvedGain;
+              _gainMigrationWarning = null;
+            } else {
+              _gainMigrationWarning =
+                  'Legacy RTL gain index $index outside tuner table';
+            }
+          } catch (e) {
+            _gainMigrationWarning =
+                'Legacy RTL gain pending: tuner query failed ($e)';
+          }
+        }
+      }
       _appliedControls = _controls();
       api.controls(h, _appliedControls!);
       _appliedDisplay = _display();
@@ -374,6 +369,12 @@ class NativeRadioController extends RadioController {
       await beforeStart?.call();
       if (_disposed || _userStopped) throw StateError('Native start cancelled');
       api.start(h);
+      if (resolvedGain != null) {
+        _legacyRtlGainIndex = null;
+        _legacyRtlDeviceName = null;
+        _flushSave();
+        gainMigrationCommitted = true;
+      }
       final s = api.snapshot(h);
       _generation = s.generation;
       _controlSequence = s.controlSequence;
@@ -387,6 +388,7 @@ class NativeRadioController extends RadioController {
       _startPollers();
       _notify();
     } catch (e) {
+      if (!gainMigrationCommitted) _gain = gainBeforeStart;
       _failedId = selected.info.id;
       await _release();
       _failure('Native start failed: $e');
@@ -509,6 +511,8 @@ class NativeRadioController extends RadioController {
         'audioNonsilentFrames': s.audioNonsilentFrames,
         'fftOverwrites': s.fftOverwrites,
         'lastNativeError': s.lastError,
+        if (_gainMigrationWarning != null)
+          'gainMigration': _gainMigrationWarning,
       };
       _notify();
     } catch (e) {
@@ -706,6 +710,9 @@ class NativeRadioController extends RadioController {
         : value.clamp(info.gain.min, info.gain.max).toDouble();
     if (!g.isFinite || g == _gain) return;
     _gain = g;
+    _legacyRtlGainIndex = null;
+    _legacyRtlDeviceName = null;
+    _gainMigrationWarning = null;
     _applyControls();
     _scheduleSave();
     _notify();
