@@ -194,6 +194,24 @@ class UsbDeviceLifecycle<C : Any>(
         }
     }
 
+    /** Foreground-service Stop: release native streams, sessions, duplicated fds and their
+     * Java connections before reporting completion. Also waits for an already queued detach. */
+    fun closeAllNative(done: () -> Unit = {}) {
+        val names = (connections.keys.filter {
+            ownership.currentOwner(it) == UsbSessionOwnership.Owner.NATIVE
+        } + retiring.keys).distinct()
+        if (names.isEmpty()) {
+            nativeExecutor.execute { mainExecutor.execute(done) }
+            return
+        }
+        var remaining = names.size
+        for (name in names) {
+            nativeClose(name) {
+                if (--remaining == 0) done()
+            }
+        }
+    }
+
     /**
      * Engine teardown. Dart-held connections close immediately; native sessions are closed on
      * the native executor and their connections closed right after, on that executor thread

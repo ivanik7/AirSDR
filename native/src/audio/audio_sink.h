@@ -19,7 +19,8 @@
 //                        Non-blocking: when the device buffer is full the
 //                        block is dropped and counted, never blocking DSP.
 //   ""/nullptr           same as "null".
-// Android will add an AAudio backend in N2 behind the same interface.
+//   "aaudio"            Android API 26+ output, nonblocking SPSC callback.
+//                        Fails explicitly on API 24/25 (no libaaudio).
 //
 // Threading: one producer thread calls write(); open/close are called by the
 // owner while no write() is in flight. stats() may be called from any thread.
@@ -33,7 +34,7 @@
 
 namespace sdrcore {
 
-enum class AudioSinkKind { kNull = 0, kWav = 1, kAlsa = 2 };
+enum class AudioSinkKind { kNull = 0, kWav = 1, kAlsa = 2, kAAudio = 3 };
 
 struct AudioSinkSpec {
   AudioSinkKind kind = AudioSinkKind::kNull;

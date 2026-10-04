@@ -16,8 +16,13 @@ target_include_directories(sdrcore_audio PUBLIC ${CMAKE_CURRENT_LIST_DIR})
 find_package(Threads REQUIRED)
 target_link_libraries(sdrcore_audio PRIVATE Threads::Threads)
 
+if(ANDROID)
+    target_sources(sdrcore_audio PRIVATE ${CMAKE_CURRENT_LIST_DIR}/aaudio_sink.cpp)
+    target_link_libraries(sdrcore_audio PUBLIC dl)
+endif()
+
 # ALSA playback backend: Linux host only, and only when the dev package is
-# present. Android never gets this (AAudio lands separately in N2); on a
+# present. Android never gets this; on a
 # host without ALSA, make_audio_sink() returns nullptr for kAlsa (see
 # audio_sink.cpp).
 if(NOT ANDROID)
@@ -33,6 +38,10 @@ endif()
 # as the top-level project). Mirrors the guard used by native/CMakeLists.txt
 # for its own test suite.
 if(NOT ANDROID AND PROJECT_IS_TOP_LEVEL)
+    add_executable(sdrcore_pcm_ring_test ${CMAKE_CURRENT_SOURCE_DIR}/tests/pcm_ring_test.cpp)
+    target_include_directories(sdrcore_pcm_ring_test PRIVATE ${CMAKE_CURRENT_LIST_DIR})
+    target_link_libraries(sdrcore_pcm_ring_test PRIVATE Threads::Threads)
+    add_test(NAME sdrcore_pcm_ring COMMAND sdrcore_pcm_ring_test)
     add_executable(sdrcore_audio_sink_test ${CMAKE_CURRENT_SOURCE_DIR}/tests/audio_sink_test.cpp)
     target_link_libraries(sdrcore_audio_sink_test PRIVATE sdrcore_audio)
     if(ALSA_FOUND)
