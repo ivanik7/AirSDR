@@ -1,12 +1,10 @@
 # ADR: N2 native radio contract (ABI revision 3)
 
-Status: **contract approved, implementation pending**. The declarations in
-`native/include/sdrcore_v3.h` are the binary authority. At this contract commit
-`sdr_version()` still returns **2** and no `sdr_v3_*` symbol is exported. It is
-incorrect to load an N2 receiver from this build: implementation/integration
-must export the complete v3 surface, update `sdr_version()` to 3, update FFI and
-JNI version gates and tests, and then verify the exported symbols and real
-receiver. A header-only contract is not a working DSP or audio engine.
+Status: **implemented and integrated (t_848e6a1c)**. The declarations in
+`native/include/sdrcore_v3.h` are the binary authority. `sdr_version()` returns
+**3** and all seven `sdr_v3_*` symbols are exported. ABI 3 is a strict superset:
+legacy ABI 2 clients (Dart `SdrCore`, Kotlin `NativeUsbSession`) accept versions
+2..3. Results and remaining gaps: `STATUS-n2-integration.md`.
 
 ## Decision and compatibility
 

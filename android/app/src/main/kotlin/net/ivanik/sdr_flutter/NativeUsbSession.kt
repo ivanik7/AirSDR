@@ -47,7 +47,8 @@ class NativeUsbSession(
      */
     fun open(fd: Int, source: SdrSource): SdrResult = synchronized(lock) {
         if (phase != Phase.IDLE) return remember(SdrResult.INVALID_STATE)
-        if (bridge.version() != 2) return remember(SdrResult.BRIDGE_UNAVAILABLE)
+        // ABI 3 adds sdr_v3_* only; the ABI 2 calls used here are unchanged.
+        if (bridge.version() !in 2..3) return remember(SdrResult.BRIDGE_UNAVAILABLE)
         val h = bridge.create()
         if (h == 0L) return remember(SdrResult.INTERNAL_ERROR)
         val rc = SdrResult.fromCode(bridge.openUsb(h, fd, source.code))

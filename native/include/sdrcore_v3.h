@@ -8,7 +8,7 @@
 extern "C" {
 #endif
 
-// N2 contract, NOT an implemented API until sdr_version() returns 3.
+// N2 radio API, implemented when sdr_version() returns 3.
 // Existing ABI-1/2 signatures, SdrStats layout, enums and host-only
 // sdr_host_* extension remain unchanged. Clients MUST check sdr_version()==3
 // before resolving any sdr_v3_* symbol or creating a production controller.

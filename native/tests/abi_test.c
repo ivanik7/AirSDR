@@ -15,7 +15,7 @@
   } while (0)
 
 int main(void) {
-  CHECK(sdr_version() == 2u);
+  CHECK(sdr_version() == 3u);  // ABI 3 keeps every ABI 2 symbol and layout.
   CHECK(sizeof(SdrStats) == 72u && offsetof(SdrStats, checksum) == 64u);
   CHECK(SDR_OK == 0 && SDR_INVALID_ARGUMENT == -1 && SDR_INVALID_STATE == -2);
   CHECK(SDR_UNSUPPORTED == -3 && SDR_IO_ERROR == -4 && SDR_DEVICE_GONE == -5);

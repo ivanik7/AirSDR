@@ -12,9 +12,17 @@ namespace sdrcore {
 namespace dsp {
 namespace {
 constexpr double kPi = 3.14159265358979323846;
-constexpr size_t kFft = 2048;
+// Dart IQFrontEnd default FFT size (8192, Nuttall, power / N^2) so that the
+// native rows use the same dBFS convention as RadioController.FftRow. Lower
+// sample rates use a smaller power-of-two size to keep >= 20 rows/s.
+constexpr size_t kMaxFft = 8192;
+constexpr size_t kMinFft = 256;
 constexpr size_t kHistory = 1024;
 constexpr float kFloor = 1.0e-12f;
+// SDR++ CW demodulator default beat tone (cw.dart / cw.h: tone = 800).
+constexpr double kCwToneHz = 800.0;
+// SDR++ AGC set point for AM/SSB/CW audio (am.h/ssb.h/cw.h: AGC(1.0, ...)).
+constexpr float kAgcSetPoint = 1.0f;
 using Complex = std::complex<float>;
 
 // FIR histories are fixed-size; coefficients are regenerated only on configure().
@@ -65,16 +73,16 @@ class ComplexDecimator {
   unsigned phase_ = 0, factor_ = 1;
 };
 
-void fft(std::array<Complex, kFft>& data) {
-  for (size_t i = 1, j = 0; i < kFft; ++i) {
-    size_t bit = kFft >> 1;
+void fft(Complex* data, size_t n) {
+  for (size_t i = 1, j = 0; i < n; ++i) {
+    size_t bit = n >> 1;
     for (; j & bit; bit >>= 1) j ^= bit;
     j ^= bit;
     if (i < j) std::swap(data[i], data[j]);
   }
-  for (size_t len = 2; len <= kFft; len <<= 1) {
+  for (size_t len = 2; len <= n; len <<= 1) {
     const Complex step = std::polar(1.0f, static_cast<float>(-2 * kPi / len));
-    for (size_t base = 0; base < kFft; base += len) {
+    for (size_t base = 0; base < n; base += len) {
       Complex w{1, 0};
       for (size_t j = 0; j < len / 2; ++j) {
         const Complex a = data[base + j], b = data[base + j + len / 2] * w;
@@ -86,14 +94,16 @@ void fft(std::array<Complex, kFft>& data) {
   }
 }
 
+size_t fft_size_for(uint32_t sample_rate) {
+  size_t n = kMaxFft;
+  while (n > kMinFft && n > sample_rate / 20u) n >>= 1;
+  return n;
+}
+
 class ReceiverImpl final : public Receiver {
  public:
-  ReceiverImpl() {
-    window_sum_ = 0;
-    for (size_t i = 0; i < kFft; ++i) {
-      window_[i] = static_cast<float>(0.5 - 0.5 * std::cos(2 * kPi * i / (kFft - 1)));
-      window_sum_ += window_[i];
-    }
+  ReceiverImpl() : fft_input_(kMaxFft), fft_work_(kMaxFft), window_(kMaxFft) {
+    set_fft_size(kMaxFft);
   }
 
   void configure(const SdrV3Controls& controls, const SdrV3Display& display) override {
@@ -115,11 +125,15 @@ class ReceiverImpl final : public Receiver {
     configured_ = controls.sample_rate > 0;
     if (!configured_) return;
     const double sr = controls.sample_rate;
+    if (display_change && fft_size_for(controls.sample_rate) != fft_n_)
+      set_fft_size(fft_size_for(controls.sample_rate));
     if (channel_change) {
       // SSB offsets name the lower/upper passband edge, not its center.
+      // Note: bandwidth_hz is unsigned; scale before negating.
+      const double half_bw = 0.5 * static_cast<double>(controls.bandwidth_hz);
       double channel_offset = static_cast<double>(controls.vfo_offset_hz);
-      if (controls.mode == SDR_V3_USB) channel_offset += controls.bandwidth_hz * 0.5;
-      if (controls.mode == SDR_V3_LSB) channel_offset -= controls.bandwidth_hz * 0.5;
+      if (controls.mode == SDR_V3_USB) channel_offset += half_bw;
+      if (controls.mode == SDR_V3_LSB) channel_offset -= half_bw;
       const double angle = -2 * kPi * channel_offset / sr;
       oscillator_step_ = std::polar(1.0f, static_cast<float>(angle));
       oscillator_ = {1, 0};
@@ -142,10 +156,9 @@ class ReceiverImpl final : public Receiver {
           (48000 * (controls.mode == SDR_V3_WFM ? 50e-6 : 75e-6))));
       metric_interval_ = std::max<size_t>(1, static_cast<size_t>(if_rate_ / 1000));
       const double sideband_offset = controls.mode == SDR_V3_USB ?
-          controls.bandwidth_hz * 0.5 : controls.mode == SDR_V3_LSB ?
-          -controls.bandwidth_hz * 0.5 : 0.0;
+          half_bw : controls.mode == SDR_V3_LSB ? -half_bw : 0.0;
       sideband_step_ = std::polar(1.0f, static_cast<float>(2 * kPi * sideband_offset / if_rate_));
-      cw_step_ = std::polar(1.0f, static_cast<float>(2 * kPi * 700 / if_rate_));
+      cw_step_ = std::polar(1.0f, static_cast<float>(2 * kPi * kCwToneHz / if_rate_));
       first_.configure(sr, first_rate * 0.40, first_factor_, 127);
       second_.configure(first_rate, controls.bandwidth_hz * 0.5, second_factor_);
       // Anti-alias audio bandwidth: WFM baseband is mono; no stereo MPX decoder.
@@ -195,14 +208,15 @@ class ReceiverImpl final : public Receiver {
     // One allocation at most per call, never in the per-sample loop.
     const size_t estimate = static_cast<size_t>(std::ceil(pairs * 48000.0 / controls_.sample_rate)) + 4;
     result.audio.reserve(2 * estimate);
-    const size_t row_period = std::max<size_t>(kFft, (controls_.sample_rate + 29u) / 30u);
+    const size_t row_period = std::max<size_t>(fft_n_, (controls_.sample_rate + 29u) / 30u);
     for (size_t i = 0; i < pairs; ++i) {
       const Complex iq{(static_cast<float>(cu8[2 * i]) - 127.5f) / 127.5f,
                        (static_cast<float>(cu8[2 * i + 1]) - 127.5f) / 127.5f};
       fft_input_[fft_count_] = iq * window_[fft_count_];
       ++fft_count_;
-      if (fft_count_ == kFft) {
-        if (fft_since_row_ >= row_period && display_.width > 0 && display_.width <= kFft) {
+      if (fft_count_ == fft_n_) {
+        if (fft_since_row_ >= row_period && display_.width > 0 &&
+            display_.width <= SDR_V3_MAX_FFT_WIDTH) {
           make_fft(result.fft);
           fft_since_row_ = 0;
         }
@@ -260,22 +274,36 @@ class ReceiverImpl final : public Receiver {
     reset_squelch();
   }
   void make_fft(std::vector<float>& row) {
-    auto spectrum = fft_input_;
-    fft(spectrum);
+    std::copy(fft_input_.begin(), fft_input_.begin() + static_cast<std::ptrdiff_t>(fft_n_),
+              fft_work_.begin());
+    fft(fft_work_.data(), fft_n_);
     row.assign(display_.width, -120.0f);
     const double low = static_cast<double>(display_.view_offset_hz) - display_.view_bandwidth_hz * 0.5;
     const double bandwidth = display_.view_bandwidth_hz;
     const double rate = controls_.sample_rate;
-    for (size_t i = 0; i < kFft; ++i) {
-      const double offset = (static_cast<double>(i) / kFft - 0.5) * rate;
+    const float inv_n = 1.0f / static_cast<float>(fft_n_);
+    for (size_t i = 0; i < fft_n_; ++i) {
+      const double offset = (static_cast<double>(i) / fft_n_ - 0.5) * rate;
       const double position = (offset - low) / bandwidth;
       if (position < 0 || position >= 1) continue;
       const size_t column = std::min<size_t>(display_.width - 1,
           static_cast<size_t>(position * display_.width));
-      const float magnitude = std::abs(spectrum[(i + kFft / 2) & (kFft - 1)]) /
-                              static_cast<float>(window_sum_);
-      row[column] = std::max(row[column], 20.0f * std::log10(std::max(magnitude, 1.0e-6f)));
+      // Dart IQFrontEnd.powerSpectrum: 10*log10(|X/N|^2), floored at 1e-20.
+      const float power = std::norm(fft_work_[(i + fft_n_ / 2) & (fft_n_ - 1)] * inv_n);
+      row[column] = std::max(row[column], 10.0f * std::log10(std::max(power, 1.0e-20f)));
     }
+  }
+  void set_fft_size(size_t n) {
+    // SDR++ Nuttall window (window/nuttall.h), same as the Dart IQFrontEnd default.
+    fft_n_ = n;
+    const double coefs[4] = {0.355768, 0.487396, 0.144232, 0.012604};
+    for (size_t i = 0; i < n; ++i) {
+      double w = 0, sign = 1;
+      for (size_t k = 0; k < 4; ++k, sign = -sign)
+        w += sign * coefs[k] * std::cos(static_cast<double>(k) * 2 * kPi * i / n);
+      window_[i] = static_cast<float>(w);
+    }
+    fft_count_ = 0;
   }
   void update_squelch(float power, float discriminator) {
     power_smooth_ += power_alpha_ * (power - power_smooth_);
@@ -354,9 +382,10 @@ class ReceiverImpl final : public Receiver {
     switch (controls_.mode) {
       case SDR_V3_NFM:
       case SDR_V3_WFM:
+        // SDR++ FM: Quadrature deviation = bandwidth / 2 (fm.h); WFM 75 kHz.
         value = discriminator * static_cast<float>(if_rate_ /
             (2 * kPi * (controls_.mode == SDR_V3_WFM ? 75000.0 :
-                            std::max(1000.0, controls_.bandwidth_hz * 0.25))));
+                            std::max(250.0, controls_.bandwidth_hz * 0.5))));
         break;
       case SDR_V3_AM: {
         const float envelope = std::abs(sample);
@@ -406,9 +435,10 @@ class ReceiverImpl final : public Receiver {
       float leveled = hp;
       if (controls_.mode != SDR_V3_NFM && controls_.mode != SDR_V3_WFM &&
           controls_.mode != SDR_V3_RAW) {
+        // Peak-following AGC to the SDR++ set point (1.0), fast attack/slow decay.
         const float alpha = std::abs(hp) > agc_envelope_ ? 0.0021f : 0.000042f;
         agc_envelope_ += alpha * (std::abs(hp) - agc_envelope_);
-        leveled *= std::clamp(0.15f / std::max(agc_envelope_, 0.001f), 0.5f, 10.0f);
+        leveled *= std::clamp(kAgcSetPoint / std::max(agc_envelope_, 1.0e-5f), 0.01f, 1.0e4f);
       }
       const float target = controls_.squelch == SDR_V3_SQUELCH_OFF || squelch_open_ ? 1.0f : 0.0f;
       gate_ += std::clamp(target - gate_, -1.0f / 240, 1.0f / 240);
@@ -428,10 +458,10 @@ class ReceiverImpl final : public Receiver {
   Complex sideband_{1, 0}, sideband_step_{1, 0}, cw_{1, 0}, cw_step_{1, 0};
   unsigned oscillator_count_ = 0;
   bool previous_valid_ = false;
-  std::array<Complex, kFft> fft_input_{};
-  std::array<float, kFft> window_{};
-  double window_sum_ = 0;
-  size_t fft_count_ = 0, fft_since_row_ = 0;
+  // Sized once to kMaxFft in the constructor; never reallocated while streaming.
+  std::vector<Complex> fft_input_, fft_work_;
+  std::vector<float> window_;
+  size_t fft_n_ = kMaxFft, fft_count_ = 0, fft_since_row_ = 0;
   std::array<std::array<float, kAudioTaps>, kPhases> audio_taps_{};
   std::array<float, kAudioTaps> audio_history_{};
   size_t audio_index_ = 0, audio_input_count_ = 0;

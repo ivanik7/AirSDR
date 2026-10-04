@@ -81,6 +81,21 @@ void main() {
     expect(bindings.destroyed, isEmpty);
   });
 
+  test('accepts ABI 3, a superset that keeps every ABI 2 symbol', () {
+    final bindings = FakeBindings(abi: 3);
+    final core = SdrCore.withBindings(bindings);
+    expect(core.version, 3);
+    core.create().dispose();
+    expect(bindings.destroyed, [1]);
+  });
+
+  test('rejects a future ABI it was not built against', () {
+    expect(
+      () => SdrCore.withBindings(FakeBindings(abi: 4)),
+      throwsUnsupportedError,
+    );
+  });
+
   test(
     'each owned handle is released exactly once, even after repeated dispose',
     () {

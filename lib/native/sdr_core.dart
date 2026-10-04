@@ -224,15 +224,21 @@ final class _NativeHostUsbDevice extends Struct {
 final class SdrCore {
   SdrCore._(this._bindings) {
     final version = _bindings.version();
-    if (version != abiVersion) {
+    if (version < abiVersion || version > maxAbiVersion) {
       throw UnsupportedError(
-        'Unsupported sdrcore ABI $version (expected $abiVersion)',
+        'Unsupported sdrcore ABI $version '
+        '(expected $abiVersion..$maxAbiVersion)',
       );
     }
   }
 
-  /// Current revision of native/include/sdrcore.h, not an application version.
+  /// ABI revision of native/include/sdrcore.h used by this wrapper (also the
+  /// SdrStats revision), not an application version.
   static const abiVersion = 2;
+
+  /// Newest library ABI accepted. ABI 3 (sdrcore_v3.h) only adds sdr_v3_*
+  /// symbols; every ABI 2 signature and the SdrStats layout are unchanged.
+  static const maxAbiVersion = 3;
 
   /// On Android loads the packaged arm64 library. On Linux resolves, in order:
   /// [libraryPath], `$SDRCORE_HOST_LIBRARY`, the Flutter bundle's

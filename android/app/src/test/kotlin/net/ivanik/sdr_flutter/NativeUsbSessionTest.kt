@@ -49,6 +49,20 @@ class NativeUsbSessionTest {
     }
 
     @Test
+    fun `ABI 3 library keeps the ABI 2 diagnostic session working`() {
+        val bridge = FakeSdrNativeBridge().apply { abiVersion = 3 }
+        val session = NativeUsbSession(bridge, "dev1")
+        assertEquals(SdrResult.OK, session.open(42, SdrSource.RTLSDR))
+    }
+
+    @Test
+    fun `future native ABI is rejected`() {
+        val bridge = FakeSdrNativeBridge().apply { abiVersion = 4 }
+        val session = NativeUsbSession(bridge, "dev1")
+        assertEquals(SdrResult.BRIDGE_UNAVAILABLE, session.open(42, SdrSource.RTLSDR))
+    }
+
+    @Test
     fun `start requires OPENED, then moves to RUNNING`() {
         val bridge = FakeSdrNativeBridge()
         val session = NativeUsbSession(bridge, "dev1")

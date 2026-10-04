@@ -889,7 +889,12 @@ void case_mode_tones() {
           r.wav.left.size(), static_cast<unsigned long long>(r.snap.audio_frames));
     CHECK(r.snap.processed_samples + r.snap.dropped_samples == r.snap.input_samples,
           "%s: processed+dropped != input", m.name);
-    CHECK(r.snap.processed_samples == pairs, "%s: processed %llu of %llu", m.name,
+    // Files loop at EOF like the Dart FileSource (file_eof_parity), so the run
+    // stops after at least one full pass; overshoot is bounded by the 20 ms poll
+    // plus one 8 KiB ring slot (integrator reconciliation, t_848e6a1c).
+    CHECK(r.snap.processed_samples >= pairs &&
+              r.snap.processed_samples <= pairs + kModeRate / 10,
+          "%s: processed %llu of %llu", m.name,
           static_cast<unsigned long long>(r.snap.processed_samples), static_cast<unsigned long long>(pairs));
     // File replay is paced at the declared complex rate (+-10% wall clock).
     CHECK(r.wall > 0.9 * secs && r.wall < 1.5 * secs + 0.5, "%s: replay wall %.2fs for %.2fs of IQ", m.name, r.wall, secs);

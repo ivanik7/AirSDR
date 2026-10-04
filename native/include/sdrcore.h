@@ -14,7 +14,8 @@
 extern "C" {
 #endif
 
-// ABI revision 2. Clients must check sdr_version() before using v2 symbols.
+// ABI revision 2 symbols. sdr_version() returns 3 since N2: ABI 3
+// (sdrcore_v3.h) only adds sdr_v3_*; v2 clients accept versions 2..3.
 // The original three symbols retain their ABI 1 signatures and ownership rules.
 SDRCORE_API uint32_t sdr_version(void);
 

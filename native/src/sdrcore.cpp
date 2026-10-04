@@ -39,12 +39,16 @@ bool valid_controls(const SdrV3Controls& c) {
       c.squelch_level_db > 0 || !std::isfinite(c.auto_squelch_offset_db) ||
       c.auto_squelch_offset_db < -10 || c.auto_squelch_offset_db > 20 ||
       !std::isfinite(c.volume) || c.volume < 0 || c.volume > 1 ||
-      c.bandwidth_hz < 100 || c.bandwidth_hz > c.sample_rate / 2) return false;
-  if (c.mode == SDR_V3_WFM && (c.bandwidth_hz < 100000 || c.bandwidth_hz > 300000)) return false;
-  if (c.mode == SDR_V3_NFM && (c.bandwidth_hz < 5000 || c.bandwidth_hz > 50000)) return false;
-  if (c.mode == SDR_V3_AM && (c.bandwidth_hz < 2000 || c.bandwidth_hz > 50000)) return false;
-  if ((c.mode == SDR_V3_USB || c.mode == SDR_V3_LSB || c.mode == SDR_V3_CW ||
-       c.mode == SDR_V3_DSB) && c.bandwidth_hz > 50000) return false;
+      c.bandwidth_hz < 50 || c.bandwidth_hz > c.sample_rate / 2) return false;
+  // Minimums follow RadioController.demodParams (lib/ui/radio_controller.dart),
+  // so every bandwidth the UI can send is accepted; maximums leave headroom.
+  if (c.mode == SDR_V3_WFM && (c.bandwidth_hz < 50000 || c.bandwidth_hz > 300000)) return false;
+  if (c.mode == SDR_V3_NFM && (c.bandwidth_hz < 1000 || c.bandwidth_hz > 50000)) return false;
+  if (c.mode == SDR_V3_AM && (c.bandwidth_hz < 1000 || c.bandwidth_hz > 50000)) return false;
+  if ((c.mode == SDR_V3_USB || c.mode == SDR_V3_LSB) &&
+      (c.bandwidth_hz < 500 || c.bandwidth_hz > 50000)) return false;
+  if (c.mode == SDR_V3_DSB && (c.bandwidth_hz < 1000 || c.bandwidth_hz > 50000)) return false;
+  if (c.mode == SDR_V3_CW && c.bandwidth_hz > 5000) return false;
   if (c.squelch == SDR_V3_SQUELCH_AUTO && (c.mode == SDR_V3_WFM || c.mode == SDR_V3_RAW)) return false;
   const int64_t edge = (c.mode == SDR_V3_USB || c.mode == SDR_V3_LSB) ?
       static_cast<int64_t>(c.bandwidth_hz) : static_cast<int64_t>(c.bandwidth_hz / 2);
@@ -167,6 +171,7 @@ struct SdrHandle {
     std::array<uint8_t, kBytes + 1> bytes{};
     size_t carry = 0;
     uint8_t phase = 0;
+    bool data_since_rewind = false;
     auto next_read = std::chrono::steady_clock::now();
     if (usb_adapter) {
       // Blocks until the adapter's stop() unblocks it (join() calls that
@@ -202,6 +207,19 @@ struct SdrHandle {
         }
         ssize_t n = read(fd, bytes.data() + carry, kBytes - carry);
         if (n < 0 && errno == EINTR) continue;
+        if (n == 0 && v3_active) {
+          // Radio sessions replay recordings in a loop like the Dart
+          // FileSource. A non-seekable stream that ends is lost input.
+          // An empty recording would spin; treat it like a lost stream.
+          if (data_since_rewind && lseek(fd, 0, SEEK_SET) == 0) {
+            carry = 0;
+            data_since_rewind = false;
+            continue;
+          }
+          std::lock_guard<std::mutex> lock(mutex);
+          async_error(SDR_IO_ERROR);
+          break;
+        }
         if (n <= 0) {
           if (n < 0) {
             std::lock_guard<std::mutex> lock(mutex);
@@ -212,6 +230,7 @@ struct SdrHandle {
           break;
         }
         length = static_cast<size_t>(n) + carry;
+        data_since_rewind = true;
         carry = length & 1;
         length -= carry;
         if (carry) {
@@ -324,7 +343,8 @@ struct SdrHandle {
   }
 };
 
-extern "C" uint32_t sdr_version(void) { return 2u; }
+// ABI 3: all sdr_v3_* symbols are implemented; ABI 2 symbols are unchanged.
+extern "C" uint32_t sdr_version(void) { return 3u; }
 
 extern "C" SdrHandle* sdr_create(void) {
   return new (std::nothrow) SdrHandle;
@@ -630,6 +650,9 @@ extern "C" int32_t sdr_v3_start(SdrHandle* h) {
       h->audio_sink = std::move(sink);
       h->v3_active = true;
       h->head = h->tail = h->queued = 0;
+      // A recording restarts from its beginning (Dart FileSource rewinds on
+      // stop). Sockets/pipes cannot seek and simply continue.
+      if (h->stats.source == SDR_FILE && h->fd >= 0) (void)lseek(h->fd, 0, SEEK_SET);
       h->producer_done = false;
       h->stopping = false;
       h->stats.state = SDR_RUNNING;
@@ -686,7 +709,9 @@ extern "C" int32_t sdr_v3_read_fft(SdrHandle* h, uint64_t after_sequence,
   if (!h || !out || out->size != sizeof(*out) || out->revision != SDR_V3_REVISION ||
       capacity > SDR_V3_MAX_FFT_WIDTH || (capacity && !bins)) return SDR_INVALID_ARGUMENT;
   std::lock_guard<std::mutex> lock(h->mutex);
-  if (!h->fft_unread || h->fft.sequence <= after_sequence ||
+  // Latest valid row newer than after_sequence, read or not (header contract);
+  // stop/close/control changes invalidate it by clearing fft_bins.
+  if (h->fft_bins.empty() || h->fft.sequence <= after_sequence ||
       h->snapshot.state != SDR_RUNNING) return SDR_V3_NO_DATA;
   if (capacity < h->fft.width) {
     out->width = h->fft.width;
