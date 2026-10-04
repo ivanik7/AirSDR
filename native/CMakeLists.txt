@@ -25,6 +25,13 @@ set_target_properties(sdrcore PROPERTIES
     VISIBILITY_INLINES_HIDDEN YES)
 target_include_directories(sdrcore PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
+# The per-sample DSP path cannot sustain 2.4 MS/s at -O0: Flutter debug
+# bundles (Linux runner and AGP debug APK) configure CMAKE_BUILD_TYPE=Debug and
+# then overflow the IQ ring (tens of millions of drops in minutes). Optimise
+# only the sample path in every configuration; the rest stays debuggable.
+set_source_files_properties(src/dsp/receiver.cpp PROPERTIES
+    COMPILE_OPTIONS "$<$<CONFIG:Debug>:-O2>")
+
 # Audio sink backends (null/WAV/ALSA); defines target sdrcore_audio and, for
 # standalone host builds, its CTest. See src/audio/audio_sink.h.
 include(src/audio/audio.cmake)
