@@ -82,7 +82,20 @@ class AndroidNativeDeviceSource implements NativeDeviceSource {
     _known.clear();
     for (final info in devices) {
       // Device kind is determined after permission by the provider's VID/PID.
-      _known[info.id] = NativeDevice(info, 0);
+      // ABI v3 cannot enable tuner AGC; do not show the Dart driver's AGC
+      // switch as if the native source accepted it.
+      _known[info.id] = NativeDevice(
+        SdrDeviceInfo(
+          id: info.id,
+          name: info.name,
+          sampleRates: info.sampleRates,
+          gain: info.gain,
+          hasAgc: false,
+          minFrequency: info.minFrequency,
+          maxFrequency: info.maxFrequency,
+        ),
+        0,
+      );
     }
     return _known.values.toList();
   }

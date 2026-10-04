@@ -34,6 +34,9 @@ class ReceptionService : Service() {
         private const val ID = 412
         private const val PROMOTION_TIMEOUT_MS = 10_000L
         private var current: ReceptionService? = null
+        // A stopped instance remains the Android Service until onDestroy. Do not deliver
+        // a new promotion to it: its teardown would release the new stream's resources.
+        private var retiring = false
 
         /** `promote` calls queued while the service process is still starting (no [current]
          * instance exists yet); drained by the fresh instance's PROMOTE onStartCommand. */
@@ -67,6 +70,10 @@ class ReceptionService : Service() {
         ) {
             val hz = call.argument<Int>("frequency") ?: 0
             val demod = call.argument<String>("mode") ?: ""
+            if (retiring) {
+                pendingPromotions += QueuedPromotion(hz, demod, callback)
+                return
+            }
             val svc = current
             if (svc != null) {
                 svc.promote(hz, demod, callback)
@@ -218,6 +225,10 @@ class ReceptionService : Service() {
         wakeLock = null
         // Mark the teardown clean so onDestroy (below) does not kill the process.
         teardownComplete = true
+        // This instance is going away: a later `promote` (fast Stop -> Start) must start a
+        // fresh service instance instead of promoting this one, whose pending onDestroy would
+        // otherwise drop foreground, wake lock and focus under a running native receiver.
+        retiring = true
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
     }
@@ -333,6 +344,23 @@ class ReceptionService : Service() {
         wakeLock?.let { if (it.isHeld) it.release() }
         wakeLock = null
         super.onDestroy()
+        if (retiring) {
+            retiring = false
+            val queued = pendingPromotions.firstOrNull()
+            if (queued != null) {
+                try {
+                    ContextCompat.startForegroundService(this,
+                        Intent(this, ReceptionService::class.java).setAction(PROMOTE)
+                            .putExtra("frequency", queued.frequency)
+                            .putExtra("mode", queued.mode))
+                } catch (e: Exception) {
+                    drainPendingPromotions().forEach {
+                        it.callback(ReceptionPromotion.Outcome.Failure(
+                            e.message ?: "restart after release failed"))
+                    }
+                }
+            }
+        }
     }
 
     private fun usbPlugin(): UsbSdrPlugin? =

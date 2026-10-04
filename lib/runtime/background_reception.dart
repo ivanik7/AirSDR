@@ -5,6 +5,7 @@ import 'dart:async';
 
 import 'package:flutter/services.dart';
 
+import '../native/native_radio_controller.dart';
 import '../ui/radio_controller.dart';
 import 'sdr_radio_controller.dart';
 
@@ -64,7 +65,7 @@ class BackgroundReception {
       _lastDetails = null;
       if (_active) {
         _active = false;
-        _enqueue('stop');
+        if (radio is! NativeRadioController) _enqueue('stop');
       }
       return;
     }
@@ -73,7 +74,7 @@ class BackgroundReception {
     if (!_active) {
       _active = true;
       _lastDetails = key;
-      _enqueue('start', details);
+      if (radio is! NativeRadioController) _enqueue('start', details);
     } else if (key != _lastDetails && _updateTimer == null) {
       _updateTimer = Timer(updateInterval, () {
         _updateTimer = null;
@@ -105,7 +106,9 @@ class BackgroundReception {
     radio.removeListener(_changed);
     _updateTimer?.cancel();
     channel.setMethodCallHandler(null);
-    if (_active) unawaited(channel.invokeMethod<void>('stop'));
+    if (_active && radio is! NativeRadioController) {
+      unawaited(channel.invokeMethod<void>('stop'));
+    }
     _disposed = true;
   }
 }
