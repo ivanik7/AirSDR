@@ -84,8 +84,10 @@ Flutter:
   `~/prj/docs/screens/l1-linux-receive.png`. With an invalid
   `SDRCORE_HOST_LIBRARY` the app shows `ошибка подключения` and the
   native-required message (`~/prj/docs/screens/l1-linux-native-required.png`).
-- `flutter analyze`: no issues. `flutter test`: full suite, see the card
-  report for counts.
+- `flutter analyze`: no issues. `flutter test` on master: 647 passed, 7
+  skipped. The pre-existing timer test `ConfigManager: load default, debounced
+  autosave, reload` times out intermittently under full-suite load. It fails the
+  same way on baseline 981ebed, without L1 (1 of 2 runs), and passes alone.
 
 ## Known gaps / not verified
 
@@ -98,8 +100,10 @@ Flutter:
 - Audible ALSA output is unverified: this VM has no playback PCM. Only the
   WAV/null backends were checked bit-exactly.
 - HackRF on the host path is untested (no device attached).
-- The Android build was not re-run on this card; the host-only sources are
-  excluded under `if(ANDROID)`. The phone was not touched, per scope.
+- Android: `flutter build apk --debug` on master succeeded. The arm64
+  `libsdrcore.so` exports only the ABI-2 `sdr_*` and JNI symbols, with no
+  `sdr_host_*`. The APK was not installed, and the phone was not touched, per
+  scope.
 - USB permissions: the user needs rw access to `/dev/bus/usb/*` (plugdev group
   plus the librtlsdr udev rule). Otherwise the app shows the
   `permissionDenied` state with that hint.
