@@ -10,6 +10,7 @@ import '../sdrpp/modules/sources/usb_source_factory.dart';
 import '../ui/radio_controller.dart';
 import '../usb/usb_device_provider.dart';
 import 'native_radio_api.dart';
+import 'native_radio_settings.dart';
 import 'sdr_core.dart';
 
 final class NativeDevice {
@@ -116,11 +117,31 @@ class NativeRadioController extends RadioController {
     this.audioSink = 'null',
     this.beforeStart,
     this.afterStop,
+    this.configDir,
   }) {
     if (Platform.isAndroid && (beforeStart == null || afterStop == null)) {
       throw StateError(
         'Android native reception requires service ownership hooks',
       );
+    }
+    final dir = configDir;
+    if (dir != null) {
+      // Synchronous load, before the first refreshDevices()/autostart, so
+      // the first native start already uses the persisted configuration.
+      final settings = loadNativeRadioSettings(dir);
+      _center = settings.tunedFrequencyHz;
+      _offset = 0;
+      _rate = settings.sampleRateHz;
+      _gain = settings.gainDb;
+      _mode = settings.mode;
+      _bandwidthByMode = Map<int, double>.from(settings.bandwidthByMode);
+      _bandwidth = _mode.params.clampBandwidth(
+        _bandwidthByMode[_mode.id] ?? _mode.params.defaultBandwidth,
+      );
+      _squelch = SquelchType.fromKey(settings.squelchKey);
+      _squelchLevel = settings.squelchLevelDb;
+      _autoOffset = settings.autoOffsetDb;
+      // _muted is never restored: every session starts muted.
     }
     _sub = source.changes.listen((_) => unawaited(refreshDevices()));
     unawaited(refreshDevices());
@@ -135,6 +156,10 @@ class NativeRadioController extends RadioController {
   final bool autoStart;
   final Duration pollInterval, fftInterval, discoveryInterval;
   final String audioSink;
+
+  /// Settings persistence directory. Null = in-memory only, no file IO
+  /// (used by tests and whenever the caller has no app support directory).
+  final String? configDir;
 
   /// Android: await foreground promotion and audio focus before v3_start.
   final Future<void> Function()? beforeStart;
@@ -163,12 +188,17 @@ class NativeRadioController extends RadioController {
 
   double _center = 100000000, _offset = 0, _rate = 2400000, _gain = 20;
   double _bandwidth = DemodMode.wfm.params.defaultBandwidth;
-  double _volume = .5, _squelchLevel = -50, _autoOffset = 0;
+  // Last bandwidth used in each mode (DemodMode.id -> Hz), restored by
+  // setMode instead of always resetting to the mode default.
+  Map<int, double> _bandwidthByMode = <int, double>{};
+  double _volume = 1.0, _squelchLevel = -50, _autoOffset = 0;
   int _fftWidth = 512;
   double _viewOffset = 0, _viewBandwidth = 2400000;
   DemodMode _mode = DemodMode.wfm;
   SquelchType _squelch = SquelchType.off;
   bool _muted = true, _agc = false;
+  Timer? _saveTimer;
+  static const Duration _saveDebounce = Duration(milliseconds: 500);
 
   Future<void> _queue(Future<void> Function() action) {
     final result = _chain.then((_) async {
@@ -180,6 +210,41 @@ class NativeRadioController extends RadioController {
 
   void _notify() {
     if (!_disposed) notifyListeners();
+  }
+
+  /// Debounces a settings-file write ([_saveDebounce] after the last
+  /// persisted-field change); never fires while [configDir] is null.
+  void _scheduleSave() {
+    if (configDir == null) return;
+    _saveTimer?.cancel();
+    _saveTimer = Timer(_saveDebounce, _flushSave);
+  }
+
+  /// Writes the settings file synchronously (temp + rename) and cancels any
+  /// pending debounce. Safe to call with no pending change or no [configDir].
+  void _flushSave() {
+    _saveTimer?.cancel();
+    _saveTimer = null;
+    final dir = configDir;
+    if (dir == null) return;
+    // The current mode's bandwidth always wins over whatever is cached in
+    // _bandwidthByMode, so a control rejection (which reverts _mode/_bandwidth
+    // but not necessarily the map) can never persist a stale value.
+    final bandwidthByMode = Map<int, double>.from(_bandwidthByMode)
+      ..[_mode.id] = _bandwidth;
+    saveNativeRadioSettingsSync(
+      dir,
+      NativeRadioSettings(
+        tunedFrequencyHz: _center + _offset,
+        modeId: _mode.id,
+        bandwidthByMode: bandwidthByMode,
+        sampleRateHz: _rate,
+        gainDb: _gain,
+        squelchKey: _squelch.key,
+        squelchLevelDb: _squelchLevel,
+        autoOffsetDb: _autoOffset,
+      ),
+    );
   }
 
   void _failure(Object error, {bool disconnected = false}) {
@@ -319,6 +384,7 @@ class NativeRadioController extends RadioController {
   Future<void> stop() {
     _userStopped = true;
     _link = DeviceLinkState.stoppedByUser;
+    _flushSave();
     _notify();
     return _queue(() async {
       await _release();
@@ -563,6 +629,7 @@ class NativeRadioController extends RadioController {
     _offset = vfoOffset;
     _squelchStatus = null;
     _applyControls();
+    _scheduleSave();
     _notify();
   }
 
@@ -571,13 +638,18 @@ class NativeRadioController extends RadioController {
   @override
   void setMode(DemodMode mode) {
     if (mode == _mode) return;
+    // Remember the outgoing mode's current bandwidth before switching.
+    _bandwidthByMode[_mode.id] = _bandwidth;
     _mode = mode;
-    _bandwidth = mode.params.defaultBandwidth;
+    _bandwidth = mode.params.clampBandwidth(
+      _bandwidthByMode[mode.id] ?? mode.params.defaultBandwidth,
+    );
     if (!autoSquelchAvailable && _squelch == SquelchType.auto) {
       _squelch = SquelchType.off;
     }
     _squelchStatus = null;
     _applyControls();
+    _scheduleSave();
     _notify();
   }
 
@@ -588,7 +660,9 @@ class NativeRadioController extends RadioController {
     final value = _mode.params.clampBandwidth(hz);
     if (value == _bandwidth) return;
     _bandwidth = value;
+    _bandwidthByMode[_mode.id] = value;
     _applyControls();
+    _scheduleSave();
     _notify();
   }
 
@@ -605,6 +679,7 @@ class NativeRadioController extends RadioController {
     _viewBandwidth = _viewBandwidth.clamp(1, hz).toDouble();
     _applyControls();
     _applyDisplay();
+    _scheduleSave();
     _notify();
   }
 
@@ -619,6 +694,7 @@ class NativeRadioController extends RadioController {
     if (!g.isFinite || g == _gain) return;
     _gain = g;
     _applyControls();
+    _scheduleSave();
     _notify();
   }
 
@@ -667,6 +743,7 @@ class NativeRadioController extends RadioController {
     _squelch = type;
     _squelchStatus = null;
     _applyControls();
+    _scheduleSave();
     _notify();
   }
 
@@ -681,6 +758,7 @@ class NativeRadioController extends RadioController {
     _autoOffset = value;
     _squelchStatus = null;
     _applyControls();
+    _scheduleSave();
     _notify();
   }
 
@@ -694,6 +772,7 @@ class NativeRadioController extends RadioController {
     if (value == _squelchLevel) return;
     _squelchLevel = value;
     _applyControls();
+    _scheduleSave();
     _notify();
   }
 
@@ -732,6 +811,7 @@ class NativeRadioController extends RadioController {
     _discovery?.cancel();
     _snapshotTimer?.cancel();
     _fftTimer?.cancel();
+    _flushSave();
     unawaited(_sub?.cancel());
     // Synchronous native teardown must precede handle destruction. The async
     // Android provider closure is chained after that; service owner owns final fd.
