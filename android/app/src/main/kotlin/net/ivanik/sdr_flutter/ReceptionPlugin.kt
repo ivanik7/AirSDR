@@ -63,6 +63,7 @@ class ReceptionPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHa
         val ctx = context ?: return result.error("NO_CONTEXT", "Engine detached", null)
         try {
             when (call.method) {
+                "sdkInt" -> result.success(Build.VERSION.SDK_INT)
                 "start" -> {
                     requestNotificationPermission()
                     ContextCompat.startForegroundService(ctx,
@@ -81,6 +82,17 @@ class ReceptionPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHa
                         .setAction(ReceptionService.STOP_REQUEST))
                     result.success(null)
                 }
+                "promote" -> {
+                    requestNotificationPermission()
+                    ReceptionService.requestPromotion(ctx, call) { outcome ->
+                        when (outcome) {
+                            is ReceptionPromotion.Outcome.Success -> result.success(null)
+                            is ReceptionPromotion.Outcome.Failure ->
+                                result.error("PROMOTION_FAILED", outcome.reason, null)
+                        }
+                    }
+                }
+                "release" -> ReceptionService.requestRelease { result.success(null) }
                 else -> result.notImplemented()
             }
         } catch (e: Exception) {

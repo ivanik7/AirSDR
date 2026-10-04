@@ -2,17 +2,16 @@
 //
 // sdr_flutter entry point: the real SDR stack (docs/10-architecture.md).
 //
-//   UI isolate:  SdrRadioController — devices from UsbDeviceProvider (RTL-SDR / HackRF via the
+//   Dart fallback: SdrRadioController — devices from UsbDeviceProvider (RTL-SDR / HackRF via the
 //                Android USB plugin) and SynthDeviceProvider (built-in test signal)
 //   DSP isolate: DspEngine (SDR++ signal path + radio + audio), sources from SourceRegistry
 //                + registerDeviceSources ('usb' → rtl_sdr_source / hackrf_source).
 //
 // DemoRadioController (lib/ui/demo_radio_controller.dart) is only used by UI tests.
 //
-// Desktop Linux (L1 dev/test target) uses the native core instead:
-// HostIqRadioController (libsdrcore.so + host USB layer), or the honest
-// NativeRequiredRadioController when the library cannot be loaded. The Dart
-// receive engine is not used on Linux.
+// N2 defaults to ABI 3 native receive/DSP/audio on Linux and Android API 26+.
+// The Dart engine remains selectable until N5, and is the Android fallback on
+// API 24/25 or when the v3 core is unavailable. Linux reports a missing core.
 
 import 'dart:ffi';
 import 'dart:io';
@@ -24,6 +23,7 @@ import 'package:path_provider/path_provider.dart';
 import 'native/sdr_core.dart';
 import 'native/native_radio_api.dart';
 import 'native/native_radio_controller.dart';
+import 'native/native_service_lifecycle.dart';
 import 'platform/linux/host_iq_radio_controller.dart';
 import 'platform/linux/native_required_radio_controller.dart';
 import 'runtime/device_sources.dart';
@@ -47,26 +47,67 @@ Future<void> main() async {
   }
   final RadioController controller = Platform.isLinux
       ? createLinuxRadioController(configDir: configDir)
+      : Platform.isAndroid
+      ? await createAndroidRadioController(configDir: configDir)
       : createRadioController(configDir: configDir);
   runApp(SdrApp(controller: controller));
 }
 
-/// Receive engine requested for this run: `dart` (default) or `native`.
+/// Receive engine requested for this run: `native` (default) or `dart`.
 /// The environment wins over the compile-time define so Linux QA can switch
 /// engines without rebuilding.
 String requestedEngine({Map<String, String>? environment}) {
-  const defined = String.fromEnvironment('SDR_ENGINE', defaultValue: 'dart');
+  const defined = String.fromEnvironment('SDR_ENGINE', defaultValue: 'native');
   final env = (environment ?? Platform.environment)['SDR_ENGINE'];
   final value = (env == null || env.isEmpty ? defined : env).toLowerCase();
-  return value == 'native' ? 'native' : 'dart';
+  return value == 'dart' ? 'dart' : 'native';
+}
+
+/// AAudio is available from Android 8. Keep the working Dart receiver on older
+/// devices and when the complete v3 library/service contract is unavailable.
+bool androidNativeAvailable({required int sdkInt, required int abi}) =>
+    sdkInt >= 26 && abi == nativeRadioAbi;
+
+Future<RadioController> createAndroidRadioController({
+  String? configDir,
+}) async {
+  if (requestedEngine() == 'dart') {
+    return createRadioController(configDir: configDir);
+  }
+  try {
+    const channel = MethodChannel('sdr/background');
+    final sdk = await channel.invokeMethod<int>('sdkInt');
+    final library = openSdrCoreLibrary();
+    final version = library.lookupFunction<Uint32 Function(), int Function()>(
+      'sdr_version',
+    )();
+    if (!androidNativeAvailable(sdkInt: sdk ?? 0, abi: version)) {
+      debugPrint(
+        'Native receiver unavailable (Android SDK $sdk, ABI $version); using Dart',
+      );
+      return createRadioController(configDir: configDir);
+    }
+    final api = FfiNativeRadioApi(library);
+    final service = NativeServiceLifecycle(channel: channel);
+    late NativeRadioController controller;
+    controller = NativeRadioController(
+      api: api,
+      source: AndroidNativeDeviceSource(UsbDeviceProvider()),
+      audioSink: 'aaudio',
+      configDir: configDir,
+      beforeStart: () => service.promote(controller),
+      afterStop: service.release,
+    );
+    return controller;
+  } catch (e) {
+    debugPrint('Native receiver unavailable ($e); using Dart');
+    return createRadioController(configDir: configDir);
+  }
 }
 
 /// Linux desktop: native host engine, or an honest "native required" state.
 RadioController createLinuxRadioController({String? configDir}) {
-  // The Dart DSP engine (HostIqRadioController over ABI 2 IQ) stays the
-  // default until comparative Linux-host acceptance of the N2 engine. The
-  // native ABI 3 engine is opt-in: SDR_ENGINE=native in the environment or
-  // --dart-define=SDR_ENGINE=native.
+  // Keep the ABI 2/Dart path explicitly selectable until N5 removes it.
   if (requestedEngine() == 'native') {
     try {
       final library = openSdrCoreLibrary();
@@ -88,6 +129,7 @@ RadioController createLinuxRadioController({String? configDir}) {
         api: api,
         source: HostNativeDeviceSource(api),
         audioSink: sink == null || sink.isEmpty ? 'null' : sink,
+        configDir: configDir,
       );
     } catch (e) {
       return NativeRequiredRadioController(reason: '$e');

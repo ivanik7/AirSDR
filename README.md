@@ -1,5 +1,13 @@
 # AirSDR
 
+N2 update: ABI 3 native DSP/audio is the default receiver on Linux and on
+Android API 26+ when the v3 library loads. `SDR_ENGINE=dart` selects the
+preserved Dart engine until N5; Android API 24/25 or an unavailable v3 core
+also use the working Dart engine. Linux requires the native core by default.
+The legacy architecture description below documents the Dart fallback, not
+the default N2 signal path. See `docs/native-n2-adr.md` and
+`STATUS-n2-integration.md` for the native pipeline, test evidence and gaps.
+
 Карманный SDR-приёмник для Android с RTL-SDR и HackRF через USB OTG. Модули
 [SDR++](https://github.com/AlexandreRouma/SDRPlusPlus) портированы на Dart близко к оригиналу
 (1:1 по структуре). Этот рабочий путь сохраняется на время поэтапного перехода на C++/NDK

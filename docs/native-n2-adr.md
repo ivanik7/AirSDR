@@ -171,3 +171,52 @@ arm64 release, ABI exports and 16 KiB page alignment. Android-only
 ForegroundService, AAudio and fd handoff need unit/host tests; actual phone
 behavior is **unverified** in N2 without a separate phone-check task and does
 not block Linux acceptance. The Dart receiver remains available until N5.
+
+## N2 close-out: Android wiring and default engine (t_58a4efeb)
+
+Decided by the N2 lead before delegating the remaining glue; workers must not
+change these shapes.
+
+Engine selection (`lib/main.dart`). `SDR_ENGINE` (environment wins over
+`--dart-define`) now defaults to **`native`**; `dart` selects the old engine
+until N5 deletes it. Linux: native v3, or the honest native-required state if
+the v3 library cannot load. Android: native when API level >= 26 (AAudio) and
+`sdr_version() == 3`; otherwise the Dart engine (a real receiver, not a fake),
+with the reason logged. The API level comes from `sdkInt` on `sdr/background`
+(returns `Build.VERSION.SDK_INT`). Only one engine object exists per process,
+so the two never open the same USB device. On Android the native engine takes
+the USB fd from the existing Dart-owner `open`/`close` of `UsbSdrPlugin`
+(`AndroidNativeDeviceSource`); `sdr_v2_open_usb` dup()s it, and the Java
+connection stays open until the controller has destroyed the handle.
+
+Android service handshake on MethodChannel `sdr/background` (Dart -> Kotlin):
+- `promote {frequency:int, mode:String}`: start `ReceptionService`, and reply
+  `success(null)` **only after** `startForeground`, the partial wake lock and
+  `AUDIOFOCUS_GAIN` are all held. Any failure, or a Stop already in progress,
+  replies `error("PROMOTION_FAILED", reason)` and leaves no foreground
+  service. A second `promote` while promoted succeeds immediately. This is
+  `NativeRadioController.beforeStart`; `sdr_v3_start` runs only after success.
+- `release`: the native handle is already stopped/closed and the USB fd
+  released by Dart. The service drops focus, wake lock and foreground and
+  stops itself **without** calling `stopReception` back. Idempotent; replies
+  `success(null)` immediately, also when no service runs. This is `afterStop`.
+- `update` is unchanged. `start`/`stop` remain the Dart-engine protocol.
+- Notification Stop, focus loss and owned USB detach keep using the existing
+  ordered teardown (Kotlin -> `stopReception` -> controller `stop()` ->
+  `release`). A `release` arriving while that teardown runs replies success at
+  once and does nothing else (the teardown awaits the `stopReception` reply,
+  which itself awaits `release`, so waiting would deadlock); the teardown then
+  finishes normally.
+- `BackgroundReception` sends `start`/`stop` only for controllers that do not
+  own their service lifecycle; for `NativeRadioController` it sends only
+  `update` and still handles `stopReception`/`serviceFailed`/`openReceive`.
+
+Persistence parity (`NativeRadioController(configDir: ...)`): file
+`native_radio.json` in the app support directory holds tuned frequency,
+mode, per-mode bandwidth, sample rate, gain, squelch type/level/auto offset.
+First run without it migrates from the Dart engine files (`config.json`
+frequency + `vfoOffsets.Radio`, `radio_config.json` selected demod and
+per-demod settings) and from the L1 `linux_host_radio.json`; missing or
+corrupt files fall back to defaults and never throw. Mute is never restored
+(every session starts muted, as in the Dart engine). Volume is fixed at 1.0
+(the UI has no volume control; the Dart engine also forces 1.0).

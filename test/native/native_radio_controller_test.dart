@@ -1,12 +1,17 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import 'dart:async';
+import 'dart:convert';
 import 'dart:ffi';
 import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter/services.dart';
+import 'package:sdr_flutter/runtime/background_reception.dart';
 import 'package:sdr_flutter/native/native_radio_api.dart';
 import 'package:sdr_flutter/native/native_radio_controller.dart';
+import 'package:sdr_flutter/native/native_service_lifecycle.dart';
+import 'package:sdr_flutter/native/native_radio_settings.dart';
 import 'package:sdr_flutter/native/sdr_core.dart';
 import 'package:sdr_flutter/ui/radio_controller.dart';
 
@@ -202,7 +207,7 @@ void main() {
     radio = null;
     await source.changesController.close();
   });
-  NativeRadioController create({bool autoStart = true}) {
+  NativeRadioController create({bool autoStart = true, String? configDir}) {
     return radio = NativeRadioController(
       api: api,
       source: source,
@@ -210,6 +215,7 @@ void main() {
       pollInterval: const Duration(milliseconds: 20),
       fftInterval: const Duration(milliseconds: 35),
       discoveryInterval: const Duration(seconds: 30),
+      configDir: configDir,
     );
   }
 
@@ -351,6 +357,50 @@ void main() {
     },
   );
 
+  test('Android handshake orders promotion, start, native close, fd close, release', () async {
+    TestWidgetsFlutterBinding.ensureInitialized();
+    const channel = MethodChannel('sdr/background');
+    final events = <String>[];
+    final ready = Completer<void>();
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (call) async {
+          events.add(call.method);
+          if (call.method == 'promote') await ready.future;
+          return null;
+        });
+    final service = NativeServiceLifecycle(channel: channel);
+    late NativeRadioController r;
+    r = radio = NativeRadioController(
+      api: api,
+      source: source,
+      beforeStart: () => service.promote(r),
+      afterStop: service.release,
+      autoStart: false,
+    );
+    final bridge = BackgroundReception(r, channel: channel);
+    try {
+      await until(() => r.devices.isNotEmpty);
+      final starting = r.start();
+      await until(() => events.contains('promote'));
+      expect(api.calls, isNot(contains('start')));
+      ready.complete();
+      await starting;
+      expect(r.running, isTrue);
+      expect(events, ['promote']);
+      await r.stop();
+      expect(events, ['promote', 'release']);
+      expect(
+        api.calls,
+        containsAllInOrder(['start', 'stop', 'close', 'destroy']),
+      );
+      expect(source.calls, ['open', 'close']);
+    } finally {
+      bridge.dispose();
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, null);
+    }
+  });
+
   test(
     'sticky error stops and releases; attach is required for auto-retry',
     () async {
@@ -369,4 +419,152 @@ void main() {
       expect(api.calls.where((c) => c == 'create').length, count);
     },
   );
+
+  group('settings persistence', () {
+    late Directory tempDir;
+    setUp(() {
+      tempDir = Directory.systemTemp.createTempSync(
+        'native_radio_controller_test_',
+      );
+    });
+    tearDown(() {
+      tempDir.deleteSync(recursive: true);
+    });
+
+    test('default volume (1.0) reaches the native controls', () async {
+      final r = create();
+      await until(() => r.running);
+      expect(r.volume, 1.0);
+      expect(api.applied.single.volume, 1.0);
+    });
+
+    test('configDir: null means in-memory only, no file written', () async {
+      final r = create();
+      await until(() => r.running);
+      r.setGain(35);
+      await Future<void>.delayed(const Duration(milliseconds: 600));
+      expect(File('${tempDir.path}/native_radio.json').existsSync(), isFalse);
+    });
+
+    test(
+      'constructor loads persisted settings before the first start',
+      () async {
+        saveNativeRadioSettingsSync(
+          tempDir.path,
+          NativeRadioSettings(
+            tunedFrequencyHz: 101300000,
+            modeId: DemodMode.nfm.id,
+            bandwidthByMode: {DemodMode.nfm.id: 25000},
+            sampleRateHz: 2400000,
+            gainDb: 33,
+            squelchKey: SquelchType.manual.key,
+            squelchLevelDb: -40,
+            autoOffsetDb: 3,
+          ),
+        );
+        final r = create(configDir: tempDir.path);
+        await until(() => r.running);
+        expect(r.centerFrequency, 101300000);
+        expect(r.vfoOffset, 0);
+        expect(r.mode, DemodMode.nfm);
+        expect(r.bandwidth, 25000);
+        expect(r.gain, 33);
+        expect(r.squelchType, SquelchType.manual);
+        expect(r.squelchLevel, -40);
+        expect(r.autoSquelchOffset, 3);
+        // Every session starts muted regardless of what was saved.
+        expect(r.muted, isTrue);
+        expect(api.applied.single.centerHz, 101300000);
+        expect(api.applied.single.mode, DemodMode.nfm.id);
+        expect(api.applied.single.bandwidthHz, 25000);
+      },
+    );
+
+    test('mute is never restored even when the file says unmuted', () async {
+      saveNativeRadioSettingsSync(tempDir.path, NativeRadioSettings.defaults());
+      // Manually write a file with an (unsupported, ignored) muted=false hint
+      // to document intent: the model has no muted field at all, so a
+      // handcrafted file with one must still produce a muted session.
+      File('${tempDir.path}/native_radio.json')
+          .writeAsStringSync('{"version":1,"muted":false,"modeId":1}');
+      final r = create(configDir: tempDir.path);
+      await until(() => r.running);
+      expect(r.muted, isTrue);
+    });
+
+    test(
+      'corrupt native_radio.json falls back to defaults, never throws',
+      () async {
+        File('${tempDir.path}/native_radio.json')
+            .writeAsStringSync('{not valid json');
+        expect(() => create(configDir: tempDir.path), returnsNormally);
+        final r = radio!;
+        await until(() => r.running);
+        expect(r.mode, DemodMode.wfm);
+      },
+    );
+
+    test(
+      'per-mode bandwidth is restored when switching back to a mode',
+      () async {
+        final r = create(configDir: tempDir.path);
+        await until(() => r.running);
+        r.setMode(DemodMode.nfm);
+        r.setBandwidth(30000);
+        r.setMode(DemodMode.usb);
+        r.setBandwidth(2700);
+        r.setMode(DemodMode.nfm);
+        expect(r.bandwidth, 30000);
+        r.setMode(DemodMode.usb);
+        expect(r.bandwidth, 2700);
+      },
+    );
+
+    test('writes are debounced and flushed synchronously on stop()', () async {
+      final r = create(configDir: tempDir.path);
+      await until(() => r.running);
+      r.setGain(35);
+      // Immediately after the setter, no write has happened yet (debounced).
+      expect(
+        File('${tempDir.path}/native_radio.json').existsSync()
+            ? jsonDecode(
+                File('${tempDir.path}/native_radio.json').readAsStringSync(),
+              )['gainDb']
+            : null,
+        isNot(35),
+      );
+      await r.stop();
+      final data = jsonDecode(
+        File('${tempDir.path}/native_radio.json').readAsStringSync(),
+      );
+      expect(data['gainDb'], 35);
+    });
+
+    test('writes are flushed synchronously on dispose()', () async {
+      final r = create(configDir: tempDir.path);
+      await until(() => r.running);
+      r.setGain(37);
+      r.dispose();
+      radio = null; // already disposed; avoid double dispose in tearDown
+      final data = jsonDecode(
+        File('${tempDir.path}/native_radio.json').readAsStringSync(),
+      );
+      expect(data['gainDb'], 37);
+    });
+
+    test('a rejected control is not persisted; rolled-back values are saved instead', () async {
+      final r = create(configDir: tempDir.path);
+      await until(() => r.running);
+      r.setGain(30); // accepted while running; becomes the new baseline
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+      api.rejectControls = true;
+      r.setGain(40); // rejected by the fake API; rolls back to 30
+      expect(r.gain, 30);
+      await r.stop(); // flush; the persisted gain must be the rolled-back one
+      final data = jsonDecode(
+        File('${tempDir.path}/native_radio.json').readAsStringSync(),
+      );
+      expect(data['gainDb'], 30);
+    });
+  });
 }
