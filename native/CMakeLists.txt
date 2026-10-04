@@ -88,6 +88,15 @@ if(NOT ANDROID AND PROJECT_IS_TOP_LEVEL)
     target_compile_features(sdrcore_rtl_gain_list_test PRIVATE cxx_std_17)
     target_link_libraries(sdrcore_rtl_gain_list_test PRIVATE sdrcore_rtlsdr sdrcore_hackrf sdrcore_audio Threads::Threads)
     add_test(NAME sdrcore_rtl_gain_list COMMAND sdrcore_rtl_gain_list_test)
+    add_executable(sdrcore_live_retune_test
+        tests/live_retune_test.cpp
+        src/dsp/receiver.cpp
+        src/usb_rtlsdr_adapter.cpp
+        src/usb_hackrf_adapter.cpp)
+    target_include_directories(sdrcore_live_retune_test PRIVATE include)
+    target_compile_features(sdrcore_live_retune_test PRIVATE cxx_std_17)
+    target_link_libraries(sdrcore_live_retune_test PRIVATE sdrcore_rtlsdr sdrcore_hackrf sdrcore_audio Threads::Threads)
+    add_test(NAME sdrcore_live_retune COMMAND sdrcore_live_retune_test)
     add_executable(sdrcore_host_rtl_gain_test tests/host_rtl_gain_test.c)
     target_link_libraries(sdrcore_host_rtl_gain_test PRIVATE sdrcore)
     add_test(NAME sdrcore_host_rtl_gain COMMAND sdrcore_host_rtl_gain_test)

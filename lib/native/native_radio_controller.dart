@@ -5,6 +5,8 @@ import 'dart:async';
 import 'dart:ffi';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart' show debugPrint;
+
 import '../ui/radio_controller.dart';
 import 'native_radio_api.dart';
 import 'native_radio_settings.dart';
@@ -589,7 +591,21 @@ class NativeRadioController extends RadioController {
     if (h == null) return;
     try {
       final desired = _controls();
+      final timer = Stopwatch()..start();
       api.controls(h, desired);
+      timer.stop();
+      final previous = _appliedControls;
+      if (previous != null &&
+          (previous.centerHz != desired.centerHz ||
+              previous.gainTenthsDb != desired.gainTenthsDb ||
+              previous.sampleRate != desired.sampleRate)) {
+        // Synchronous on the UI isolate: keep hardware retune cost visible
+        // in logcat (tool/retune_jank/logcat_retune_stalls.py).
+        debugPrint(
+          'sdr: hardware controls ${timer.elapsedMicroseconds} us '
+          '(center ${desired.centerHz} Hz)',
+        );
+      }
       _appliedControls = desired;
       final s = api.snapshot(h);
       _generation = s.generation;

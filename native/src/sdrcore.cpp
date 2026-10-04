@@ -83,6 +83,12 @@ struct SdrHandle {
   std::array<size_t, kSlots> lengths{};
   size_t head = 0, tail = 0, queued = 0;
   bool producer_done = false;
+  // Live retune (sdr_v3_set_controls without a stream restart): input bytes
+  // still to discard because they were captured before the new tune (guarded
+  // by mutex), and an epoch that invalidates any ring block dequeued before
+  // the retune (written with dsp_mutex and mutex both held).
+  size_t discard_bytes = 0;
+  uint64_t ring_epoch = 0;
   int fd = -1;  // exclusively owned duplicate; Java/FFI retains original
   std::unique_ptr<UsbRxAdapter> usb_adapter;  // set only for SDR_RTLSDR/HACKRF
   bool owns_usb_claim = false;
@@ -148,8 +154,17 @@ struct SdrHandle {
     // consumer and the other sources use unsigned CU8.
     length &= ~size_t{1};
     for (size_t offset = 0; offset < length;) {
-      const size_t chunk = std::min(kBytes, length - offset);
       std::lock_guard<std::mutex> lock(mutex);
+      if (discard_bytes) {
+        // Pre-retune IQ still in flight in the driver's USB transfers:
+        // counted as input, never demodulated or displayed.
+        const size_t skip = std::min(discard_bytes, length - offset);
+        discard_bytes -= skip;
+        stats.input_samples += skip / 2;
+        offset += skip;
+        continue;
+      }
+      const size_t chunk = std::min(kBytes, length - offset);
       stats.input_samples += chunk / 2;
       if (queued == kSlots) {
         stats.dropped_samples += chunk / 2;
@@ -273,6 +288,7 @@ struct SdrHandle {
       if (!queued && producer_done) return;
       const size_t length = lengths[head];
       const bool dsp = v3_active;
+      const uint64_t epoch = ring_epoch;
       if (dsp) std::memcpy(block.data(), ring[head].data(), length);
       else for (size_t i = 0; i < length; ++i)
         stats.checksum = (stats.checksum ^ ring[head][i]) * kFnvPrime;
@@ -281,8 +297,14 @@ struct SdrHandle {
       if (!dsp) { stats.processed_samples += length / 2; continue; }
       lock.unlock();
       sdrcore::AudioSinkStats audio_stats;
+      uint64_t processed_sequence = 0;
       try {
+        // ring_epoch and control_sequence are written only with both
+        // dsp_mutex and mutex held, so reading them under dsp_mutex is safe.
         std::lock_guard<std::mutex> dsp_lock(dsp_mutex);
+        // A block dequeued before a live retune carries the old tune.
+        if (epoch != ring_epoch) continue;
+        processed_sequence = snapshot.control_sequence;
         receiver->process(block.data(), length, result);
         if (!result.audio.empty())
           audio_sink->write(result.audio.data(), result.audio.size() / 2);
@@ -293,17 +315,22 @@ struct SdrHandle {
         return;
       }
       lock.lock();
+      // A control change committed between process() and here must not
+      // stamp a row computed under the previous controls as current.
+      const bool current = processed_sequence == snapshot.control_sequence;
       stats.processed_samples += length / 2;
-      snapshot.squelch_metric_db = result.signal_db;
-      snapshot.squelch_threshold_db = result.squelch_threshold_db;
-      snapshot.squelch_ready = result.squelch_ready;
-      snapshot.squelch_open = result.squelch_open;
+      if (current) {
+        snapshot.squelch_metric_db = result.signal_db;
+        snapshot.squelch_threshold_db = result.squelch_threshold_db;
+        snapshot.squelch_ready = result.squelch_ready;
+        snapshot.squelch_open = result.squelch_open;
+      }
       snapshot.audio_frames = audio_base_frames + audio_stats.frames_written;
       snapshot.audio_dropped_frames = audio_base_dropped + audio_stats.frames_dropped;
       snapshot.audio_nonsilent_frames = audio_base_nonsilent + audio_stats.nonsilent_frames;
       if (audio_stats.last_error && snapshot.state != SDR_ERROR)
         async_error(audio_stats.last_error);
-      if (!result.fft.empty() && snapshot.state == SDR_RUNNING) {
+      if (current && !result.fft.empty() && snapshot.state == SDR_RUNNING) {
         if (fft_unread) ++snapshot.fft_overwrites;
         fft_bins = result.fft;
         fft = SdrV3Fft{};
@@ -464,6 +491,7 @@ extern "C" int32_t sdr_v2_start(SdrHandle* h) {
     if (h->stats.state != SDR_OPEN || h->v3_active) return SDR_INVALID_STATE;
     if (h->usb_adapter && h->stats.sample_rate == 0) return SDR_INVALID_STATE;
     h->head = h->tail = h->queued = 0;
+    h->discard_bytes = 0;
     h->producer_done = false;
     h->stopping = false;
     h->stats.state = SDR_RUNNING;
@@ -528,17 +556,77 @@ extern "C" int32_t sdr_v2_stats(SdrHandle* h, SdrStats* out) {
 extern "C" int32_t sdr_v3_set_controls(SdrHandle* h, const SdrV3Controls* in) {
   if (!h || !in || !valid_controls(*in)) return SDR_INVALID_ARGUMENT;
   if (in->agc) return SDR_UNSUPPORTED;  // Hardware AGC is not implemented by the v2 adapters.
-  bool restart = false;
+  bool restart = false, live = false;
+  bool live_freq = false, live_gain = false;
   {
     std::lock_guard<std::mutex> lock(h->mutex);
     if (h->stats.state != SDR_OPEN && h->stats.state != SDR_RUNNING) return SDR_INVALID_STATE;
     if (h->stats.state == SDR_RUNNING && !h->v3_active) return SDR_INVALID_STATE;
     if (h->stats.source == SDR_RTLSDR && in->center_frequency_hz > UINT32_MAX)
       return SDR_UNSUPPORTED;
-    restart = h->stats.state == SDR_RUNNING &&
-        (h->stats.frequency_hz != in->center_frequency_hz ||
-         h->stats.sample_rate != in->sample_rate ||
-         h->stats.gain_tenths_db != in->gain_tenths_db);
+    live_freq = h->stats.frequency_hz != in->center_frequency_hz;
+    live_gain = h->stats.gain_tenths_db != in->gain_tenths_db;
+    const bool hardware = live_freq || live_gain ||
+        h->stats.sample_rate != in->sample_rate;
+    // LO/gain changes on a device that tunes while streaming are applied in
+    // place (as SDR++ does): a full restart cancels USB transfers, joins both
+    // threads and closes/reopens the audio device, which took ~420 ms per
+    // retune on Android and blocked the calling UI thread. Sample-rate
+    // changes still restart because they reshape the whole DSP chain.
+    live = h->stats.state == SDR_RUNNING && hardware && h->v3_configured &&
+        h->usb_adapter && h->usb_adapter->supports_live_tuning() &&
+        h->stats.sample_rate == in->sample_rate;
+    restart = h->stats.state == SDR_RUNNING && hardware && !live;
+  }
+  if (live) {
+    // Serialized by the caller with every other control/lifecycle call, so
+    // the adapter cannot be stopped or closed underneath. No core lock is
+    // held: the USB event thread may need h->mutex inside push() before a
+    // synchronous control transfer issued here can complete.
+    int rc = SDR_OK;
+    if (live_freq) rc = h->usb_adapter->set_frequency(in->center_frequency_hz);
+    if (rc == SDR_OK && live_gain) rc = h->usb_adapter->set_gain(in->gain_tenths_db);
+    try {
+      std::lock_guard<std::mutex> dsp_lock(h->dsp_mutex);
+      std::lock_guard<std::mutex> lock(h->mutex);
+      if (rc != SDR_OK) {
+        // The hardware may be partially retuned; never advertise the old
+        // tune as still valid after that failure.
+        h->async_error(rc);
+        return rc;
+      }
+      if (h->stats.state != SDR_RUNNING) {
+        // The stream died asynchronously during the retune. Keep the error
+        // state; the requested tune is not applied.
+        return h->stats.last_error ? h->stats.last_error : SDR_INVALID_STATE;
+      }
+      // Drop IQ captured before the new tune: whatever is queued in the ring
+      // or in a block the consumer already dequeued, plus the driver's
+      // in-flight transfers that will still be delivered.
+      h->head = h->tail = h->queued = 0;
+      h->discard_bytes = h->usb_adapter->retune_settle_bytes();
+      ++h->ring_epoch;
+      h->receiver->configure(*in, h->display);
+      h->receiver->reset();
+      h->controls = *in;
+      h->stats.frequency_hz = in->center_frequency_hz;
+      h->stats.gain_tenths_db = in->gain_tenths_db;
+      h->snapshot.center_frequency_hz = in->center_frequency_hz;
+      h->snapshot.vfo_offset_hz = in->vfo_offset_hz;
+      h->snapshot.mode = in->mode;
+      h->snapshot.bandwidth_hz = in->bandwidth_hz;
+      h->snapshot.gain_tenths_db = in->gain_tenths_db;
+      h->snapshot.squelch_ready = 0;
+      h->snapshot.squelch_open = 0;
+      ++h->snapshot.control_sequence;
+      h->fft_unread = false;
+      h->fft_bins.clear();
+    } catch (...) {
+      std::lock_guard<std::mutex> lock(h->mutex);
+      h->async_error(SDR_INTERNAL_ERROR);
+      return SDR_INTERNAL_ERROR;
+    }
+    return SDR_OK;
   }
   if (restart) {
     const int rc = sdr_v3_stop(h);
@@ -671,6 +759,7 @@ extern "C" int32_t sdr_v3_start(SdrHandle* h) {
       h->audio_sink = std::move(sink);
       h->v3_active = true;
       h->head = h->tail = h->queued = 0;
+      h->discard_bytes = 0;
       // A recording restarts from its beginning (Dart FileSource rewinds on
       // stop). Sockets/pipes cannot seek and simply continue.
       if (h->stats.source == SDR_FILE && h->fd >= 0) (void)lseek(h->fd, 0, SEEK_SET);

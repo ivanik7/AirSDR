@@ -117,8 +117,13 @@ typedef struct SdrV3Fft {
 // claim a physical USB device.
 // set_controls: OPEN or RUNNING; validates all fields before committing. With
 // unchanged LO/rate/gain, a RUNNING VFO/mode/bandwidth/squelch/audio change
-// reconfigures DSP without USB retune. Hardware changes serialize an internal
-// stop -> configure -> restart before returning. On failure report the error;
+// reconfigures DSP without USB retune. On a RUNNING session whose USB driver
+// tunes while streaming (RTL-SDR), an LO and/or gain change with an unchanged
+// sample rate is applied live: the stream, audio sink and stream_generation
+// are kept, queued pre-retune IQ is discarded, and control_sequence advances.
+// Other hardware changes (sample rate; LO/gain on HackRF and non-USB sources)
+// serialize an internal stop -> configure -> restart before returning. On
+// failure report the error;
 // snapshot reflects actual applied state, never a fictitious requested tune.
 // Any unrecoverable partial hardware change leaves SDR_ERROR, not RUNNING.
 SDRCORE_API int32_t sdr_v3_set_controls(SdrHandle* handle,
