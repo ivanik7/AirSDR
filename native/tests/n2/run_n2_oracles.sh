@@ -16,8 +16,7 @@
 #   --rtl-baseline-seconds N  Run `rtl_test -s 2400000` for N s first (default
 #                     130) and compare native drops with its lost-bytes count.
 #
-# Outputs (default build/n2-oracle/): n2_oracle, libsdrcore.so (copy or
-# symlink used by test/n2_oracle/native_parity_test.dart), suite.json,
+# Outputs (default build/n2-oracle/): n2_oracle, libsdrcore.so, suite.json,
 # hw.json, rtl_test.log, n2_hw_wfm.wav.
 #
 # Exit: 0 all PASS; 1 any FAIL; 2 only MISSING hooks; 3 setup error.
@@ -96,5 +95,5 @@ fi
 
 echo
 echo "Reports: $out/suite.json $([ "$hw" = 1 ] && echo "$out/hw.json")"
-echo "Dart parity: N2_ORACLE_ARGS='${allow[*]}' flutter test test/n2_oracle"
+echo "Native-only oracle suite complete (historical Dart parity tests retired in N5)"
 exit "$status"

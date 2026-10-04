@@ -5,13 +5,11 @@ import 'dart:async';
 import 'dart:ffi';
 import 'dart:io';
 
-import '../runtime/device_sources.dart';
-import '../sdrpp/modules/sources/usb_source_factory.dart';
 import '../ui/radio_controller.dart';
-import '../usb/usb_device_provider.dart';
 import 'native_radio_api.dart';
 import 'native_radio_settings.dart';
 import 'sdr_core.dart';
+import 'usb_device_catalog.dart';
 
 final class NativeDevice {
   const NativeDevice(this.info, this.source, {this.bus, this.address, this.fd});
@@ -21,7 +19,7 @@ final class NativeDevice {
 }
 
 /// Provides the exclusive borrowed USB fd (Android), host address (Linux),
-/// or synthetic source. open/close must not be shared with the Dart engine.
+/// or synthetic source. The original Android fd stays owned by Kotlin.
 abstract interface class NativeDeviceSource {
   Stream<void> get changes;
   Future<List<NativeDevice>> list();
@@ -70,54 +68,8 @@ class HostNativeDeviceSource implements NativeDeviceSource {
   Future<void> close(NativeDevice device) async {}
 }
 
-class AndroidNativeDeviceSource implements NativeDeviceSource {
-  AndroidNativeDeviceSource(this.provider);
-  final UsbDeviceProvider provider;
-  final Map<String, NativeDevice> _known = {};
-  @override
-  Stream<void> get changes => provider.changes;
-  @override
-  Future<List<NativeDevice>> list() async {
-    final devices = await provider.listDevices();
-    _known.clear();
-    for (final info in devices) {
-      // Device kind is determined after permission by the provider's VID/PID.
-      // ABI v3 cannot enable tuner AGC; do not show the Dart driver's AGC
-      // switch as if the native source accepted it.
-      _known[info.id] = NativeDevice(
-        SdrDeviceInfo(
-          id: info.id,
-          name: info.name,
-          sampleRates: info.sampleRates,
-          gain: info.gain,
-          hasAgc: false,
-          minFrequency: info.minFrequency,
-          maxFrequency: info.maxFrequency,
-        ),
-        0,
-      );
-    }
-    return _known.values.toList();
-  }
-
-  @override
-  Future<NativeDevice> open(NativeDevice device) async {
-    final result = await provider.open(device.info);
-    final params = result.params;
-    final kind = usbSdrKind(
-      (params['vid'] as num).toInt(),
-      (params['pid'] as num).toInt(),
-    );
-    return NativeDevice(
-      device.info,
-      kind == UsbSdrKind.hackrf ? SdrSourceId.hackrf : SdrSourceId.rtlsdr,
-      fd: (params['fd'] as num).toInt(),
-    );
-  }
-
-  @override
-  Future<void> close(NativeDevice device) => provider.close(device.info);
-}
+// AndroidNativeDeviceSource (standalone, no lib/usb/lib/runtime/lib/sdrpp
+// dependency) lives in android_native_device_source.dart.
 
 class NativeRadioController extends RadioController {
   NativeRadioController({

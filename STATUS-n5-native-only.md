@@ -1,0 +1,21 @@
+# N5 native-only receiver status
+
+The production `main.dart` now instantiates ABI v3 `NativeRadioController` on Linux and Android API 26+. A missing/incompatible native library reports a visible unavailable state; `SDR_ENGINE`, the Dart controller/DSP/isolate/audio path, Dart RTL-SDR/HackRF USB drivers and IQ/FFT/demod modules were removed. `DemoRadioController` remains only for widget tests; the ABI-2 JNI path remains for the opt-in N1 diagnostic harness, not for production. Kotlin keeps ownership of the original USB fd; ABI v3 duplicates it. Android USB permission/events and supported-device names, sample-rate/gain metadata moved to `lib/native/`. The foreground service still owns notification/focus lifecycle and Stop.
+
+The pre-deletion inventory was committed independently at `docs/native-n5-inventory.md`. The deletion removes 98 Dart files under `lib/` (25,096 lines, from staged deletions). The remaining production `lib/` contains `main.dart`, `native/` (FFI, controller, catalog, USB channel and settings), `runtime/background_reception.dart`, `platform/linux/native_required_radio_controller.dart` and `ui/` (tuning, spectrum/waterfall, bands, presets, channels, scan, settings and favorites). `lib/n1_qa.dart` is an opt-in diagnostic, not a second production receiver.
+
+## Verification in the N5 worktree
+
+- `flutter analyze`: no issues. `flutter test --concurrency=1`: 319 passed, 9 opt-in skips. The real ABI-v3 FFI tests with `SDRCORE_V3_PROBE_LIBRARY=build/native-host-tests/libsdrcore.so`: 2 passed, 1 hardware opt-in skip.
+- `native/tests/run_host_tests.sh`: CTest 9/9, fd/lifecycle, checksum, vendored libusb failure and Blog V4 C control trace passed. N2 analytic/file/socket oracle: 20/20.
+- RTL-SDR Blog V4: `run_n2_oracles.sh --lib build/native-host-tests/libsdrcore.so --hw --hw-seconds 600 --rtl-baseline-seconds 130 --perf-seconds 2`: 600.004 s at 2.4 MS/s nominal, mean 2,393,425.58 samples/s including retunes, 0 IQ/audio drops versus 44 bytes lost by `rtl_test` in 130 s; 29.17 FFT rows/s, 0.113 core, RSS growth 392 KiB. WFM/NFM/AM/USB/LSB/CW and gain/retune delivered non-silent frames; stop/restart and exclusive USB claim passed. USBDEVFS_RESET produced a sticky error in 20.09 ms. This is a native-core hardware run, not a 600-second Flutter UI session.
+- `flutter build linux --debug`; `flutter build apk --debug`; `flutter build apk --release --target-platform android-arm64`: passed. `android/gradlew -p android :app:testDebugUnitTest --offline --no-daemon`: passed. Arm64 release `libsdrcore.so` exports seven `sdr_v3_*` hooks, ELF LOAD alignment `0x4000`; `zipalign -c -P 16 -v 4` passed.
+- A separate 18-second `xvfb-run` launch of the rebuilt production Linux UI detected the Blog V4 and did not crash before an intentional `timeout` (exit 124). A new screenshot was not captured; prior N2 Linux UI spectrum/waterfall screenshots are in `~/prj/docs/screens/linux-n2-integrated-{1,2}.png`.
+
+Evidence: `~/prj/docs/n5-hw-soak-600s.json`, `~/prj/docs/n5-oracle-suite.json`, `~/prj/docs/n5-rtl-test.log` and 20-second stereo PCM `~/prj/docs/audio/n5-native-wfm-blog-v4.wav` (Blog V4 WFM recording; human audibility unverified).
+
+## Pending / constraints
+
+The existing RTL-SDR `config.json` stores gain as a tuner-specific *index*, not dB. N5 preserves the old file and migrates frequency, mode, bandwidth, sample rate and squelch, but cannot safely convert an arbitrary gain index without its hardware gain list; Android upgrades use the native default gain. `linux_host_radio.json` stores dB and its gain does migrate. Favor an explicit ABI gain-list capability over guessing index-to-dB mappings if exact RTL gain restoration is required. Favorites, channels, bands and step data remain in their shared-preferences stores, unchanged. Android API 24/25 installs are no longer supported (minSdk 26).
+
+Android USB OTG, AAudio audibility, physical detach/replug, focus/foreground notification Stop and Activity recreation remain unverified on a phone; the independent P1 card owns those checks. HackRF hardware, human WAV listening and true WFM stereo are unverified. The required `AGENTS.md` edit was denied by protected-file approval in this headless run and must be approved or waived by the operator; no alternate write path was attempted.
