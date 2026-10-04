@@ -5,6 +5,7 @@ add_subdirectory(third_party)
 
 add_library(sdrcore SHARED
     src/sdrcore.cpp
+    src/dsp/receiver.cpp
     src/usb_rtlsdr_adapter.cpp
     src/usb_hackrf_adapter.cpp
 )
@@ -33,8 +34,8 @@ target_link_libraries(sdrcore PRIVATE sdrcore_audio)
 # the Flutter Linux runner adds native/ as a subdirectory and needs the library only.
 if(NOT ANDROID AND PROJECT_IS_TOP_LEVEL)
     enable_testing()
-    # The N2 ABI header is committed ahead of its implementation. Compile its
-    # layouts/signatures, but do not link or advertise v3 runtime symbols yet.
+    # Check the N2 header layouts independently of the DSP implementation.
+    # The integrator advances sdr_version only after all N2 layers are ready.
     add_library(sdrcore_v3_contract_compile OBJECT tests/v3_contract_compile.c)
     target_include_directories(sdrcore_v3_contract_compile PRIVATE include)
     add_executable(sdrcore_abi_test tests/abi_test.c)
@@ -51,11 +52,12 @@ if(NOT ANDROID AND PROJECT_IS_TOP_LEVEL)
     add_test(NAME sdrcore_checksum_oracle COMMAND sdrcore_checksum_oracle_test)
     add_executable(sdrcore_ring_boundary_test
         tests/ring_boundary_test.cpp
+        src/dsp/receiver.cpp
         src/usb_rtlsdr_adapter.cpp
         src/usb_hackrf_adapter.cpp)
     target_include_directories(sdrcore_ring_boundary_test PRIVATE include)
     target_compile_features(sdrcore_ring_boundary_test PRIVATE cxx_std_17)
-    target_link_libraries(sdrcore_ring_boundary_test PRIVATE sdrcore_rtlsdr sdrcore_hackrf Threads::Threads)
+    target_link_libraries(sdrcore_ring_boundary_test PRIVATE sdrcore_rtlsdr sdrcore_hackrf sdrcore_audio Threads::Threads)
     add_test(NAME sdrcore_ring_boundary COMMAND sdrcore_ring_boundary_test)
     add_executable(sdrcore_rtl_libusb_init_failure_test tests/rtl_libusb_init_failure_test.c)
     target_include_directories(sdrcore_rtl_libusb_init_failure_test PRIVATE
