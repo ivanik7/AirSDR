@@ -23,6 +23,14 @@ constexpr float kFloor = 1.0e-12f;
 constexpr double kCwToneHz = 800.0;
 // SDR++ AGC set point for AM/SSB/CW audio (am.h/ssb.h/cw.h: AGC(1.0, ...)).
 constexpr float kAgcSetPoint = 1.0f;
+// Discriminator-domain pilot amplitude hysteresis for the stereo/mono
+// fallback. The discriminator is normalized so a full +-75 kHz deviation
+// WFM signal gives unit peak audio; a pilot injection of ~8-10% of peak
+// deviation (the common broadcast practice) lands near 0.1. Separate
+// on/off thresholds give hysteresis so a borderline pilot does not chatter
+// the stereo_blend_ ramp target every envelope update.
+constexpr float kPilotLockOnAmplitude = 0.02f;
+constexpr float kPilotLockOffAmplitude = 0.012f;
 using Complex = std::complex<float>;
 
 // FIR histories are fixed-size; coefficients are regenerated only on configure().
@@ -155,13 +163,16 @@ class ReceiverImpl final : public Receiver {
       deemphasis_alpha_ = static_cast<float>(1 - std::exp(-1.0 /
           (48000 * (controls.mode == SDR_V3_WFM ? 50e-6 : 75e-6))));
       metric_interval_ = std::max<size_t>(1, static_cast<size_t>(if_rate_ / 1000));
+      if (controls.mode == SDR_V3_WFM) configure_pilot(if_rate_);
       const double sideband_offset = controls.mode == SDR_V3_USB ?
           half_bw : controls.mode == SDR_V3_LSB ? -half_bw : 0.0;
       sideband_step_ = std::polar(1.0f, static_cast<float>(2 * kPi * sideband_offset / if_rate_));
       cw_step_ = std::polar(1.0f, static_cast<float>(2 * kPi * kCwToneHz / if_rate_));
       first_.configure(sr, first_rate * 0.40, first_factor_, 127);
       second_.configure(first_rate, controls.bandwidth_hz * 0.5, second_factor_);
-      // Anti-alias audio bandwidth: WFM baseband is mono; no stereo MPX decoder.
+      // Anti-alias audio bandwidth for the shared polyphase audio resampler.
+      // WFM stereo additionally applies its own explicit 15 kHz MPX lowpass
+      // in process_pilot() ahead of this resampler (see configure_pilot()).
       audio_cutoff_ = controls.mode == SDR_V3_WFM ? 15000.0 :
           controls.mode == SDR_V3_NFM ? std::min(4500.0, controls.bandwidth_hz * 0.32) :
           std::min(8000.0, controls.bandwidth_hz * 0.48);
@@ -183,6 +194,14 @@ class ReceiverImpl final : public Receiver {
     }
     if (squelch_change) reset_squelch();
     if (display_change) fft_count_ = 0;
+  }
+
+  // Preference only; separation additionally requires a locked 19 kHz pilot
+  // (see process_if()). Re-arms pilot acquisition on every toggle so the
+  // PLL/blend state always starts clean instead of resuming mid-transient.
+  void set_wfm_stereo(bool enabled) override {
+    stereo_enabled_ = enabled;
+    reset_pilot();
   }
 
   void reset() override {
@@ -271,7 +290,138 @@ class ReceiverImpl final : public Receiver {
     audio_index_ = 0;
     audio_input_count_ = 0;
     next_audio_time_ = 0;
+    reset_pilot();
     reset_squelch();
+  }
+  // Re-arms the 19 kHz pilot PLL and the stereo-only filter/deemphasis state.
+  // Called on every retune/mode change, and on every set_wfm_stereo() toggle
+  // so a weak or noisy pilot is always reacquired from a clean start rather
+  // than resuming a possibly stale lock.
+  void reset_pilot() {
+    nominal_angle_ = 0;
+    tracked_phase_ = 0;
+    tracked_freq_ = 0;
+    pilot_bb1_ = pilot_bb2_ = {0, 0};
+    pilot_mag_smooth_ = 0;
+    pilot_locked_ = false;
+    stereo_blend_ = 0;
+    lpr_lp1_ = lpr_lp2_ = 0;
+    lmr_lp1_ = lmr_lp2_ = 0;
+    audio_history_r_.fill(0);
+    deemphasis_r_ = 0;
+    audio_dc_in_r_ = audio_dc_out_r_ = 0;
+  }
+  // (Re)derives the pilot tracking-loop gains, lowpass alphas and the 19 kHz
+  // search range for the current if_rate_. Follows SDR++'s structure (core/
+  // src/dsp/demod/broadcast_fm.h, core/src/dsp/loop/pll.h,
+  // phase_control_loop.h): a frequency-selective filter first isolates the
+  // pilot near 19 kHz, then a phase-locked loop tracks only the slow
+  // residual drift within that narrow band -- NOT a single loop that both
+  // down-converts and tracks: feeding the loop's own corrected phase back
+  // into the down-mix adds enough loop delay (the 300 Hz filter plus
+  // control feedback in series) that a loop bandwidth wide enough to pull
+  // in from zero produces limit-cycle frequency slips instead of a stable
+  // lock (verified empirically against this file's synthetic weak-pilot
+  // test case).
+  // SDR++ gets the same separation using a dedicated bandpass FIR ahead of
+  // its PLL; this implementation reaches the same two-stage structure with
+  // a fixed-frequency down-mix + cascaded lowpass (the filter) feeding a
+  // narrow-bandwidth tracker (the loop) instead of a separate FIR stage.
+  void configure_pilot(double if_rate) {
+    constexpr double kPilotHz = 19000.0;
+    // Fixed down-mix frequency: never adjusted by the tracker, so the
+    // cascaded lowpass below sees a slowly rotating (not actively
+    // corrected) baseband signal and cannot destabilize the tracking loop.
+    nominal_step_ = static_cast<float>(2 * kPi * kPilotHz / if_rate);
+    // ~300 Hz one-pole lowpass, cascaded twice (~-72 dB far from DC),
+    // isolating the down-mixed pilot from the much stronger 38 kHz L-R
+    // subcarrier, which after mix-down by the fixed 19 kHz NCO lands at
+    // +-19 kHz baseband -- comfortably outside this passband even for a
+    // weak (near-threshold) real pilot.
+    pilot_bb_alpha_ = static_cast<float>(1 - std::exp(-2 * kPi * 300.0 / if_rate));
+    // Narrow tracking loop: broadcast FM pilots stay within +-250 Hz of
+    // 19 kHz (the same capture range SDR++ uses), so a loop bandwidth well
+    // under that residual range stays stable while still following slow
+    // drift; critically damped per SDR++'s
+    // dsp::loop::PhaseControlLoop::criticallyDamped.
+    constexpr double kLoopBandwidthHz = 50.0;
+    const double normalized_bw = kLoopBandwidthHz / if_rate;
+    const double damping = std::sqrt(2.0) / 2.0;
+    const double denom = 1.0 + 2.0 * damping * normalized_bw + normalized_bw * normalized_bw;
+    tracked_alpha_ = static_cast<float>(4.0 * damping * normalized_bw / denom);
+    tracked_beta_ = static_cast<float>(4.0 * normalized_bw * normalized_bw / denom);
+    tracked_max_freq_ = static_cast<float>(2 * kPi * 250.0 / if_rate);
+    // Two cascaded one-pole 15 kHz stages for both L+R and L-R (~12 dB/oct;
+    // steeper than the shared mono/audio polyphase anti-alias filter so the
+    // 19 kHz pilot and 38 kHz subcarrier do not bleed into program audio).
+    mpx_cutoff_alpha_ = static_cast<float>(1 - std::exp(-2 * kPi * 15000.0 / if_rate));
+    // ~20 ms pilot-amplitude envelope, matching power_alpha_'s time constant.
+    pilot_envelope_alpha_ = static_cast<float>(1 - std::exp(-1.0 / (if_rate * 0.02)));
+    // Full mono<->stereo ramp over ~200 ms: long enough to avoid audible
+    // pumping on a fading pilot, short enough to feel responsive on lock.
+    blend_step_ = static_cast<float>(1.0 / (0.2 * if_rate));
+    reset_pilot();
+  }
+  // Coherent pilot/MPX stereo recovery for one discriminator (MPX) sample.
+  // Produces the 15 kHz-lowpassed L+R and L-R components; the caller blends
+  // them by stereo_blend_ before feeding the existing mono resampler/
+  // deemphasis chain for L, and a parallel chain (audio_history_r_,
+  // deemphasis_r_) for R. See SDR++ core/src/dsp/demod/broadcast_fm.h for
+  // the reference pilot-PLL/doubled-phase architecture this follows, and
+  // configure_pilot() above for why the down-mix and the phase tracker are
+  // deliberately two separate stages instead of one combined loop.
+  void process_pilot(float mpx, float& lpr_out, float& lmr_out) {
+    // Step 1 (fixed-frequency filter): mix down by the uncorrected nominal
+    // 19 kHz NCO and lowpass; a perfectly on-frequency pilot settles to a
+    // constant phasor, while a real pilot's small frequency error appears
+    // as slow residual rotation -- never fast enough to destabilize the
+    // narrow tracker in step 2.
+    const Complex mix = Complex(mpx, 0.0f) * std::polar(1.0f, -nominal_angle_);
+    pilot_bb1_ += pilot_bb_alpha_ * (mix - pilot_bb1_);
+    pilot_bb2_ += pilot_bb_alpha_ * (pilot_bb1_ - pilot_bb2_);
+    nominal_angle_ += nominal_step_;
+    if (nominal_angle_ > static_cast<float>(kPi)) nominal_angle_ -= static_cast<float>(2 * kPi);
+
+    // Step 2 (narrow tracking loop): follow only the slow residual phase of
+    // the already-filtered baseband signal from step 1.
+    float error = std::atan2(pilot_bb2_.imag(), pilot_bb2_.real()) - tracked_phase_;
+    if (error > static_cast<float>(kPi)) error -= static_cast<float>(2 * kPi);
+    else if (error < -static_cast<float>(kPi)) error += static_cast<float>(2 * kPi);
+    tracked_freq_ = std::clamp(tracked_freq_ + tracked_beta_ * error, -tracked_max_freq_, tracked_max_freq_);
+    tracked_phase_ += tracked_freq_ + tracked_alpha_ * error;
+    if (tracked_phase_ > static_cast<float>(kPi)) tracked_phase_ -= static_cast<float>(2 * kPi);
+    else if (tracked_phase_ < -static_cast<float>(kPi)) tracked_phase_ += static_cast<float>(2 * kPi);
+    // Full pilot phase on the original MPX = the uncorrected NCO's angle
+    // (always advancing at exactly 19 kHz) plus the tracked residual.
+    const float pilot_angle = nominal_angle_ + tracked_phase_;
+
+    // Lock/fallback: a smoothed pilot amplitude with hysteresis drives a
+    // slow crossfade so a weak or fading pilot degrades to mono instead of
+    // snapping or exposing raw, noisy L-R separation.
+    const float pilot_amplitude = 2.0f * std::abs(pilot_bb2_);
+    pilot_mag_smooth_ += pilot_envelope_alpha_ * (pilot_amplitude - pilot_mag_smooth_);
+    const float on_threshold = pilot_locked_ ? kPilotLockOffAmplitude : kPilotLockOnAmplitude;
+    pilot_locked_ = pilot_mag_smooth_ > on_threshold;
+    const float blend_target = pilot_locked_ ? 1.0f : 0.0f;
+    stereo_blend_ = std::clamp(stereo_blend_ +
+        std::clamp(blend_target - stereo_blend_, -blend_step_, blend_step_), 0.0f, 1.0f);
+
+    // L+R: explicit 15 kHz lowpass of the full MPX (removes pilot/subcarrier
+    // before the audio resampler, independent of that resampler's own
+    // anti-alias cutoff).
+    lpr_lp1_ += mpx_cutoff_alpha_ * (mpx - lpr_lp1_);
+    lpr_lp2_ += mpx_cutoff_alpha_ * (lpr_lp1_ - lpr_lp2_);
+    lpr_out = lpr_lp2_;
+
+    // L-R: the 38 kHz DSB-SC subcarrier is phase-locked at exactly twice the
+    // pilot frequency by the transmitter; cos(2*pilot_angle) is therefore a
+    // coherent demodulation reference once the tracker has settled. The
+    // factor of 2 undoes the cos^2 self-mixing loss (cos^2(x) = (1+cos2x)/2).
+    const float carrier38 = std::cos(2.0f * pilot_angle);
+    const float raw_lmr = 2.0f * mpx * carrier38;
+    lmr_lp1_ += mpx_cutoff_alpha_ * (raw_lmr - lmr_lp1_);
+    lmr_lp2_ += mpx_cutoff_alpha_ * (lmr_lp1_ - lmr_lp2_);
+    lmr_out = lmr_lp2_;
   }
   void make_fft(std::vector<float>& row) {
     std::copy(fft_input_.begin(), fft_input_.begin() + static_cast<std::ptrdiff_t>(fft_n_),
@@ -409,18 +559,30 @@ class ReceiverImpl final : public Receiver {
       if (cw_mag > 0) cw_ /= cw_mag;
     }
     audio_history_[audio_index_] = value;
+    if (controls_.mode == SDR_V3_WFM && stereo_enabled_) {
+      float lpr = value, lmr = 0.0f;
+      process_pilot(value, lpr, lmr);
+      audio_history_[audio_index_] = lpr + stereo_blend_ * lmr;
+      audio_history_r_[audio_index_] = lpr - stereo_blend_ * lmr;
+    }
     audio_index_ = (audio_index_ + 1) & (kAudioTaps - 1);
     ++audio_input_count_;
     const double spacing = if_rate_ / 48000.0;
+    // Only WFM with an enabled preference and audible blend carries a second
+    // channel history; all other modes resample a single mono buffer and
+    // mirror it to both outputs exactly as before (audio_history_r_ holds
+    // stale/zero data and must not be read in that case).
+    const bool stereo_active = controls_.mode == SDR_V3_WFM && stereo_enabled_;
     while (next_audio_time_ <= static_cast<double>(audio_input_count_ - 1)) {
       const double lag = static_cast<double>(audio_input_count_ - 1) - next_audio_time_;
       if (lag < 0 || lag >= 1) break;
       const size_t phase = std::min<size_t>(kPhases - 1,
           static_cast<size_t>(lag * kPhases));
-      float out = 0;
+      float out = 0, out_r = 0;
       size_t index = (audio_index_ - 1) & (kAudioTaps - 1);
       for (float tap : audio_taps_[phase]) {
         out += audio_history_[index] * tap;
+        if (stereo_active) out_r += audio_history_r_[index] * tap;
         index = (index - 1) & (kAudioTaps - 1);
       }
       next_audio_time_ += spacing;
@@ -428,11 +590,21 @@ class ReceiverImpl final : public Receiver {
       if (controls_.mode == SDR_V3_WFM || controls_.mode == SDR_V3_NFM) {
         deemphasis_ += deemphasis_alpha_ * (out - deemphasis_);
         out = deemphasis_;
+        if (stereo_active) {
+          deemphasis_r_ += deemphasis_alpha_ * (out_r - deemphasis_r_);
+          out_r = deemphasis_r_;
+        }
       }
       const float hp = out - audio_dc_in_ + 0.995f * audio_dc_out_;
       audio_dc_in_ = out;
       audio_dc_out_ = hp;
-      float leveled = hp;
+      float hp_r = hp;
+      if (stereo_active) {
+        hp_r = out_r - audio_dc_in_r_ + 0.995f * audio_dc_out_r_;
+        audio_dc_in_r_ = out_r;
+        audio_dc_out_r_ = hp_r;
+      }
+      float leveled = hp, leveled_r = hp_r;
       if (controls_.mode != SDR_V3_NFM && controls_.mode != SDR_V3_WFM &&
           controls_.mode != SDR_V3_RAW) {
         // Peak-following AGC to the SDR++ set point (1.0), fast attack/slow decay.
@@ -444,8 +616,14 @@ class ReceiverImpl final : public Receiver {
       gate_ += std::clamp(target - gate_, -1.0f / 240, 1.0f / 240);
       const float gain = controls_.muted ? 0.0f : controls_.volume * controls_.volume * gate_;
       const float pcm = std::clamp(leveled * gain, -1.0f, 1.0f);
-      audio.push_back(pcm);
-      audio.push_back(pcm);
+      if (stereo_active) {
+        const float pcm_r = std::clamp(leveled_r * gain, -1.0f, 1.0f);
+        audio.push_back(pcm);
+        audio.push_back(pcm_r);
+      } else {
+        audio.push_back(pcm);
+        audio.push_back(pcm);
+      }
     }
   }
   SdrV3Controls controls_{};
@@ -468,6 +646,31 @@ class ReceiverImpl final : public Receiver {
   double next_audio_time_ = 0;
   float am_dc_ = 0, audio_dc_in_ = 0, audio_dc_out_ = 0, deemphasis_ = 0;
   float agc_envelope_ = 0.15f;
+  // WFM stereo (MPX pilot/subcarrier decode): preference set by
+  // set_wfm_stereo(), separate from whether a pilot is actually locked.
+  // Right-channel resampler history/deemphasis/DC-block state mirrors the
+  // existing mono (left) members above; both are always filled for WFM so a
+  // mid-stream toggle cannot read stale data, but only read when
+  // stereo_active (process_if()) to keep non-WFM/disabled-stereo paths
+  // byte-for-byte identical to the pre-stereo mono implementation.
+  bool stereo_enabled_ = false;
+  std::array<float, kAudioTaps> audio_history_r_{};
+  float audio_dc_in_r_ = 0, audio_dc_out_r_ = 0, deemphasis_r_ = 0;
+  // Pilot tracking state: a fixed 19 kHz down-mix NCO (nominal_angle_,
+  // nominal_step_) feeds the cascaded lowpass (pilot_bb1_/pilot_bb2_); a
+  // separate narrow-bandwidth tracker (tracked_phase_/tracked_freq_) then
+  // follows only the slow residual drift. See configure_pilot().
+  float nominal_angle_ = 0, nominal_step_ = 0;
+  float tracked_phase_ = 0, tracked_freq_ = 0;
+  float tracked_alpha_ = 0, tracked_beta_ = 0, tracked_max_freq_ = 0;
+  Complex pilot_bb1_{0, 0}, pilot_bb2_{0, 0};
+  float pilot_bb_alpha_ = 0;
+  float pilot_mag_smooth_ = 0;
+  bool pilot_locked_ = false;
+  float pilot_envelope_alpha_ = 0;
+  float stereo_blend_ = 0, blend_step_ = 0;
+  float mpx_cutoff_alpha_ = 0;
+  float lpr_lp1_ = 0, lpr_lp2_ = 0, lmr_lp1_ = 0, lmr_lp2_ = 0;
   float power_smooth_ = 0, noise_lp_ = 0, noise_smooth_ = 0;
   float power_alpha_ = 0, noise_alpha_ = 0, noise_lp_alpha_ = 0;
   float am_alpha_ = 0, deemphasis_alpha_ = 0;

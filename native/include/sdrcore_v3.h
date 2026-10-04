@@ -85,7 +85,7 @@ typedef struct SdrV3Snapshot {
   float squelch_metric_db;      // Only valid when squelch_ready == 1.
   float squelch_threshold_db;   // Only valid when squelch_ready == 1.
   uint64_t stream_generation;   // Advances at every successful v3 start.
-  uint64_t control_sequence;    // Advances on successful controls/display.
+  uint64_t control_sequence;    // Advances on successful controls/display/stereo.
   uint64_t error_sequence;      // Advances on every async error.
   uint64_t input_samples;       // Complex IQ pairs accepted at ingress.
   uint64_t processed_samples;   // Complex IQ pairs consumed by DSP.
@@ -126,6 +126,13 @@ SDRCORE_API int32_t sdr_v3_set_controls(SdrHandle* handle,
 // OPEN or RUNNING. Does not retune hardware; affects subsequent FFT rows.
 SDRCORE_API int32_t sdr_v3_set_display(SdrHandle* handle,
                                          const SdrV3Display* display);
+// OPEN (after accepted v3 controls) or RUNNING v3 session. enabled is strictly
+// 0/1; default 0 on every open. Preference remains set in non-WFM modes but
+// only affects WFM DSP. Applies in-place without hardware retune or stream
+// generation change. Success (including an unchanged value) advances
+// control_sequence and invalidates the latest FFT row, like set_display;
+// rejection changes neither epoch nor audio state. Caller serializes commands.
+SDRCORE_API int32_t sdr_v3_set_wfm_stereo(SdrHandle* handle, uint32_t enabled);
 // OPEN only. Copies exactly byte_count UTF-8 bytes, no trailing NUL and no
 // embedded NUL. 1..1024 bytes; native owns the copy. Specs: "null", "wav:<path>",
 // "alsa[:<pcm>]" (Linux), "aaudio" (Android). Unsupported backend returns

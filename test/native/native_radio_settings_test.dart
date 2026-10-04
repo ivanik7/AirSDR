@@ -43,6 +43,7 @@ void main() {
       squelchKey: SquelchType.auto.key,
       squelchLevelDb: -42,
       autoOffsetDb: 5,
+      stereo: true,
     );
     saveNativeRadioSettingsSync(dir(), settings);
 
@@ -56,6 +57,23 @@ void main() {
     expect(loaded.squelchKey, SquelchType.auto.key);
     expect(loaded.squelchLevelDb, -42);
     expect(loaded.autoOffsetDb, 5);
+    expect(loaded.stereo, isTrue);
+  });
+
+  test('stereo defaults to false when absent from the file', () {
+    File('${dir()}/$nativeRadioSettingsFileName')
+        .writeAsStringSync(jsonEncode({'version': 1, 'modeId': 1}));
+    final loaded = loadNativeRadioSettings(dir());
+    expect(loaded.stereo, isFalse);
+  });
+
+  test('malformed stereo field falls back to false, never throws', () {
+    File('${dir()}/$nativeRadioSettingsFileName').writeAsStringSync(
+      jsonEncode({'version': 1, 'modeId': 1, 'stereo': 'yes'}),
+    );
+    expect(() => loadNativeRadioSettings(dir()), returnsNormally);
+    final loaded = loadNativeRadioSettings(dir());
+    expect(loaded.stereo, isFalse);
   });
 
   test('saved file includes a version field', () {

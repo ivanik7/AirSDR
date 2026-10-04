@@ -32,6 +32,8 @@ class Receiver {
   // may configure() without resetting the source or changing stream generation.
   virtual void configure(const SdrV3Controls& controls,
                          const SdrV3Display& display) = 0;
+  // Called by the same DSP owner mutex as configure/process; no IQ restart.
+  virtual void set_wfm_stereo(bool enabled) = 0;
   virtual void reset() = 0;
   virtual void process(const uint8_t* cu8, size_t bytes,
                        ProcessResult& result) = 0;

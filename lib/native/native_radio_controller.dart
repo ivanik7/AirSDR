@@ -108,6 +108,7 @@ class NativeRadioController extends RadioController {
       _squelch = SquelchType.fromKey(settings.squelchKey);
       _squelchLevel = settings.squelchLevelDb;
       _autoOffset = settings.autoOffsetDb;
+      _stereo = settings.stereo;
       // _muted is never restored: every session starts muted.
     }
     _sub = source.changes.listen((_) => unawaited(refreshDevices()));
@@ -167,6 +168,10 @@ class NativeRadioController extends RadioController {
   DemodMode _mode = DemodMode.wfm;
   SquelchType _squelch = SquelchType.off;
   bool _muted = true, _agc = false;
+  // WFM stereo preference (sdr_v3_set_wfm_stereo). Default false, as the
+  // native side also defaults on every open; retained across mode changes
+  // and reapplied on every (re)start since native resets it per open.
+  bool _stereo = false;
   Timer? _saveTimer;
   static const Duration _saveDebounce = Duration(milliseconds: 500);
 
@@ -213,6 +218,7 @@ class NativeRadioController extends RadioController {
         squelchKey: _squelch.key,
         squelchLevelDb: _squelchLevel,
         autoOffsetDb: _autoOffset,
+        stereo: _stereo,
         legacyRtlGainIndex: _legacyRtlGainIndex,
         legacyRtlDeviceName: _legacyRtlDeviceName,
       ),
@@ -363,6 +369,10 @@ class NativeRadioController extends RadioController {
       }
       _appliedControls = _controls();
       api.controls(h, _appliedControls!);
+      // Reapply the stereo preference: native resets it to false on every
+      // open, so it must be re-sent on every (re)start, after controls are
+      // accepted (OPEN state requirement) and before start.
+      api.stereo(h, _stereo);
       _appliedDisplay = _display();
       api.display(h, _appliedDisplay!);
       api.audioSink(h, audioSink);
@@ -792,6 +802,42 @@ class NativeRadioController extends RadioController {
     if (value == _squelchLevel) return;
     _squelchLevel = value;
     _applyControls();
+    _scheduleSave();
+    _notify();
+  }
+
+  @override
+  Map<String, Object?> get demodOptions => _mode == DemodMode.wfm
+      ? <String, Object?>{'stereo': _stereo}
+      : const <String, Object?>{};
+  @override
+  void setDemodOption(String key, Object value) {
+    if (key != 'stereo' || value is! bool) return;
+    _setStereo(value);
+  }
+
+  /// Applies [enabled] via `sdr_v3_set_wfm_stereo` when a handle is open
+  /// (OPEN after controls, or RUNNING); otherwise only updates the stored
+  /// preference, applied on the next start. Rolls back to the previous
+  /// value on native rejection so the UI never shows a fake accepted state.
+  void _setStereo(bool enabled) {
+    if (enabled == _stereo) return;
+    final previous = _stereo;
+    _stereo = enabled;
+    final h = _handle;
+    if (h != null) {
+      try {
+        api.stereo(h, enabled);
+        final s = api.snapshot(h);
+        _controlSequence = s.controlSequence;
+        _lastRow = 0;
+      } catch (e) {
+        _stereo = previous;
+        _lastError = 'Native stereo failed: $e';
+        _notify();
+        return;
+      }
+    }
     _scheduleSave();
     _notify();
   }

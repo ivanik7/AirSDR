@@ -48,6 +48,9 @@ if(NOT ANDROID AND PROJECT_IS_TOP_LEVEL)
     add_executable(sdrcore_abi_test tests/abi_test.c)
     target_link_libraries(sdrcore_abi_test PRIVATE sdrcore)
     add_test(NAME sdrcore_abi COMMAND sdrcore_abi_test)
+    add_executable(sdrcore_wfm_stereo_abi_test tests/wfm_stereo_abi_test.cpp)
+    target_link_libraries(sdrcore_wfm_stereo_abi_test PRIVATE sdrcore Threads::Threads)
+    add_test(NAME sdrcore_wfm_stereo_abi COMMAND sdrcore_wfm_stereo_abi_test)
     add_executable(sdrcore_stream_test tests/stream_test.cpp)
     target_link_libraries(sdrcore_stream_test PRIVATE sdrcore)
     add_test(NAME sdrcore_stream COMMAND sdrcore_stream_test)
@@ -90,4 +93,14 @@ if(NOT ANDROID AND PROJECT_IS_TOP_LEVEL)
     add_test(NAME sdrcore_host_rtl_gain COMMAND sdrcore_host_rtl_gain_test)
     add_executable(sdrcore_host_rx_diag tests/host_rx_diag.c)
     target_link_libraries(sdrcore_host_rx_diag PRIVATE sdrcore)
+    # DSP-only, white-box: links receiver.cpp directly against the public
+    # sdrcore::dsp::Receiver interface (no ABI/sdrcore.cpp, no USB adapters,
+    # no Dart/FFI) so the WFM stereo decoder is checkable in isolation with
+    # deterministic synthetic MPX IQ. See wfm_stereo_dsp_test.cpp.
+    add_executable(sdrcore_wfm_stereo_dsp_test
+        tests/wfm_stereo_dsp_test.cpp
+        src/dsp/receiver.cpp)
+    target_include_directories(sdrcore_wfm_stereo_dsp_test PRIVATE include)
+    target_compile_features(sdrcore_wfm_stereo_dsp_test PRIVATE cxx_std_17)
+    add_test(NAME sdrcore_wfm_stereo_dsp COMMAND sdrcore_wfm_stereo_dsp_test)
 endif()

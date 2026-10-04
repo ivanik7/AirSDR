@@ -902,9 +902,8 @@ void case_mode_tones() {
 }
 
 void case_wfm_stereo_parity() {
-  // Dart WFM decodes the 19 kHz pilot/MPX stereo when the 'stereo' option is on
-  // (radio_module_test 'WFM stereo'). ABI v3 has no stereo control; mono WFM must
-  // still be identical on L and R. Stereo separation is an explicit parity gap.
+  // Stereo is disabled by default for old settings. This oracle checks the
+  // unchanged mono mode; wfm_stereo_dsp_test covers pilot/MPX separation.
   const double secs = 1.0;
   TempFile fixture("wfm_mono.cu8", make_cu8(kModeRate, secs, {{Mod::kFm, 0, 0.3, 1000, 75000}}, 0.003, 9));
   TempFile wav("wfm_mono.wav");
@@ -915,7 +914,7 @@ void case_wfm_stereo_parity() {
   double diff = 0;
   for (size_t i = 0; i < r.wav.left.size(); ++i) diff = std::max(diff, double(std::fabs(r.wav.left[i] - r.wav.right[i])));
   CHECK(diff < 1e-4, "mono WFM L/R differ by %.5f", diff);
-  R.note("GAP (not asserted by ABI v3): no WFM stereo pilot/MPX decode; Dart offers it as a demod option.");
+  R.note("Stereo off by default: WFM L/R remain exact mono duplicates.");
 }
 
 void case_fft_spectrum() {
@@ -1572,7 +1571,7 @@ int run_suite() {
        case_ui_bandwidth_contract},
       {"mode_tones", "WFM/NFM/AM/USB/LSB/CW demod tone, level and 48 kHz audio rate vs analytic oracle", true,
        case_mode_tones},
-      {"wfm_mono_lr", "mono WFM identical L/R; stereo MPX parity is an explicit gap", true, case_wfm_stereo_parity},
+      {"wfm_mono_lr", "mono WFM identical L/R when stereo is disabled", true, case_wfm_stereo_parity},
       {"fft_spectrum", "FFT peak location, low/high metadata, zoomed view", true, case_fft_spectrum},
       {"fft_rate_latest_wins", "<=30 rows/s, NO_DATA/BUFFER_SMALL semantics, overwrite counting", true,
        case_fft_rate_latest_wins},

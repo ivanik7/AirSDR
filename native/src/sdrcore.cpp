@@ -614,6 +614,25 @@ extern "C" int32_t sdr_v3_set_display(SdrHandle* h, const SdrV3Display* in) {
   return SDR_OK;
 }
 
+extern "C" int32_t sdr_v3_set_wfm_stereo(SdrHandle* h, uint32_t enabled) {
+  if (!h || enabled > 1) return SDR_INVALID_ARGUMENT;
+  try {
+    // Same lock order as controls/display; process() holds dsp_mutex while
+    // touching receiver state. This call never reconfigures hardware.
+    std::lock_guard<std::mutex> dsp_lock(h->dsp_mutex);
+    std::lock_guard<std::mutex> lock(h->mutex);
+    if (!h->v3_configured || !h->receiver ||
+        (h->stats.state != SDR_OPEN && h->stats.state != SDR_RUNNING) ||
+        (h->stats.state == SDR_RUNNING && !h->v3_active))
+      return SDR_INVALID_STATE;
+    h->receiver->set_wfm_stereo(enabled != 0);
+    ++h->snapshot.control_sequence;
+    h->fft_unread = false;
+    h->fft_bins.clear();
+  } catch (...) { return SDR_INTERNAL_ERROR; }
+  return SDR_OK;
+}
+
 extern "C" int32_t sdr_v3_set_audio_sink(SdrHandle* h, const char* spec,
                                              uint32_t length) {
   if (!h || !spec || !length || length > SDR_V3_MAX_SINK_SPEC_BYTES ||

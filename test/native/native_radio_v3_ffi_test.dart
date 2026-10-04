@@ -61,6 +61,7 @@ void main() {
           ),
         );
         api.display(h, const NativeDisplay(0, 2400000, 256));
+        api.stereo(h, true);
         api.audioSink(h, 'null');
         api.start(h);
         NativeFft? row;
@@ -122,6 +123,45 @@ void main() {
         expect(controller.linkState, DeviceLinkState.stoppedByUser);
       } finally {
         await sub.cancel();
+        controller.dispose();
+      }
+    },
+    skip: library == null
+        ? 'Set SDRCORE_V3_PROBE_LIBRARY to a v3 host build'
+        : null,
+  );
+
+  test(
+    'real v3 RadioController applies and rolls back WFM stereo via demodOptions',
+    () async {
+      final api = FfiNativeRadioApi.open(libraryPath: library);
+      final controller = NativeRadioController(
+        api: api,
+        source: _SyntheticSource(),
+        autoStart: false,
+        pollInterval: const Duration(milliseconds: 200),
+      );
+      try {
+        await controller.refreshDevices();
+        controller.setMode(DemodMode.wfm);
+        await controller.start();
+        expect(controller.running, isTrue);
+        expect(controller.demodOptions['stereo'], isFalse);
+        controller.setDemodOption('stereo', true);
+        expect(controller.demodOptions['stereo'], isTrue);
+        expect(controller.lastError, isNull);
+        // Retained when switching away from and back to WFM.
+        controller.setMode(DemodMode.nfm);
+        expect(controller.demodOptions, isEmpty);
+        controller.setMode(DemodMode.wfm);
+        expect(controller.demodOptions['stereo'], isTrue);
+        // Reapplied across a stop/start cycle (native resets per open).
+        await controller.stop();
+        await controller.start();
+        expect(controller.running, isTrue);
+        expect(controller.demodOptions['stereo'], isTrue);
+        await controller.stop();
+      } finally {
         controller.dispose();
       }
     },
@@ -210,6 +250,8 @@ void main() {
         controller.setTuning(centerFrequency: hwFreq, vfoOffset: 0);
         controller.setGain(30);
         controller.setMuted(false);
+        controller.setDemodOption('stereo', true);
+        expect(controller.demodOptions['stereo'], isTrue);
         await controller.start();
         expect(controller.running, isTrue, reason: '${controller.lastError}');
         await Future<void>.delayed(const Duration(seconds: 8));

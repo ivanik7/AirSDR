@@ -102,6 +102,13 @@ abstract interface class NativeRadioApi {
   List<SdrHostUsbDevice> hostDevices();
   void controls(Pointer<SdrHandle> handle, NativeControls controls);
   void display(Pointer<SdrHandle> handle, NativeDisplay display);
+
+  /// `sdr_v3_set_wfm_stereo`: OPEN (after accepted v3 controls) or RUNNING.
+  /// Strict bool; only affects WFM audio but the preference is retained
+  /// across modes. Success (including an unchanged value) advances
+  /// control_sequence and invalidates the latest FFT row; rejection changes
+  /// neither epoch nor audio state. Never retunes hardware.
+  void stereo(Pointer<SdrHandle> handle, bool enabled);
   void audioSink(Pointer<SdrHandle> handle, String spec);
   void start(Pointer<SdrHandle> handle);
   void stop(Pointer<SdrHandle> handle);
@@ -283,6 +290,7 @@ final class FfiNativeRadioApi implements NativeRadioApi {
     for (final symbol in <String>[
       'sdr_v3_set_controls',
       'sdr_v3_set_display',
+      'sdr_v3_set_wfm_stereo',
       'sdr_v3_set_audio_sink',
       'sdr_v3_start',
       'sdr_v3_stop',
@@ -359,6 +367,11 @@ final class FfiNativeRadioApi implements NativeRadioApi {
         Int32 Function(Pointer<SdrHandle>, Pointer<_Display>),
         int Function(Pointer<SdrHandle>, Pointer<_Display>)
       >('sdr_v3_set_display');
+  late final _stereo = _lib
+      .lookupFunction<
+        Int32 Function(Pointer<SdrHandle>, Uint32),
+        int Function(Pointer<SdrHandle>, int)
+      >('sdr_v3_set_wfm_stereo');
   late final _sink = _lib
       .lookupFunction<
         Int32 Function(Pointer<SdrHandle>, Pointer<Uint8>, Uint32),
@@ -524,6 +537,10 @@ final class FfiNativeRadioApi implements NativeRadioApi {
       calloc.free(p);
     }
   }
+
+  @override
+  void stereo(Pointer<SdrHandle> h, bool enabled) =>
+      _check(_stereo(h, enabled ? 1 : 0));
 
   @override
   void audioSink(Pointer<SdrHandle> h, String spec) {

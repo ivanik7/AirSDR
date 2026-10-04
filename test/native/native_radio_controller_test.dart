@@ -52,10 +52,12 @@ class FakeApi implements NativeRadioApi {
   final calls = <String>[];
   final applied = <NativeControls>[];
   final displays = <NativeDisplay>[];
+  final stereoCalls = <bool>[];
   int state = SdrState.idle, generation = 0, controlSequence = 0;
   int error = 0, errorSequence = 0, fftSequence = 0;
   bool rejectControls = false, squelchReady = false;
-  bool rejectGainQuery = false;
+  bool rejectGainQuery = false, rejectStereo = false;
+  bool stereoValue = false;
   List<int> tunerGains = [0, 125, 280, 496];
   NativeControls? controlsValue;
   @override
@@ -114,6 +116,15 @@ class FakeApi implements NativeRadioApi {
     displays.add(d);
     controlSequence++;
     calls.add('display');
+  }
+
+  @override
+  void stereo(Pointer<SdrHandle> h, bool enabled) {
+    if (rejectStereo) throw SdrCoreError(SdrResult.unsupported);
+    stereoValue = enabled;
+    stereoCalls.add(enabled);
+    controlSequence++;
+    calls.add('stereo:$enabled');
   }
 
   @override
@@ -237,6 +248,7 @@ void main() {
         'create',
         'host:2:3:3',
         'controls',
+        'stereo:false',
         'display',
         'sink:null',
         'start',
@@ -322,6 +334,85 @@ void main() {
       expect(r.lastError, contains('Native control failed'));
     },
   );
+
+  group('WFM stereo', () {
+    test('defaults to false and is only exposed in WFM mode', () async {
+      final r = create();
+      await until(() => r.running);
+      expect(r.demodOptions, {'stereo': false});
+      r.setMode(DemodMode.nfm);
+      expect(r.demodOptions, isEmpty);
+      r.setMode(DemodMode.wfm);
+      expect(r.demodOptions, {'stereo': false});
+    });
+
+    test('setDemodOption("stereo", true) calls sdr_v3_set_wfm_stereo', () async {
+      final r = create();
+      await until(() => r.running);
+      api.stereoCalls.clear();
+      r.setDemodOption('stereo', true);
+      expect(api.stereoCalls, [true]);
+      expect(r.demodOptions, {'stereo': true});
+    });
+
+    test('toggling to the same value is a no-op (no extra native call)', () async {
+      final r = create();
+      await until(() => r.running);
+      api.stereoCalls.clear();
+      r.setDemodOption('stereo', false);
+      expect(api.stereoCalls, isEmpty);
+    });
+
+    test('non-bool or unknown option keys are ignored', () async {
+      final r = create();
+      await until(() => r.running);
+      api.stereoCalls.clear();
+      r.setDemodOption('stereo', 'yes');
+      r.setDemodOption('lowPass', true);
+      expect(api.stereoCalls, isEmpty);
+      expect(r.demodOptions, {'stereo': false});
+    });
+
+    test('rejection rolls back and reports an error without changing state', () async {
+      final r = create();
+      await until(() => r.running);
+      api.rejectStereo = true;
+      r.setDemodOption('stereo', true);
+      expect(r.demodOptions, {'stereo': false});
+      expect(r.lastError, contains('Native stereo failed'));
+    });
+
+    test('preference is retained across mode switches, not reset', () async {
+      final r = create();
+      await until(() => r.running);
+      r.setDemodOption('stereo', true);
+      r.setMode(DemodMode.nfm);
+      r.setMode(DemodMode.wfm);
+      expect(r.demodOptions, {'stereo': true});
+    });
+
+    test('is reapplied on every (re)start since native resets it per open', () async {
+      final r = create();
+      await until(() => r.running);
+      r.setDemodOption('stereo', true);
+      await r.stop();
+      api.stereoCalls.clear();
+      await r.start();
+      await until(() => r.running);
+      expect(api.stereoCalls, [true]);
+    });
+
+    test('updates the stored preference without a native call while stopped', () async {
+      final r = create(autoStart: false);
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      r.setDemodOption('stereo', true);
+      expect(r.demodOptions, {'stereo': true});
+      expect(api.stereoCalls, isEmpty);
+      await r.start();
+      await until(() => r.running);
+      expect(api.stereoCalls, [true]);
+    });
+  });
 
   test(
     'service promotion failure prevents native start and closes the claim',

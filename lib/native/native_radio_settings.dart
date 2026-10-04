@@ -58,6 +58,7 @@ class NativeRadioSettings {
     required this.squelchKey,
     required this.squelchLevelDb,
     required this.autoOffsetDb,
+    this.stereo = false,
     this.legacyRtlGainIndex,
     this.legacyRtlDeviceName,
   });
@@ -71,6 +72,7 @@ class NativeRadioSettings {
     squelchKey: 'off',
     squelchLevelDb: -50,
     autoOffsetDb: 0,
+    stereo: false,
   );
 
   /// Tuned frequency in Hz (center frequency + VFO offset).
@@ -90,6 +92,11 @@ class NativeRadioSettings {
   final double squelchLevelDb;
   final double autoOffsetDb;
 
+  /// WFM stereo preference (sdr_v3_set_wfm_stereo). Retained across modes;
+  /// only affects WFM audio. Defaults to false, matching the native default
+  /// on every open.
+  final bool stereo;
+
   /// Pending tuner-table index, retained until the same RTL device opens.
   final int? legacyRtlGainIndex;
   final String? legacyRtlDeviceName;
@@ -105,6 +112,7 @@ class NativeRadioSettings {
     String? squelchKey,
     double? squelchLevelDb,
     double? autoOffsetDb,
+    bool? stereo,
     int? legacyRtlGainIndex,
     String? legacyRtlDeviceName,
   }) => NativeRadioSettings(
@@ -116,6 +124,7 @@ class NativeRadioSettings {
     squelchKey: squelchKey ?? this.squelchKey,
     squelchLevelDb: squelchLevelDb ?? this.squelchLevelDb,
     autoOffsetDb: autoOffsetDb ?? this.autoOffsetDb,
+    stereo: stereo ?? this.stereo,
     legacyRtlGainIndex: legacyRtlGainIndex ?? this.legacyRtlGainIndex,
     legacyRtlDeviceName: legacyRtlDeviceName ?? this.legacyRtlDeviceName,
   );
@@ -132,6 +141,7 @@ class NativeRadioSettings {
     'squelchKey': squelchKey,
     'squelchLevelDb': squelchLevelDb,
     'autoOffsetDb': autoOffsetDb,
+    'stereo': stereo,
     if (legacyRtlGainIndex != null) 'legacyRtlGainIndex': legacyRtlGainIndex,
     if (legacyRtlDeviceName != null) 'legacyRtlDeviceName': legacyRtlDeviceName,
   };
@@ -197,6 +207,9 @@ class NativeRadioSettings {
       defaults.autoOffsetDb,
     ).clamp(-10.0, 20.0).toDouble();
 
+    final stereoRaw = data['stereo'];
+    final stereo = stereoRaw is bool ? stereoRaw : defaults.stereo;
+
     return NativeRadioSettings(
       tunedFrequencyHz: tuned,
       modeId: mode.id,
@@ -206,6 +219,7 @@ class NativeRadioSettings {
       squelchKey: squelch.key,
       squelchLevelDb: squelchLevel,
       autoOffsetDb: autoOffset,
+      stereo: stereo,
       legacyRtlGainIndex: data['legacyRtlGainIndex'] is int
           ? data['legacyRtlGainIndex'] as int
           : null,
