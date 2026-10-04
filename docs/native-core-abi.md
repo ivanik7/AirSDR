@@ -5,6 +5,9 @@
 и `native/include/sdrcore.h`; описанная ниже версия 1 относится только к N0.
 For the integrated N1 ABI 2 contract, use `docs/native-n1-adr.md` and the public header;
 the N0 version-1 table below is retained as historical context.
+For the N2 ABI 3 *contract only*, use `docs/native-n2-adr.md` and
+`native/include/sdrcore_v3.h`. Until the implementation is integrated,
+`sdr_version()` remains 2 and no v3 symbols are exported.
 Основание: `~/prj/docs/40-native-core-plan.md` (§ «Целевая схема», N0–N5),
 `native/include/sdrcore.h`. При конфликте с прежним Dart-only описанием в
 `~/prj/docs/10-architecture.md` приоритет у `AGENTS.md` и плана 40.
