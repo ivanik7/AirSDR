@@ -10,6 +10,7 @@ import '../favorites/favorites.dart';
 import '../radio_controller.dart';
 import '../sdr_ui_state.dart';
 import 'centered_receiver.dart';
+import 'decoder_screen.dart';
 import 'receive_screen.dart';
 import 'presets_screen.dart';
 import 'settings_screen.dart';
@@ -194,6 +195,10 @@ class _LegacyAppShellState extends State<LegacyAppShell> {
                   spectrum: spectrum,
                   bands: bands,
                 ),
+                DecoderScreen(
+                  controller: widget.controller,
+                  receiver: receiver,
+                ),
               ],
             ),
           ),
@@ -204,7 +209,7 @@ class _LegacyAppShellState extends State<LegacyAppShell> {
             ),
             child: Row(
               children: [
-                for (var i = 0; i < 3; i++)
+                for (var i = 0; i < 4; i++)
                   Expanded(
                     child: InkWell(
                       key: ValueKey('tab-$i'),
@@ -220,13 +225,18 @@ class _LegacyAppShellState extends State<LegacyAppShell> {
                                 : LegacyColors.muted,
                           ),
                           const SizedBox(height: 5),
-                          Text(
-                            ['Приём', 'Пресеты', 'Настройки'][i],
-                            style: plex(
-                              size: 12,
-                              color: tab == i
-                                  ? LegacyColors.accent
-                                  : LegacyColors.muted,
+                          FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text(
+                              ['Приём', 'Пресеты', 'Настройки', 'Decoder'][i],
+                              maxLines: 1,
+                              softWrap: false,
+                              style: plex(
+                                size: 12,
+                                color: tab == i
+                                    ? LegacyColors.accent
+                                    : LegacyColors.muted,
+                              ),
                             ),
                           ),
                         ],

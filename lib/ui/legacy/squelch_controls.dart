@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Squelch controls of the legacy Settings tab: Выкл / Ручной / Авто.
+// Squelch controls of the Decoder tab: Off / Manual / Auto.
 //  * Ручной — the SDR++ power squelch, slider = level (−100..0 dB).
 //  * Авто — the automatic squelch (app extension, auto_squelch.dart): noise squelch in NFM,
 //    level squelch in AM/SSB/DSB/CW; the slider becomes the threshold offset ("sensitivity")

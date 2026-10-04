@@ -9,7 +9,6 @@ import '../sdr_ui_state.dart';
 import '../source_settings.dart';
 import 'bands_screen.dart';
 import 'centered_receiver.dart';
-import 'squelch_controls.dart';
 import 'step_grid.dart';
 import 'theme.dart';
 
@@ -98,7 +97,7 @@ class SettingsScreen extends StatelessWidget {
           ),
           _row(
             'Параметры устройства',
-            'Особые параметры источника и демодулятора',
+            'Особые параметры источника',
             trailing: TextButton(
               onPressed: () => showSourceSettingsSheet(context, r),
               child: const Text('Открыть'),
@@ -188,10 +187,6 @@ class SettingsScreen extends StatelessWidget {
             g?.max ?? 1,
             g == null || r.agc ? null : r.setGain,
             '${r.gain.toStringAsFixed(1)} ${g?.unit ?? 'dB'}',
-          ),
-          Padding(
-            padding: const EdgeInsets.only(bottom: 7),
-            child: SquelchControls(controller: r),
           ),
           if (spectrum case final s?) ..._waterfallLevels(s),
         ],

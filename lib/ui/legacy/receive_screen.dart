@@ -90,297 +90,320 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
       final band = widget.bands?.bandAt(
         (widget.spectrum.heldFrequency ?? r.tunedFrequency).round(),
       );
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 2, 8, 0),
-            child: _FixedFrequencyRow(
-              key: const ValueKey('legacyFrequencyField'),
-              text: f.entry.isEmpty
-                  ? formatMhz(widget.spectrum.heldFrequency ?? r.tunedFrequency)
-                  : f.entry,
-              entering: f.entry.isNotEmpty,
-              trailing: f.entry.isNotEmpty
-                  ? IconButton(
-                      tooltip: 'Очистить ввод',
-                      onPressed: () => key('CLR'),
-                      icon: const Icon(Icons.close, size: 17),
-                    )
-                  : IconButton(
-                      // Real mute, independent of the fixed full app volume; starts muted.
-                      key: const ValueKey('legacyMute'),
-                      tooltip: widget.scanner.userMuted
-                          ? 'Включить звук'
-                          : 'Выключить звук',
-                      onPressed: () => widget.scanner.active
-                          ? widget.scanner.setUserMuted(
-                              !widget.scanner.userMuted,
-                            )
-                          : r.setMuted(!r.muted),
-                      icon: Icon(
-                        widget.scanner.userMuted
-                            ? Icons.volume_off
-                            : Icons.volume_up,
-                        size: 18,
-                        color: widget.scanner.userMuted
-                            ? LegacyColors.danger
-                            : LegacyColors.primary,
-                      ),
-                    ),
-            ),
-          ),
-          // Status: never wider than the screen (cover display is ~344 dp).
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            child: Row(
-              key: const ValueKey('legacyStatus'),
-              children: [
-                Text(
-                  'BW ${(r.bandwidth / 1000).toStringAsFixed(1)}k',
-                  maxLines: 1,
-                  style: plex(mono: true, size: 12, color: LegacyColors.accent),
-                ),
-                if (band != null) ...[
-                  const SizedBox(width: 8),
-                  Flexible(
-                    child: Text(
-                      band.name,
-                      key: const ValueKey('legacyBandName'),
-                      maxLines: 1,
-                      softWrap: false,
-                      overflow: TextOverflow.ellipsis,
-                      style: plex(size: 12, color: LegacyColors.primary),
+      final compactHeight = MediaQuery.sizeOf(context).height < 500;
+      final content = <Widget>[
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 2, 8, 0),
+          child: _FixedFrequencyRow(
+            key: const ValueKey('legacyFrequencyField'),
+            text: f.entry.isEmpty
+                ? formatMhz(widget.spectrum.heldFrequency ?? r.tunedFrequency)
+                : f.entry,
+            entering: f.entry.isNotEmpty,
+            trailing: f.entry.isNotEmpty
+                ? IconButton(
+                    tooltip: 'Очистить ввод',
+                    onPressed: () => key('CLR'),
+                    icon: const Icon(Icons.close, size: 17),
+                  )
+                : IconButton(
+                    // Real mute, independent of the fixed full app volume; starts muted.
+                    key: const ValueKey('legacyMute'),
+                    tooltip: widget.scanner.userMuted
+                        ? 'Включить звук'
+                        : 'Выключить звук',
+                    onPressed: () => widget.scanner.active
+                        ? widget.scanner.setUserMuted(!widget.scanner.userMuted)
+                        : r.setMuted(!r.muted),
+                    icon: Icon(
+                      widget.scanner.userMuted
+                          ? Icons.volume_off
+                          : Icons.volume_up,
+                      size: 18,
+                      color: widget.scanner.userMuted
+                          ? LegacyColors.danger
+                          : LegacyColors.primary,
                     ),
                   ),
-                ],
+          ),
+        ),
+        // Status: never wider than the screen (cover display is ~344 dp).
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: Row(
+            key: const ValueKey('legacyStatus'),
+            children: [
+              Text(
+                'BW ${(r.bandwidth / 1000).toStringAsFixed(1)}k',
+                maxLines: 1,
+                style: plex(mono: true, size: 12, color: LegacyColors.accent),
+              ),
+              if (band != null) ...[
                 const SizedBox(width: 8),
-                Expanded(
+                Flexible(
                   child: Text(
-                    r.running
-                        ? compactStatsLine(r)
-                        : linkStatusText(r.linkState),
-                    key: const ValueKey('legacyStats'),
+                    band.name,
+                    key: const ValueKey('legacyBandName'),
                     maxLines: 1,
                     softWrap: false,
                     overflow: TextOverflow.ellipsis,
-                    textAlign: TextAlign.right,
-                    style: plex(
-                      mono: true,
-                      size: 10,
-                      color:
-                          !r.running &&
-                              r.linkState != DeviceLinkState.connecting
-                          ? LegacyColors.danger
-                          : LegacyColors.muted,
-                    ),
+                    style: plex(size: 12, color: LegacyColors.primary),
                   ),
                 ),
               ],
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            child: Row(
-              children: [
-                Expanded(
-                  child: PopupMenuButton<DemodMode>(
-                    key: const ValueKey('legacyModeSelect'),
-                    tooltip: 'Модуляция',
-                    initialValue: r.mode,
-                    onSelected: (mode) => setState(() => f.changeMode(mode)),
-                    itemBuilder: (context) => [
-                      for (final mode in DemodMode.values)
-                        PopupMenuItem(
-                          key: ValueKey('legacyMode-${mode.label}'),
-                          value: mode,
-                          child: Text(mode.label),
-                        ),
-                    ],
-                    child: Container(
-                      height: 40,
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
-                      decoration: BoxDecoration(
-                        color: LegacyColors.card,
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: FittedBox(
-                              fit: BoxFit.scaleDown,
-                              alignment: Alignment.centerLeft,
-                              child: Text(
-                                r.mode.label,
-                                style: plex(
-                                  size: 14,
-                                  color: LegacyColors.accent,
-                                ),
-                              ),
-                            ),
-                          ),
-                          const Icon(
-                            Icons.arrow_drop_down,
-                            color: LegacyColors.accent,
-                          ),
-                        ],
-                      ),
-                    ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  r.running ? compactStatsLine(r) : linkStatusText(r.linkState),
+                  key: const ValueKey('legacyStats'),
+                  maxLines: 1,
+                  softWrap: false,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.right,
+                  style: plex(
+                    mono: true,
+                    size: 10,
+                    color:
+                        !r.running && r.linkState != DeviceLinkState.connecting
+                        ? LegacyColors.danger
+                        : LegacyColors.muted,
                   ),
                 ),
-                const SizedBox(width: 8),
-                SizedBox(
-                  width: 160,
-                  child: PopupMenuButton<int>(
-                    key: const ValueKey('legacyStep'),
-                    tooltip: 'Шаг',
-                    initialValue: f.stepHz,
-                    onSelected: (hz) => setState(() => f.setStepHz(hz)),
-                    itemBuilder: (context) => [
-                      for (final hz in CenteredReceiver.steps)
-                        PopupMenuItem(
-                          key: ValueKey('legacyStep-$hz'),
-                          value: hz,
-                          child: Text(_stepLabel(hz)),
-                        ),
-                    ],
-                    child: Container(
-                      height: 40,
-                      padding: const EdgeInsets.symmetric(horizontal: 10),
-                      decoration: BoxDecoration(
-                        color: LegacyColors.card,
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: FittedBox(
-                              fit: BoxFit.scaleDown,
-                              alignment: Alignment.centerLeft,
-                              child: Text(
-                                'ШАГ ${_stepLabel(f.stepHz)}',
-                                style: plex(
-                                  size: 12,
-                                  color: LegacyColors.accent,
-                                ),
-                              ),
-                            ),
-                          ),
-                          const Icon(
-                            Icons.arrow_drop_down,
-                            color: LegacyColors.accent,
-                          ),
-                        ],
-                      ),
-                    ),
+              ),
+            ],
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: Row(
+            children: [
+              Expanded(
+                child: Container(
+                  height: 40,
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  alignment: Alignment.centerLeft,
+                  decoration: BoxDecoration(
+                    color: LegacyColors.card,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    r.mode.label,
+                    key: const ValueKey('legacyModeStatus'),
+                    style: plex(size: 14, color: LegacyColors.accent),
                   ),
                 ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 4),
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              child: GestureDetector(
-                key: const ValueKey('legacySpectrumDrag'),
-                onHorizontalDragStart: (_) => f.beginDrag(),
-                onHorizontalDragUpdate: (d) {
-                  final width = MediaQuery.sizeOf(context).width - 24;
-                  f.dragBy(-d.delta.dx * r.sampleRate / width);
-                },
-                onHorizontalDragEnd: (_) => _finishDrag(),
-                onHorizontalDragCancel: _finishDrag,
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(15),
+              ),
+              const SizedBox(width: 8),
+              SizedBox(
+                width: 160,
+                child: PopupMenuButton<int>(
+                  key: const ValueKey('legacyStep'),
+                  tooltip: 'Шаг',
+                  initialValue: f.stepHz,
+                  onSelected: (hz) => setState(() => f.setStepHz(hz)),
+                  itemBuilder: (context) => [
+                    for (final hz in CenteredReceiver.steps)
+                      PopupMenuItem(
+                        key: ValueKey('legacyStep-$hz'),
+                        value: hz,
+                        child: Text(_stepLabel(hz)),
+                      ),
+                  ],
                   child: Container(
-                    color: const Color(0xFF0A0C0A),
-                    child: Stack(
+                    height: 40,
+                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                    decoration: BoxDecoration(
+                      color: LegacyColors.card,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Row(
                       children: [
-                        LayoutBuilder(
-                          builder: (context, box) {
-                            final cols =
-                                (box.maxWidth *
-                                        MediaQuery.devicePixelRatioOf(context))
-                                    .round()
-                                    .clamp(32, 1024);
-                            widget.spectrum.setLayout(
-                              columns: cols,
-                              historyRows: 512,
-                            );
-                            final plot = (box.maxHeight * 0.48).clamp(
-                              0.0,
-                              66.0,
-                            );
-                            final scale = (box.maxHeight - plot).clamp(
-                              0.0,
-                              20.0,
-                            );
-                            return Column(
-                              children: [
-                                SizedBox(
-                                  height: plot,
-                                  width: box.maxWidth,
-                                  child: CustomPaint(
-                                    painter: SpectrumPainter(
-                                      state: widget.spectrum,
-                                      plotLineColor: LegacyColors.accent,
-                                    ),
-                                  ),
-                                ),
-                                SizedBox(
-                                  height: scale,
-                                  width: box.maxWidth,
-                                  child: CustomPaint(
-                                    painter: FrequencyScalePainter(
-                                      state: widget.spectrum,
-                                    ),
-                                  ),
-                                ),
-                                SizedBox(
-                                  height: (box.maxHeight - plot - scale).clamp(
-                                    0.0,
-                                    double.infinity,
-                                  ),
-                                  width: box.maxWidth,
-                                  child: CustomPaint(
-                                    painter: WaterfallPainter(
-                                      state: widget.spectrum,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            );
-                          },
-                        ),
-                        // No stale FFT is represented as a current measurement while stopped.
-                        if (!r.running)
-                          const Positioned.fill(
-                            child: ColoredBox(color: Color(0xB80A0C0A)),
+                        Expanded(
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              'ШАГ ${_stepLabel(f.stepHz)}',
+                              style: plex(size: 12, color: LegacyColors.accent),
+                            ),
                           ),
-                        Positioned.fill(
-                          child: IgnorePointer(
-                            child: LayoutBuilder(
-                              builder: (context, box) => Stack(
-                                children: [
-                                  Positioned(
-                                    left: widget.spectrum.displayViewport
-                                        .freqToX(
-                                          widget.spectrum.heldFrequency ??
-                                              r.tunedFrequency,
-                                          box.maxWidth,
-                                        )
-                                        .clamp(0.0, box.maxWidth - 2),
-                                    top: 0,
-                                    bottom: 0,
-                                    child: Container(
-                                      width: 2,
-                                      color: LegacyColors.accent,
-                                    ),
-                                  ),
-                                ],
+                        ),
+                        const Icon(
+                          Icons.arrow_drop_down,
+                          color: LegacyColors.accent,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 4),
+        if (compactHeight)
+          SizedBox(height: 100, child: _spectrumPanel(r, f))
+        else
+          Expanded(child: _spectrumPanel(r, f)),
+        Padding(
+          // Same side margins as the spectrum panel above.
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: ChannelsSection(
+            controller: widget.channels,
+            scanner: widget.scanner,
+            radio: r,
+            meter: widget.meter,
+          ),
+        ),
+        const SizedBox(height: 2),
+        for (final row in const [
+          ['1', '2', '3'],
+          ['4', '5', '6'],
+          ['7', '8', '9'],
+          ['.', '0', 'OK'],
+        ]) ...[
+          Row(
+            children: [
+              for (final label in row)
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 3,
+                      vertical: 2,
+                    ),
+                    child: SizedBox(
+                      height: MediaQuery.sizeOf(context).height < 750 ? 38 : 46,
+                      child: Material(
+                        color: label == 'OK'
+                            ? LegacyColors.accent
+                            : LegacyColors.key,
+                        borderRadius: BorderRadius.circular(9),
+                        child: InkWell(
+                          key: ValueKey('key-$label'),
+                          onTap: () => key(label),
+                          child: Center(
+                            child: Text(
+                              label,
+                              style: plex(
+                                mono: true,
+                                size: MediaQuery.sizeOf(context).height < 750
+                                    ? 17
+                                    : 20,
+                                color: label == 'OK'
+                                    ? LegacyColors.background
+                                    : LegacyColors.primary,
                               ),
                             ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ],
+        if (feedback != null)
+          Text(feedback!, style: plex(size: 11, color: LegacyColors.danger)),
+      ];
+      return compactHeight
+          ? SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: content,
+              ),
+            )
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: content,
+            );
+    },
+  );
+
+  Widget _spectrumPanel(RadioController r, CenteredReceiver f) => Padding(
+    padding: const EdgeInsets.symmetric(horizontal: 12),
+    child: GestureDetector(
+      key: const ValueKey('legacySpectrumDrag'),
+      onHorizontalDragStart: (_) => f.beginDrag(),
+      onHorizontalDragUpdate: (d) {
+        final width = MediaQuery.sizeOf(context).width - 24;
+        f.dragBy(-d.delta.dx * r.sampleRate / width);
+      },
+      onHorizontalDragEnd: (_) => _finishDrag(),
+      onHorizontalDragCancel: _finishDrag,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(15),
+        child: Container(
+          color: const Color(0xFF0A0C0A),
+          child: Stack(
+            children: [
+              LayoutBuilder(
+                builder: (context, box) {
+                  final cols =
+                      (box.maxWidth * MediaQuery.devicePixelRatioOf(context))
+                          .round()
+                          .clamp(32, 1024);
+                  widget.spectrum.setLayout(columns: cols, historyRows: 512);
+                  final plot = (box.maxHeight * 0.48).clamp(0.0, 66.0);
+                  final scale = (box.maxHeight - plot).clamp(0.0, 20.0);
+                  return Column(
+                    children: [
+                      SizedBox(
+                        height: plot,
+                        width: box.maxWidth,
+                        child: CustomPaint(
+                          painter: SpectrumPainter(
+                            state: widget.spectrum,
+                            plotLineColor: LegacyColors.accent,
+                          ),
+                        ),
+                      ),
+                      SizedBox(
+                        height: scale,
+                        width: box.maxWidth,
+                        child: CustomPaint(
+                          painter: FrequencyScalePainter(
+                            state: widget.spectrum,
+                          ),
+                        ),
+                      ),
+                      SizedBox(
+                        height: (box.maxHeight - plot - scale).clamp(
+                          0.0,
+                          double.infinity,
+                        ),
+                        width: box.maxWidth,
+                        child: CustomPaint(
+                          painter: WaterfallPainter(state: widget.spectrum),
+                        ),
+                      ),
+                    ],
+                  );
+                },
+              ),
+              // No stale FFT is represented as a current measurement while stopped.
+              if (!r.running)
+                const Positioned.fill(
+                  child: ColoredBox(color: Color(0xB80A0C0A)),
+                ),
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: LayoutBuilder(
+                    builder: (context, box) => Stack(
+                      children: [
+                        Positioned(
+                          left: widget.spectrum.displayViewport
+                              .freqToX(
+                                widget.spectrum.heldFrequency ??
+                                    r.tunedFrequency,
+                                box.maxWidth,
+                              )
+                              .clamp(0.0, box.maxWidth - 2),
+                          top: 0,
+                          bottom: 0,
+                          child: Container(
+                            width: 2,
+                            color: LegacyColors.accent,
                           ),
                         ),
                       ],
@@ -388,73 +411,11 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
                   ),
                 ),
               ),
-            ),
+            ],
           ),
-          Padding(
-            // Same side margins as the spectrum panel above.
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            child: ChannelsSection(
-              controller: widget.channels,
-              scanner: widget.scanner,
-              radio: r,
-              meter: widget.meter,
-            ),
-          ),
-          const SizedBox(height: 2),
-          for (final row in const [
-            ['1', '2', '3'],
-            ['4', '5', '6'],
-            ['7', '8', '9'],
-            ['.', '0', 'OK'],
-          ]) ...[
-            Row(
-              children: [
-                for (final label in row)
-                  Expanded(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 3,
-                        vertical: 2,
-                      ),
-                      child: SizedBox(
-                        height: MediaQuery.sizeOf(context).height < 750
-                            ? 38
-                            : 46,
-                        child: Material(
-                          color: label == 'OK'
-                              ? LegacyColors.accent
-                              : LegacyColors.key,
-                          borderRadius: BorderRadius.circular(9),
-                          child: InkWell(
-                            key: ValueKey('key-$label'),
-                            onTap: () => key(label),
-                            child: Center(
-                              child: Text(
-                                label,
-                                style: plex(
-                                  mono: true,
-                                  size: MediaQuery.sizeOf(context).height < 750
-                                      ? 17
-                                      : 20,
-                                  color: label == 'OK'
-                                      ? LegacyColors.background
-                                      : LegacyColors.primary,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-          ],
-          if (feedback != null)
-            Text(feedback!, style: plex(size: 11, color: LegacyColors.danger)),
-        ],
-      );
-    },
+        ),
+      ),
+    ),
   );
 }
 

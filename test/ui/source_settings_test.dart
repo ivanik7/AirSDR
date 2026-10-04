@@ -85,7 +85,7 @@ void main() {
       expect(find.text('Gain 29.7 dB'), findsNothing);
       expect(find.text('Коррекция PPM'), findsOneWidget);
       expect(find.text('Питание антенны (Bias-T)'), findsOneWidget);
-      expect(find.text('Стерео'), findsOneWidget);
+      expect(find.text('Стерео'), findsNothing);
       expect(find.textContaining('Мвыб/с'), findsOneWidget);
       expect(find.textContaining('USB потери 3'), findsOneWidget);
       expect(find.textContaining('выход mp_audio_stream'), findsOneWidget);
@@ -94,9 +94,7 @@ void main() {
       await tester.pump();
       expect(c.applied.last, ('biasT', true));
 
-      await tester.tap(find.byKey(const ValueKey<String>('demod:stereo')));
-      await tester.pump();
-      expect(c.demod['stereo'], isTrue);
+      expect(find.byKey(const ValueKey<String>('demod:stereo')), findsNothing);
 
       await tester.enterText(find.byType(TextFormField), '52');
       await tester.testTextInput.receiveAction(TextInputAction.done);
