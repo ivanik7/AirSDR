@@ -2,6 +2,8 @@
 #ifndef SDRCORE_USB_ADAPTER_H
 #define SDRCORE_USB_ADAPTER_H
 
+#include "sdrcore.h"
+
 #include <cstddef>
 #include <cstdint>
 
@@ -28,6 +30,14 @@
 //   stop()         unblocks a pending start() and stops the hardware stream;
 //                  safe to call once after start() has been entered.
 //   close()        releases the device handle; safe to call after stop().
+//   get_tuner_gains(..) returns the device's supported tuner gain values in
+//                  tenths of a dB, ascending, through the already-open
+//                  device handle (no second USB claim). capacity==0 with
+//                  gains==nullptr is a valid count-only probe. Insufficient
+//                  capacity returns SDR_V3_BUFFER_SMALL and leaves `gains`
+//                  unmodified; `count` always receives the required count.
+//                  The default implementation reports SDR_UNSUPPORTED with
+//                  count=0 for adapters without a discoverable gain table.
 // All methods return SDR_OK (0) or a negative SdrResult-compatible code.
 class UsbRxAdapter {
  public:
@@ -40,6 +50,11 @@ class UsbRxAdapter {
   virtual int start(PushFn push, void* ctx) = 0;
   virtual void stop() = 0;
   virtual void close() = 0;
+  virtual int get_tuner_gains(int32_t* gains, uint32_t capacity,
+                               uint32_t* count) {
+    if (count) *count = 0;
+    return SDR_UNSUPPORTED;
+  }
 };
 
 #endif  // SDRCORE_USB_ADAPTER_H

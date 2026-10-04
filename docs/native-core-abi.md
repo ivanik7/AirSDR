@@ -127,3 +127,84 @@ Dart-изолята. Android `ReceptionService` отвечает за foreground
 проверяются отдельно. FFI-вызов из Dart — отдельная downstream-задача.
 Ни тест N0, ни сборка APK не подтверждают USB, DSP, звук, фон на устройстве
 или слышимость: это отдельные гейты N1/N2 и аппаратная QA.
+
+## N5 addendum: RTL-SDR tuner gain-list query (`sdr_v3_rtl_tuner_gains`)
+
+Added for the N5 transition, after the Dart receive path (including
+`RtlSdrSourceModule`/`RtlSdrDev.getTunerGains()`) was deleted. This is a pure
+ABI-3 addition: `sdr_version()` stays 3, every existing `sdr_v3_*` signature
+and struct layout is unchanged, and this symbol is additive-only in
+`native/include/sdrcore_v3.h`.
+
+```c
+int32_t sdr_v3_rtl_tuner_gains(SdrHandle* handle, int32_t* gains,
+                                 uint32_t capacity, uint32_t* count);
+```
+
+Contract (see the header comment for the authoritative text):
+
+- Returns the RTL-SDR tuner's supported gain values in tenths of a dB,
+  **sorted ascending**, through the handle's already-open `usb_adapter`
+  (`RtlSdrAdapter::get_tuner_gains`, `native/src/usb_rtlsdr_adapter.cpp`).
+  No second USB claim is ever made; the call only queries the existing
+  rtlsdr device handle created by `sdr_v2_open_usb`/`sdr_host_open_usb`.
+- This is an **exact migration** of the deleted Dart gain path: the old
+  `rtl_sdr_source.dart` called `RtlSdrDev.getTunerGains()..sort()` and then
+  indexed the sorted list by `gainId` to build its gain stepper UI. The
+  native implementation calls librtlsdr's `rtlsdr_get_tuner_gains()` (which
+  is not guaranteed sorted for every tuner table) and explicitly sorts
+  ascending before returning, so a client reproducing the old
+  `gainList[gainId]` index lookup gets byte-for-byte the same table and
+  order as before deletion.
+- `capacity == 0` with `gains == NULL` is a valid count-only probe: `count`
+  receives the required capacity and the call returns `SDR_OK` without
+  touching `gains`, regardless of how many gain steps exist (including 0,
+  e.g. tuners with no adjustable gain such as FC2580).
+- A nonzero but insufficient `capacity` returns `SDR_V3_BUFFER_SMALL`;
+  `count` still reports the required capacity, and `gains` is left
+  completely unmodified (verified by filling it with a sentinel before the
+  call in both the white-box and real-hardware tests).
+- A non-RTL-SDR source (file, synthetic, HackRF) or a handle without a USB
+  claim returns `SDR_UNSUPPORTED` with `count = 0`. `IDLE` (never opened)
+  returns `SDR_INVALID_STATE`. `NULL` handle or `NULL` `count`, or a nonzero
+  `capacity` with a `NULL` `gains` pointer, returns `SDR_INVALID_ARGUMENT`.
+- Thread-safe and serialized with the rest of the v3 control lifecycle: the
+  implementation takes the handle's existing `mutex`, the same lock guarding
+  `set_controls`/`start`/`stop`/`close`/`snapshot`; callers must still
+  serialize this call with other commands on the handle per the existing v3
+  ADR (`docs/native-n2-adr.md`), and it never races `destroy`.
+- Internal seam: `UsbRxAdapter::get_tuner_gains` (`native/src/usb_adapter.h`)
+  gained a virtual method with a default implementation (`SDR_UNSUPPORTED`,
+  `count = 0`) so `HackRfAdapter` and any future adapter need no change
+  unless they expose a real discoverable gain table.
+
+Verification (host, `native/tests/`, wired into CMake/CTest):
+
+- `rtl_gain_list_test.cpp` — white-box (includes `sdrcore.cpp` directly, no
+  real USB device): full query against a deliberately **unsorted** fake
+  gain table proves the sort is actually applied (not just a pre-sorted
+  fixture passing by accident); count-only probe; `BUFFER_SMALL` with array
+  non-modification; exact-capacity boundary; empty gain table is `SDR_OK`
+  with `count=0` (not `SDR_UNSUPPORTED`); non-RTL source (synthetic/file) is
+  `SDR_UNSUPPORTED`; an adapter that does not override the method falls back
+  to the `UsbRxAdapter` default; `IDLE` handle is `SDR_INVALID_STATE`; `NULL`
+  argument combinations are rejected; three threads concurrently querying a
+  running handle all observe the identical sorted table.
+- `host_rtl_gain_test.c` — real-hardware (opt-in by presence, SKIP+exit 0
+  without attached hardware): opens the attached RTL-SDR Blog V4 through
+  `sdr_host_open_usb`, confirms a second handle cannot claim the same
+  bus/address while the first owns it (no second USB claim), then exercises
+  the count-only probe, `BUFFER_SMALL`, exact and over-sized capacity, and
+  ascending order against the real `rtlsdr_get_tuner_gains()` table, both in
+  `OPEN` and while a v2 diagnostic stream is `RUNNING`.
+- Both pass in this worktree's `native/tests/run_host_tests.sh` run,
+  including against the physical Blog V4 on `debian-ai`: the R828D tuner
+  reports 29 gain steps, ascending from 0 to 496 tenths dB (0.0–49.6 dB),
+  matching librtlsdr's `r82xx_gains` table.
+
+The N5 Dart FFI binding (`FfiNativeRadioApi.rtlTunerGains`) probes and copies
+this list after USB open. `NativeRadioSettings` retains the legacy index and
+device name until a serial-matched dongle opens; the controller selects that
+exact sorted entry before the first start and writes the dB gain only after
+successful start. Invalid index, missing serial or failed query leave the
+index pending and use default gain. A manual gain adjustment replaces it.

@@ -55,6 +55,8 @@ class FakeApi implements NativeRadioApi {
   int state = SdrState.idle, generation = 0, controlSequence = 0;
   int error = 0, errorSequence = 0, fftSequence = 0;
   bool rejectControls = false, squelchReady = false;
+  bool rejectGainQuery = false;
+  List<int> tunerGains = [0, 125, 280, 496];
   NativeControls? controlsValue;
   @override
   Pointer<SdrHandle> create() {
@@ -91,6 +93,13 @@ class FakeApi implements NativeRadioApi {
 
   @override
   List<SdrHostUsbDevice> hostDevices() => [];
+  @override
+  List<int> rtlTunerGains(Pointer<SdrHandle> h) {
+    calls.add('gains');
+    if (rejectGainQuery) throw SdrCoreError(SdrResult.unsupported);
+    return tunerGains;
+  }
+
   @override
   void controls(Pointer<SdrHandle> h, NativeControls c) {
     if (rejectControls) throw SdrCoreError(SdrResult.unsupported);
@@ -430,6 +439,91 @@ void main() {
     tearDown(() {
       tempDir.deleteSync(recursive: true);
     });
+
+    void legacyGain(int index) {
+      File('${tempDir.path}/config.json').writeAsStringSync(
+        jsonEncode({
+          'sources': {
+            'rtl_sdr': {
+              'device': 'RTL Blog [00000001]',
+              'devices': {
+                'RTL Blog [00000001]': {'gain': index},
+              },
+            },
+          },
+        }),
+      );
+      source.devices = [
+        const NativeDevice(
+          SdrDeviceInfo(
+            id: 'rtl:1',
+            name: 'Native Blog [00000001]',
+            sampleRates: [2400000],
+            gain: GainRange(min: 0, max: 49.6),
+            hasAgc: false,
+          ),
+          SdrSourceId.rtlsdr,
+          bus: 2,
+          address: 3,
+        ),
+      ];
+    }
+
+    test(
+      'resolves old gain index against actual RTL table before first start',
+      () async {
+        legacyGain(2);
+        final r = create(configDir: tempDir.path);
+        await until(() => r.running);
+        expect(
+          api.calls,
+          containsAllInOrder(['host:2:3:3', 'gains', 'controls', 'start']),
+        );
+        expect(api.applied.single.gainTenthsDb, 280);
+        expect(r.gain, 28);
+        expect(
+          loadNativeRadioSettings(tempDir.path).legacyRtlGainIndex,
+          isNull,
+        );
+        expect(File('${tempDir.path}/config.json').existsSync(), isTrue);
+      },
+    );
+
+    test(
+      'out-of-range gain index remains pending; default is explicit',
+      () async {
+        legacyGain(100);
+        final r = create(configDir: tempDir.path);
+        await until(() => r.running);
+        expect(r.gain, 20);
+        await until(() => r.stats.containsKey('gainMigration'));
+        expect(r.stats['gainMigration'], contains('outside tuner table'));
+        await r.stop();
+        expect(loadNativeRadioSettings(tempDir.path).legacyRtlGainIndex, 100);
+      },
+    );
+
+    test(
+      'unknown hardware or tuner query error preserves pending index',
+      () async {
+        legacyGain(2);
+        source.devices = [device];
+        var r = create(configDir: tempDir.path);
+        await until(() => r.running);
+        expect(api.calls, isNot(contains('gains')));
+        await r.stop();
+        r.dispose();
+        radio = null;
+        expect(loadNativeRadioSettings(tempDir.path).legacyRtlGainIndex, 2);
+
+        legacyGain(2);
+        api.rejectGainQuery = true;
+        r = create(configDir: tempDir.path);
+        await until(() => r.running);
+        expect(r.gain, 20);
+        expect(loadNativeRadioSettings(tempDir.path).legacyRtlGainIndex, 2);
+      },
+    );
 
     test('default volume (1.0) reaches the native controls', () async {
       final r = create();

@@ -58,6 +58,8 @@ class NativeRadioSettings {
     required this.squelchKey,
     required this.squelchLevelDb,
     required this.autoOffsetDb,
+    this.legacyRtlGainIndex,
+    this.legacyRtlDeviceName,
   });
 
   factory NativeRadioSettings.defaults() => const NativeRadioSettings(
@@ -88,6 +90,10 @@ class NativeRadioSettings {
   final double squelchLevelDb;
   final double autoOffsetDb;
 
+  /// Pending tuner-table index, retained until the same RTL device opens.
+  final int? legacyRtlGainIndex;
+  final String? legacyRtlDeviceName;
+
   DemodMode get mode => DemodMode.fromId(modeId);
 
   NativeRadioSettings copyWith({
@@ -99,6 +105,8 @@ class NativeRadioSettings {
     String? squelchKey,
     double? squelchLevelDb,
     double? autoOffsetDb,
+    int? legacyRtlGainIndex,
+    String? legacyRtlDeviceName,
   }) => NativeRadioSettings(
     tunedFrequencyHz: tunedFrequencyHz ?? this.tunedFrequencyHz,
     modeId: modeId ?? this.modeId,
@@ -108,6 +116,8 @@ class NativeRadioSettings {
     squelchKey: squelchKey ?? this.squelchKey,
     squelchLevelDb: squelchLevelDb ?? this.squelchLevelDb,
     autoOffsetDb: autoOffsetDb ?? this.autoOffsetDb,
+    legacyRtlGainIndex: legacyRtlGainIndex ?? this.legacyRtlGainIndex,
+    legacyRtlDeviceName: legacyRtlDeviceName ?? this.legacyRtlDeviceName,
   );
 
   Map<String, Object?> toJson() => <String, Object?>{
@@ -122,6 +132,8 @@ class NativeRadioSettings {
     'squelchKey': squelchKey,
     'squelchLevelDb': squelchLevelDb,
     'autoOffsetDb': autoOffsetDb,
+    if (legacyRtlGainIndex != null) 'legacyRtlGainIndex': legacyRtlGainIndex,
+    if (legacyRtlDeviceName != null) 'legacyRtlDeviceName': legacyRtlDeviceName,
   };
 
   /// Parses a decoded JSON object, validating every field; any missing or
@@ -194,6 +206,12 @@ class NativeRadioSettings {
       squelchKey: squelch.key,
       squelchLevelDb: squelchLevel,
       autoOffsetDb: autoOffset,
+      legacyRtlGainIndex: data['legacyRtlGainIndex'] is int
+          ? data['legacyRtlGainIndex'] as int
+          : null,
+      legacyRtlDeviceName: data['legacyRtlDeviceName'] is String
+          ? data['legacyRtlDeviceName'] as String
+          : null,
     );
   }
 }
@@ -237,10 +255,8 @@ NativeRadioSettings loadNativeRadioSettings(String configDir) {
 /// per-mode bandwidth, squelch of the selected mode). Returns null if
 /// neither file exists. Never modifies the legacy files. Never throws.
 ///
-/// Gain is intentionally NOT migrated: `rtl_sdr_source.dart` stores gain as
-/// an index into a hardware-discovered gain table (`gainList`, populated
-/// from `RtlSdrDev.getTunerGains()`), which is not known without opening the
-/// device; migrating the raw index as a dB value would be meaningless.
+/// RTL gain is a device-specific tuner-table index, not dB; retain it pending
+/// until the matching device opens and its native gain table is read.
 NativeRadioSettings? migrateFromDartEngineFiles(String configDir) {
   final coreFile = File('$configDir${Platform.pathSeparator}config.json');
   final radioFile = File(
@@ -271,13 +287,26 @@ NativeRadioSettings? migrateFromDartEngineFiles(String configDir) {
           final rtl = sources['rtl_sdr'] as Map;
           final devices = rtl['devices'];
           if (devices is Map) {
-            for (final v in devices.values) {
-              if (v is Map && v['sampleRate'] is num) {
+            final selected = rtl['device'];
+            final entry = selected is String && devices[selected] is Map
+                ? MapEntry(selected, devices[selected])
+                : devices.length == 1
+                ? devices.entries.first
+                : null;
+            if (entry != null && entry.value is Map) {
+              final v = entry.value as Map;
+              if (v['sampleRate'] is num) {
                 final sr = (v['sampleRate'] as num).toDouble();
                 if (sr.isFinite && sr > 0) {
                   settings = settings.copyWith(sampleRateHz: sr);
                 }
-                break; // one Android USB device is expected
+              }
+              final index = v['gain'];
+              if (entry.key is String && index is int) {
+                settings = settings.copyWith(
+                  legacyRtlGainIndex: index,
+                  legacyRtlDeviceName: entry.key as String,
+                );
               }
             }
           }

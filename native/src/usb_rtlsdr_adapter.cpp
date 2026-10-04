@@ -4,10 +4,13 @@
 #include "rtl-sdr.h"
 
 #include "sdrcore.h"
+#include "sdrcore_v3.h"
 
+#include <algorithm>
 #include <chrono>
 #include <thread>
 #include <unistd.h>
+#include <vector>
 
 RtlSdrAdapter::~RtlSdrAdapter() { close(); }
 
@@ -40,6 +43,38 @@ int RtlSdrAdapter::configure(uint64_t frequency_hz, uint32_t sample_rate,
   // through ABI 2 yet, so a fixed caller-chosen gain is used throughout.
   if (rtlsdr_set_tuner_gain_mode(dev_, 1) != 0) return SDR_IO_ERROR;
   if (rtlsdr_set_tuner_gain(dev_, gain_tenths_db) != 0) return SDR_IO_ERROR;
+  return SDR_OK;
+}
+
+int RtlSdrAdapter::get_tuner_gains(int32_t* gains, uint32_t capacity,
+                                    uint32_t* count) {
+  if (!count) return SDR_INVALID_ARGUMENT;
+  if (!dev_) { *count = 0; return SDR_INVALID_STATE; }
+  if (capacity && !gains) { *count = 0; return SDR_INVALID_ARGUMENT; }
+  // librtlsdr's own count-only probe: rtlsdr_get_tuner_gains(dev, NULL)
+  // returns the number of entries without touching any buffer.
+  const int total = rtlsdr_get_tuner_gains(dev_, nullptr);
+  if (total < 0) { *count = 0; return SDR_IO_ERROR; }
+  *count = static_cast<uint32_t>(total);
+  // capacity==0 is always a valid count-only probe (regardless of how many
+  // gains actually exist), distinct from a nonzero-but-insufficient
+  // capacity, which is SDR_V3_BUFFER_SMALL.
+  if (capacity == 0) return SDR_OK;
+  if (capacity < *count) return SDR_V3_BUFFER_SMALL;
+  if (*count == 0) return SDR_OK;
+  // Query into a scratch buffer first so a mid-query failure never leaves
+  // the caller's `gains` partially written (matches the "no gain array
+  // modification" contract on any non-SDR_OK return).
+  std::vector<int> raw(*count);
+  const int got = rtlsdr_get_tuner_gains(dev_, raw.data());
+  if (got != static_cast<int>(*count)) return SDR_IO_ERROR;
+  // Exact migration of the legacy Dart gain path: old `rtl_sdr_source.dart`
+  // called `dev.getTunerGains()..sort()` before indexing by gainId. librtlsdr's
+  // static tables are already ascending for every known tuner, but sort here
+  // explicitly so the ABI contract ("sorted ascending") holds regardless of
+  // the vendored table's order.
+  std::sort(raw.begin(), raw.end());
+  for (uint32_t i = 0; i < *count; ++i) gains[i] = static_cast<int32_t>(raw[i]);
   return SDR_OK;
 }
 

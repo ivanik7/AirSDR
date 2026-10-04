@@ -724,3 +724,22 @@ extern "C" int32_t sdr_v3_read_fft(SdrHandle* h, uint64_t after_sequence,
   h->fft_unread = false;
   return SDR_OK;
 }
+
+// Queries the RTL-SDR tuner's gain table through the already-open adapter;
+// see native/include/sdrcore_v3.h for the full contract. No second USB
+// claim: this reuses h->usb_adapter, the same handle sdr_v2_open_usb /
+// sdr_host_open_usb created. Exact migration of the legacy Dart gain path
+// (RtlSdrDev.getTunerGains()..sort()); the sort itself happens in
+// RtlSdrAdapter::get_tuner_gains (usb_rtlsdr_adapter.cpp).
+extern "C" int32_t sdr_v3_rtl_tuner_gains(SdrHandle* h, int32_t* gains,
+                                            uint32_t capacity, uint32_t* count) {
+  if (!h || !count) return SDR_INVALID_ARGUMENT;
+  if (capacity && !gains) return SDR_INVALID_ARGUMENT;
+  std::lock_guard<std::mutex> lock(h->mutex);
+  if (h->stats.state == SDR_IDLE) { *count = 0; return SDR_INVALID_STATE; }
+  if (h->stats.source != SDR_RTLSDR || !h->usb_adapter) {
+    *count = 0;
+    return SDR_UNSUPPORTED;
+  }
+  return h->usb_adapter->get_tuner_gains(gains, capacity, count);
+}

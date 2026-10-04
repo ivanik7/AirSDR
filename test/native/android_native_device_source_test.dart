@@ -86,64 +86,93 @@ void main() {
     channel: NativeAndroidUsbChannel(methods: methods, events: events),
   );
 
-  test('lists only supported SDRs with native metadata (hasAgc always false)', () async {
-    final s = source();
-    final list = await s.list();
-    expect(list.map((d) => d.info.id), [
-      'usb:/dev/bus/usb/001/002',
-      'usb:/dev/bus/usb/001/003',
-    ]);
-    expect(list[0].info.name, 'Realtek RTL2838UHIDIR (0bda:2838)');
-    expect(list[0].info.hasAgc, isFalse);
-    expect(list[0].source, SdrSourceId.rtlsdr);
-    expect(list[1].info.name, 'HackRF One [457863c8234e1a5f]');
-    expect(list[1].info.hasAgc, isFalse);
-    expect(list[1].source, SdrSourceId.hackrf);
-  });
+  test(
+    'lists only supported SDRs with native metadata (hasAgc always false)',
+    () async {
+      final s = source();
+      final list = await s.list();
+      expect(list.map((d) => d.info.id), [
+        'usb:/dev/bus/usb/001/002',
+        'usb:/dev/bus/usb/001/003',
+      ]);
+      expect(list[0].info.name, 'Realtek RTL2838UHIDIR (0bda:2838)');
+      expect(list[0].info.hasAgc, isFalse);
+      expect(list[0].source, SdrSourceId.rtlsdr);
+      expect(list[1].info.name, 'HackRF One [457863c8234e1a5f]');
+      expect(list[1].info.hasAgc, isFalse);
+      expect(list[1].source, SdrSourceId.hackrf);
+    },
+  );
 
-  test('open() returns the Kotlin-owned fd, not a Dart-duplicated one', () async {
-    final s = source();
-    final list = await s.list();
-    final opened = await s.open(list[0]);
-    expect(opened.fd, 777);
-    expect(opened.source, SdrSourceId.rtlsdr);
-    expect(calls.where((c) => c.method == 'open').single.arguments, {
-      'deviceName': '/dev/bus/usb/001/002',
-    });
-  });
+  test(
+    'open() returns the Kotlin-owned fd, not a Dart-duplicated one',
+    () async {
+      final s = source();
+      final list = await s.list();
+      final opened = await s.open(list[0]);
+      expect(opened.fd, 777);
+      expect(opened.source, SdrSourceId.rtlsdr);
+      expect(calls.where((c) => c.method == 'open').single.arguments, {
+        'deviceName': '/dev/bus/usb/001/002',
+      });
+    },
+  );
 
-  test('close() is idempotent and only closes a device this source opened', () async {
-    final s = source();
-    final list = await s.list();
-    final opened = await s.open(list[0]);
-    await s.close(opened);
-    await s.close(opened); // idempotent: no second platform call
-    expect(calls.where((c) => c.method == 'close').length, 1);
-  });
+  test(
+    'refreshes serial after permission is granted for gain identity',
+    () async {
+      final s = source();
+      final listed = await s.list();
+      expect(listed.first.info.name, isNot(contains('[00000001]')));
+      devices[0] = {..._rtl, 'serial': '00000001'};
+      final opened = await s.open(listed.first);
+      expect(opened.info.name, contains('[00000001]'));
+      expect(opened.info.id, listed.first.info.id);
+      await s.close(opened);
+    },
+  );
 
-  test('permission denied surfaces as a PlatformException-derived error', () async {
-    final s = source();
-    final list = await s.list();
-    await expectLater(s.open(list[1]), throwsA(isA<Exception>()));
-  });
+  test(
+    'close() is idempotent and only closes a device this source opened',
+    () async {
+      final s = source();
+      final list = await s.list();
+      final opened = await s.open(list[0]);
+      await s.close(opened);
+      await s.close(opened); // idempotent: no second platform call
+      expect(calls.where((c) => c.method == 'close').length, 1);
+    },
+  );
 
-  test('attach/detach events notify changes; unsupported devices are ignored', () async {
-    final s = source();
-    await s.list();
-    final seen = <void>[];
-    final sub = s.changes.listen(seen.add);
-    await pumpEventQueue();
-    eventSink!.add(<String, Object?>{'event': 'attached', 'device': _mouse});
-    await pumpEventQueue();
-    expect(seen, isEmpty); // mouse is not a supported SDR
-    eventSink!.add(<String, Object?>{'event': 'attached', 'device': _hackrf});
-    await pumpEventQueue();
-    expect(seen.length, 1);
-    eventSink!.add(<String, Object?>{'event': 'detached', 'device': _hackrf});
-    await pumpEventQueue();
-    expect(seen.length, 2);
-    await sub.cancel();
-  });
+  test(
+    'permission denied surfaces as a PlatformException-derived error',
+    () async {
+      final s = source();
+      final list = await s.list();
+      await expectLater(s.open(list[1]), throwsA(isA<Exception>()));
+    },
+  );
+
+  test(
+    'attach/detach events notify changes; unsupported devices are ignored',
+    () async {
+      final s = source();
+      await s.list();
+      final seen = <void>[];
+      final sub = s.changes.listen(seen.add);
+      await pumpEventQueue();
+      eventSink!.add(<String, Object?>{'event': 'attached', 'device': _mouse});
+      await pumpEventQueue();
+      expect(seen, isEmpty); // mouse is not a supported SDR
+      eventSink!.add(<String, Object?>{'event': 'attached', 'device': _hackrf});
+      await pumpEventQueue();
+      expect(seen.length, 1);
+      eventSink!.add(<String, Object?>{'event': 'detached', 'device': _hackrf});
+      await pumpEventQueue();
+      expect(seen.length, 2);
+      await sub.cancel();
+    },
+  );
 
   test('without the platform plugin: no devices, no thrown errors', () async {
     final s = AndroidNativeDeviceSource(

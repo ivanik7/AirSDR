@@ -90,8 +90,22 @@ class AndroidNativeDeviceSource implements NativeDeviceSource {
     final result = await _channel.open(deviceName);
     _openedDeviceNames.add(deviceName);
     final kind = usbSdrKind(result.vendorId, result.productId);
+    // Permission acquired by open() may make the serial visible for the first
+    // time. Refresh identity before resolving a legacy per-dongle gain index.
+    var info = device.info;
+    try {
+      final refreshed = await _channel.listDevices();
+      for (final d in refreshed) {
+        if (d.deviceName == deviceName && d.serial?.isNotEmpty == true) {
+          info = _toNativeDevice(d).info;
+          break;
+        }
+      }
+    } catch (_) {
+      // No verified serial: migration keeps its pending index for a later try.
+    }
     return NativeDevice(
-      device.info,
+      info,
       kind == UsbSdrKind.hackrf ? SdrSourceId.hackrf : SdrSourceId.rtlsdr,
       fd: result.fd,
     );

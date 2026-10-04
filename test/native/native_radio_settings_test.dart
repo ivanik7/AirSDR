@@ -262,7 +262,33 @@ void main() {
       expect(migrated!.sampleRateHz, 3200000.0);
       // Gain is a hardware gain-table index, not dB: must stay at default.
       expect(migrated.gainDb, NativeRadioSettings.defaults().gainDb);
+      expect(migrated.legacyRtlGainIndex, 5);
+      expect(migrated.legacyRtlDeviceName, 'Some RTL-SDR');
     });
+
+    test(
+      'pending RTL gain survives restart and cannot be confused with dB',
+      () {
+        File('${dir()}/config.json').writeAsStringSync(
+          jsonEncode({
+            'sources': {
+              'rtl_sdr': {
+                'device': 'RTL Blog [00000001]',
+                'devices': {
+                  'RTL Blog [00000001]': {'gain': 12},
+                },
+              },
+            },
+          }),
+        );
+        final first = loadNativeRadioSettings(dir());
+        final second = loadNativeRadioSettings(dir());
+        expect(first.legacyRtlGainIndex, 12);
+        expect(second.legacyRtlGainIndex, 12);
+        expect(second.legacyRtlDeviceName, 'RTL Blog [00000001]');
+        expect(second.gainDb, NativeRadioSettings.defaults().gainDb);
+      },
+    );
 
     test('returns null when neither legacy file exists', () {
       expect(migrateFromDartEngineFiles(dir()), isNull);
