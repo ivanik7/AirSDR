@@ -81,13 +81,31 @@ Flutter:
 - App: `flutter build linux --debug` succeeded. Under `xvfb-run` the app
   auto-opened the Blog V4 ("RTL-SDR Blog V4 Detected" in the log). The status
   line reads `2.40 MS/s · ring drops 0 · IQ only, no audio (N2)`; see
-  `~/prj/docs/screens/l1-linux-receive.png`. With an invalid
+  `~/prj/docs/screens/linux-receive.png`. With an invalid
   `SDRCORE_HOST_LIBRARY` the app shows `ошибка подключения` and the
-  native-required message (`~/prj/docs/screens/l1-linux-native-required.png`).
+  native-required message (`~/prj/docs/screens/linux-native-required.png`).
 - `flutter analyze`: no issues. `flutter test` on master: 647 passed, 7
   skipped. The pre-existing timer test `ConfigManager: load default, debounced
   autosave, reload` times out intermittently under full-suite load. It fails the
   same way on baseline 981ebed, without L1 (1 of 2 runs), and passes alone.
+
+## Gates added after the merge
+
+- Release builds on master both succeeded: `flutter build linux --release` and
+  `flutter build apk --release --target-platform android-arm64` (19.9 MB).
+- Oracle baseline, `timeout 130 rtl_test -s 2400000` (system librtlsdr, same
+  dongle): 4 "lost at least N bytes" reports in about 130 s, 324 bytes total.
+  That is about 1 sample per million and is in line with the coordinator's
+  baseline of about 3 per million.
+  - Native engine run 1: 40 960 ring drops in 610 s (28 per million), all in
+    the first 30 s. Steady state after that: 0.
+  - Controller run: 0 drops in 600 s.
+  - The two counters measure different things: `rtl_test` counts USB-level
+    gaps, while `dropped_samples` counts native ring overflow.
+- Screenshots were renamed to `~/prj/docs/screens/linux-receive.png` and
+  `linux-native-required.png`.
+- Detach/replug of the dongle on the host is unverified: it needs physical
+  action. The fake-binding unit tests cover the controller logic for it.
 
 ## Known gaps / not verified
 
