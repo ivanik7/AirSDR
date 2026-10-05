@@ -109,6 +109,13 @@ if(NOT ANDROID AND PROJECT_IS_TOP_LEVEL)
     add_executable(sdrcore_host_retune_settle tests/host_retune_settle.c)
     target_include_directories(sdrcore_host_retune_settle PRIVATE third_party/rtl-sdr/include)
     target_link_libraries(sdrcore_host_retune_settle PRIVATE sdrcore_rtlsdr Threads::Threads m)
+    # Manual probe: bulk IQ arrival gaps while the tuner is retuned live.
+    add_executable(sdrcore_host_retune_iq_gaps tests/host_retune_iq_gaps.c)
+    target_include_directories(sdrcore_host_retune_iq_gaps PRIVATE third_party/rtl-sdr/include)
+    target_link_libraries(sdrcore_host_retune_iq_gaps PRIVATE sdrcore_rtlsdr Threads::Threads m)
+    # Manual real-hardware audio continuity check under UI-like retunes.
+    add_executable(sdrcore_host_retune_audio tests/host_retune_audio.c)
+    target_link_libraries(sdrcore_host_retune_audio PRIVATE sdrcore Threads::Threads)
     # DSP-only, white-box: links receiver.cpp directly against the public
     # sdrcore::dsp::Receiver interface (no ABI/sdrcore.cpp, no USB adapters,
     # no Dart/FFI) so the WFM stereo decoder is checkable in isolation with
@@ -119,4 +126,12 @@ if(NOT ANDROID AND PROJECT_IS_TOP_LEVEL)
     target_include_directories(sdrcore_wfm_stereo_dsp_test PRIVATE include)
     target_compile_features(sdrcore_wfm_stereo_dsp_test PRIVATE cxx_std_17)
     add_test(NAME sdrcore_wfm_stereo_dsp COMMAND sdrcore_wfm_stereo_dsp_test)
+    # DSP-only: audio stays continuous across VFO drags and LO retunes.
+    add_executable(sdrcore_retune_audio_continuity_test
+        tests/retune_audio_continuity_test.cpp
+        src/dsp/receiver.cpp)
+    target_include_directories(sdrcore_retune_audio_continuity_test PRIVATE include)
+    target_compile_features(sdrcore_retune_audio_continuity_test PRIVATE cxx_std_17)
+    target_compile_options(sdrcore_retune_audio_continuity_test PRIVATE -O2)
+    add_test(NAME sdrcore_retune_audio_continuity COMMAND sdrcore_retune_audio_continuity_test)
 endif()
