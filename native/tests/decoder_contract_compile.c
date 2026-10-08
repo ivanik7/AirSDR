@@ -23,9 +23,10 @@ _Static_assert(sizeof(SdrDecoderDescriptor) == 64 &&
                    offsetof(SdrDecoderDescriptor, input) == 40 &&
                    offsetof(SdrDecoderDescriptor, available) == 60,
                "decoder descriptor wire layout");
-_Static_assert(sizeof(SdrDecoderEvent) == 32 &&
+_Static_assert(sizeof(SdrDecoderEvent) == 40 &&
                    offsetof(SdrDecoderEvent, sequence) == 8 &&
-                   offsetof(SdrDecoderEvent, kind) == 24,
+                   offsetof(SdrDecoderEvent, kind) == 24 &&
+                   offsetof(SdrDecoderEvent, dropped_events) == 32,
                "decoder event wire layout");
 _Static_assert(_Generic(&sdr_decoder_version,
                         uint32_t (*)(void): 1,

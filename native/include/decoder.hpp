@@ -45,6 +45,9 @@ class Decoder {
   // queues up to 256 events FIFO, and stamps sequence/stream generation under
   // the handle lock before the C poll copies it. No direct Dart callbacks.
   virtual bool take_event(Event& out) = 0;
+  // Backends with an internal bounded staging queue report drops so they are
+  // included in the same per-handle counter as the public FIFO's drops.
+  virtual uint64_t take_dropped_count() { return 0; }
 };
 
 using Factory = std::unique_ptr<Decoder> (*)();

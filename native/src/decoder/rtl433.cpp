@@ -114,6 +114,7 @@ class Rtl433 final : public Decoder {
   void reset() override {
     if (!cfg_) return;
     pending_.clear();
+    pending_dropped_ = 0;
     // Upstream reset intentionally preserves registered protocol configuration.
     cfg_->demod->input_pos = 0;
     cfg_->demod->sample_file_pos = 0;
@@ -153,6 +154,11 @@ class Rtl433 final : public Decoder {
     pending_.pop_front();
     return true;
   }
+  uint64_t take_dropped_count() override {
+    const auto dropped = pending_dropped_;
+    pending_dropped_ = 0;
+    return dropped;
+  }
 
  private:
   struct Output {
@@ -175,9 +181,15 @@ class Rtl433 final : public Decoder {
     char* json = data_print_jsons_dup(data);
     if (!json) return;
     size_t size = std::strlen(json);
-    if (size <= 65536 && owner->pending_.size() < 256) {
+    if (size <= 65536) {
+      if (owner->pending_.size() == 256) {
+        owner->pending_.pop_front();
+        ++owner->pending_dropped_;
+      }
       Event event{Result::message, {json, json + size}};
       owner->pending_.push_back(std::move(event));
+    } else {
+      ++owner->pending_dropped_;
     }
     std::free(json);
   }
@@ -187,6 +199,7 @@ class Rtl433 final : public Decoder {
   r_cfg_t* cfg_ = nullptr;
   std::vector<uint8_t> iq_;
   std::deque<Event> pending_;
+  uint64_t pending_dropped_ = 0;
 };
 } // namespace
 

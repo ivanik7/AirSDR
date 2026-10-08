@@ -341,7 +341,7 @@ void main() {
       ),
     );
     await tester.pump(const Duration(milliseconds: 120));
-    expect(find.text('Weather · 17'), findsOneWidget);
+    expect(find.text('Weather · ID 17 · temperature_C: 21.5'), findsOneWidget);
     expect(find.textContaining('Потеряно событий: 2'), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('rtl433Message-1')));
     await tester.pump();
@@ -349,7 +349,7 @@ void main() {
     expect(tester.takeException(), isNull);
     await tester.tap(find.byKey(const ValueKey('rtl433Clear')));
     await tester.pump();
-    expect(find.text('Журнал сообщений пуст'), findsOneWidget);
+    expect(find.text('Сообщений пока нет'), findsOneWidget);
     await tester.pumpWidget(const SizedBox());
     await radio.stop();
     radio.dispose();

@@ -11,14 +11,38 @@ import '../legacy/centered_receiver.dart';
 import 'decoder_contract.dart';
 
 class DecoderMessage {
-  const DecoderMessage(this.sequence, this.streamGeneration, this.json);
+  const DecoderMessage(
+    this.sequence,
+    this.streamGeneration,
+    this.json, {
+    required this.receivedAt,
+  });
   final int sequence, streamGeneration;
   final Map<String, Object?> json;
+  final DateTime receivedAt;
 
   String get summary {
     final model = json['model'] ?? json['type'] ?? 'rtl_433';
     final id = json['id'];
-    return id == null ? '$model' : '$model · $id';
+    final channel = json['channel'];
+    final measurements = <String>[
+      for (final entry in json.entries)
+        if (entry.value != null &&
+            (entry.key.startsWith('temperature') ||
+                entry.key.startsWith('humidity') ||
+                entry.key.startsWith('pressure') ||
+                entry.key.startsWith('wind') ||
+                entry.key.startsWith('rain') ||
+                entry.key == 'battery_ok' ||
+                entry.key == 'battery'))
+          '${entry.key}: ${entry.value}',
+    ];
+    final identity = [
+      model,
+      if (id != null) 'ID $id',
+      if (channel != null) 'CH $channel',
+    ].join(' · ');
+    return [identity, ...measurements].join(' · ');
   }
 
   String get formattedJson => const JsonEncoder.withIndent('  ').convert(json);
@@ -28,6 +52,8 @@ class DecoderSession extends ChangeNotifier {
   DecoderSession(this.radio, {CenteredReceiver? receiver})
     : _receiver = receiver ?? CenteredReceiver(radio) {
     _wasRunning = radio.running;
+    _lastTunedFrequency = radio.tunedFrequency;
+    _lastSampleRate = radio.sampleRate.round();
     radio.addListener(_radioChanged);
   }
   final RadioController radio;
@@ -38,6 +64,8 @@ class DecoderSession extends ChangeNotifier {
   Timer? _pollTimer;
   bool _attached = false;
   bool _wasRunning = false;
+  late double _lastTunedFrequency;
+  late int _lastSampleRate;
   int _afterSequence = 0;
   int? _streamGeneration;
   int _droppedEvents = 0;
@@ -49,6 +77,13 @@ class DecoderSession extends ChangeNotifier {
   int get droppedEvents => _droppedEvents;
   List<DecoderMessage> get messages => List.unmodifiable(_messages);
   int get inputRateHz => radio.sampleRate.round();
+  int get decoderRateHz {
+    final rate = inputRateHz;
+    if (rate < 200000) return 0;
+    final factor = (rate + 125000) ~/ 250000;
+    final output = rate ~/ factor;
+    return output >= 200000 && output <= 300000 ? output : 0;
+  }
 
   Set<String> get availableIds => <String>{
     for (final mode in DemodMode.values) decoderIdForMode(mode),
@@ -69,6 +104,24 @@ class DecoderSession extends ChangeNotifier {
 
   void _radioChanged() {
     final running = radio.running;
+    final frequency = radio.tunedFrequency;
+    final rate = radio.sampleRate.round();
+    if (frequency != _lastTunedFrequency || rate != _lastSampleRate) {
+      _lastTunedFrequency = frequency;
+      _lastSampleRate = rate;
+      if (decoderById(_selectedId)?.voice != true) {
+        _resetEvents();
+        if (rate != 0 && decoderRateHz == 0 && _selectedId == 'rtl_433') {
+          _attached = false;
+          _stopPolling();
+          _failure =
+              'Недостаточная частота выборки IQ: выберите не менее 200 кГц';
+          radio.decoderBackend?.select(null, const <String, Object>{});
+        } else if (running && !_attached) {
+          _attachSelected();
+        }
+      }
+    }
     if (!running && _wasRunning) {
       _stopPolling();
       _attached = false;
@@ -114,6 +167,11 @@ class DecoderSession extends ChangeNotifier {
       backend?.select(null, const <String, Object>{});
       return;
     }
+    if (id == 'rtl_433' && decoderRateHz == 0) {
+      _failure = 'Недостаточная частота выборки IQ: выберите не менее 200 кГц';
+      backend.select(null, const <String, Object>{});
+      return;
+    }
     final ok = backend.select(id, _config(id));
     if (!ok) {
       backend.select(null, const <String, Object>{});
@@ -156,7 +214,12 @@ class DecoderSession extends ChangeNotifier {
         if (data is! Map<String, dynamic>) continue;
         _messages.insert(
           0,
-          DecoderMessage(event.sequence, event.streamGeneration, data),
+          DecoderMessage(
+            event.sequence,
+            event.streamGeneration,
+            data,
+            receivedAt: DateTime.now(),
+          ),
         );
         if (_messages.length > 500) _messages.removeLast();
         changed = true;

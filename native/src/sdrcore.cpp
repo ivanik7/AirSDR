@@ -110,6 +110,7 @@ struct SdrHandle {
       decoder_events.push_back(std::move(queued_event));
       event = {};
     }
+    decoder_dropped += decoder->take_dropped_count();
   }
   std::mutex mutex;
   std::mutex dsp_mutex;
@@ -1015,7 +1016,7 @@ extern "C" int32_t sdr_decoder_select(SdrHandle* h, const char* id,
       const uint32_t sample_rate = h->controls.sample_rate;
       if (reg.descriptor.input == sdrcore::decoder::Input::baseband &&
           (sample_rate < 200000 ||
-           sample_rate / std::max(1u, (sample_rate + 299999u) / 300000u) < 200000))
+           sample_rate / std::max(1u, (sample_rate + 125000u) / 250000u) < 200000))
         return SDR_UNSUPPORTED;
       if (reg.descriptor.input == sdrcore::decoder::Input::raw_iq &&
           reg.descriptor.required_rate_hz &&

@@ -20,6 +20,7 @@ REF = Path.home() / "prj/ref/openwebrx/ext"
 CORPUS = REF / "rtl_433_tests/tests"
 ORACLE = REF / "rtl_433/build/rtl_433"
 ENGINE = Path(os.environ.get("RTL433_ENGINE_BINARY", str(ROOT / "native/build/sdrcore_rtl433_engine_test")))
+TAP = Path(os.environ.get("RTL433_TAP_BINARY", str(ROOT / "build/native-host-tests/sdrcore_rtl433_tap_oracle")))
 META = {"time", "mod", "freq", "freq1", "freq2", "rssi", "snr", "noise"}
 
 
@@ -59,14 +60,16 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--limit", type=int, default=400)
     parser.add_argument("--all", action="store_true")
+    parser.add_argument("--tap", action="store_true", help="compare 250 kS/s captures after the tuned-VFO 2.5 MS/s DSP branch")
     args = parser.parse_args()
-    if not CORPUS.exists() or not ENGINE.exists() or not ORACLE.exists():
+    if not CORPUS.exists() or not (TAP if args.tap else ENGINE).exists() or not ORACLE.exists():
         parser.error("missing corpus, built embedded engine or pinned oracle executable")
     # The engine accepts complex 200-300k and has no center-frequency input.
     # Prefer compact 433.92 MHz sensor captures; include other 250k captures
     # as separate protocol coverage, comparing device fields (not RF metadata).
     files = [path for path in CORPUS.rglob("*.cu8")
              if re.search(r"(?:_|-)(?:200|250|300)k(?:\.|_)", path.name, re.I)
+             and (not args.tap or "250k" in path.name)
              and 0 < path.stat().st_size <= 3 * 1024 * 1024]
     files.sort(key=lambda path: ("433.92M" not in path.name,
                                  "250k" not in path.name, str(path)))
@@ -82,7 +85,8 @@ def main():
         rate = int(match.group(1)) * 1000
         try:
             expected = read_events([str(ORACLE), "-r", str(path), "-F", "json", "-M", "level"])
-            actual = read_events([str(ENGINE), str(path), str(rate)])
+            actual = read_events([str(TAP), str(path)] if args.tap else
+                                 [str(ENGINE), str(path), str(rate)])
             if not equal_payload(expected, actual):
                 mismatches.append((str(path.relative_to(CORPUS)),
                                    normalize(expected)[:2], normalize(actual)[:2],

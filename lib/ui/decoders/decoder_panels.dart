@@ -204,12 +204,10 @@ class Rtl433DecoderPanel extends StatelessWidget {
     final available = session.isAvailable('rtl_433');
     final status = !available
         ? 'Недоступен в текущей нативной сборке'
+        : !session.radio.running
+        ? session.radio.lastError ?? 'Приём остановлен'
         : session.failureReason ??
-              (session.active
-                  ? 'Декодирование активно'
-                  : session.radio.running
-                  ? 'Декодер не запущен'
-                  : session.radio.lastError ?? 'Приём остановлен');
+              (session.active ? 'Декодирование активно' : 'Декодер не запущен');
     return Column(
       key: const ValueKey('decoderPanel-rtl_433'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -221,7 +219,9 @@ class Rtl433DecoderPanel extends StatelessWidget {
               Text('rtl_433 · сообщения', style: plex(size: 14)),
               const SizedBox(height: 6),
               Text(
-                status,
+                session.active
+                    ? '$status · ${(session.radio.tunedFrequency / 1e6).toStringAsFixed(3)} МГц · ${session.decoderRateHz} отсч./с'
+                    : status,
                 key: const ValueKey('rtl433Status'),
                 style: plex(
                   size: 12,
@@ -231,7 +231,7 @@ class Rtl433DecoderPanel extends StatelessWidget {
                 ),
               ),
               Text(
-                'Вход: ${session.inputRateHz} Гц · Потеряно событий: ${session.droppedEvents}',
+                'IQ: ${session.inputRateHz} Гц · Потеряно событий: ${session.droppedEvents}',
                 key: const ValueKey('rtl433RateDrops'),
                 style: plex(size: 11, color: LegacyColors.muted),
               ),
@@ -264,7 +264,7 @@ class Rtl433DecoderPanel extends StatelessWidget {
           child: messages.isEmpty
               ? legacyCard(
                   child: Text(
-                    'Журнал сообщений пуст',
+                    'Сообщений пока нет',
                     style: plex(size: 12, color: LegacyColors.muted),
                   ),
                 )
@@ -290,7 +290,7 @@ class Rtl433DecoderPanel extends StatelessWidget {
                               style: plex(size: 13),
                             ),
                             subtitle: Text(
-                              '#${message.sequence}',
+                              '${message.receivedAt.toLocal().toIso8601String().substring(11, 19)} · #${message.sequence}',
                               style: plex(size: 11),
                             ),
                             children: [

@@ -287,4 +287,40 @@ void main() {
       radio.dispose();
     },
   );
+
+  test(
+    'retuning clears rtl_433 log; an invalid rate detaches until restored',
+    () async {
+      final backend = _FakeBackend({'rtl_433'});
+      final radio = _BackedRadio(backend);
+      final session = DecoderSession(radio);
+      await radio.start();
+      session.selectPreview('rtl_433');
+      expect(session.active, isTrue);
+      backend.events.add(
+        DecoderEvent(
+          1,
+          1,
+          DecoderResult.message,
+          Uint8List.fromList(utf8.encode('{"model":"Weather"}')),
+        ),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 150));
+      expect(session.messages, hasLength(1));
+      radio.setTuning(centerFrequency: 433920000, vfoOffset: 0);
+      expect(session.messages, isEmpty);
+      expect(session.active, isTrue);
+      radio.setSampleRate(192000);
+      expect(session.active, isFalse);
+      expect(session.failureReason, contains('200 кГц'));
+      expect(backend.selectCalls.last.$1, isNull);
+      radio.setSampleRate(2400000);
+      expect(session.active, isTrue);
+      expect(session.decoderRateHz, 240000);
+      expect(backend.selectCalls.last.$1, 'rtl_433');
+      session.dispose();
+      await radio.stop();
+      radio.dispose();
+    },
+  );
 }

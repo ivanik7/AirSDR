@@ -34,8 +34,7 @@ int main() {
   d.width = 256; d.view_bandwidth_hz = c.sample_rate;
   rx->configure(c, d);
   assert(rx->decoder_rate_hz() == 0);
-  assert(rx->set_decoder(&probe) >= 200000);
-  assert(rx->decoder_rate_hz() <= 300000);
+  assert(rx->set_decoder(&probe) == 240000);
   assert(probe.resets > 0);
   // A station at +60 kHz from the RF center must mix down to near DC.
   std::vector<uint8_t> iq(240000);

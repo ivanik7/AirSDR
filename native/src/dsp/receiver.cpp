@@ -360,7 +360,8 @@ class ReceiverImpl final : public Receiver {
     decoder_rate_ = 0;
     decoder_samples_.clear();
     if (!decoder_ || controls_.sample_rate < 200000) return;
-    const unsigned factor = std::max(1u, (controls_.sample_rate + 299999u) / 300000u);
+    // Choose the integer ratio nearest rtl_433's 250 kS/s reference rate.
+    const unsigned factor = std::max(1u, (controls_.sample_rate + 125000u) / 250000u);
     const uint32_t rate = controls_.sample_rate / factor;
     if (rate < 200000 || rate > 300000) return;
     decoder_rate_ = rate;

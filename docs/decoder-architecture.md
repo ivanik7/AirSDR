@@ -1,10 +1,8 @@
 # Decoder architecture (native contract and UI)
 
-Status: UI/control-plane plus an additive native registry/FFI bridge. The
-extension is wired on Linux and Android but all data-decoder factories are
-null (`sstv`, `rtl_433`, `adsb`), so all show as unavailable. This document
-describes the Dart-side pieces added for decoder preview/settings/favorites
-support, how to extend the catalog, and what is deliberately out of scope.
+Status: `rtl_433` is an in-process upstream engine on the single native
+receiver's tuned complex-IQ branch. `sstv` and `adsb` remain unavailable.
+The v1 decoder extension sends only bounded low-rate JSON events to Dart.
 
 ## One decoder list (UI contract)
 
@@ -23,13 +21,15 @@ entry and no second mode picker.
   optional decoder extension and have no decoder factory.
 - Data rows (`sstv`, `rtl_433`, `adsb`) are optional native decoder
   extension engines. Their availability comes only from
-  `DecoderBackend.availableIds`; today all are unavailable previews.
+  `DecoderBackend.availableIds`; `rtl_433` is listed when the native
+  library is loaded, but attaches only when the source rate supports a
+  200–300 kS/s branch. Otherwise its panel reports a not-ready reason.
 - `DecoderSession.selectedId` follows external mode changes (Receive tab,
   bands, channels) while a demodulator row is selected; while a data row is
   selected it stays put, so another surface cannot silently replace the
   preview.
 
-The native decoder C ABI (`sdrcore_decoder_v1.h`) is unchanged: it lists
+The native decoder C ABI (`sdrcore_decoder_v1.h`) lists
 only data engines and never claimed demodulators were unavailable, so
 there is no need to duplicate v3 modes there. The "voice vs data" split is
 an internal implementation detail of the descriptor.
@@ -47,22 +47,41 @@ radio is actually doing".
 Three invariants are enforced in `lib/ui/decoders/decoder_session.dart` and
 covered by `test/ui/decoder_session_test.dart`:
 
-1. **Data preview never touches the radio.** Selecting any data decoder,
-   including switching between them repeatedly, never changes
-   `RadioController.tunedFrequency`/`mode`/`muted`/`running`. The current
-   demodulator keeps receiving regardless of what is previewed. (Choosing a
-   demodulator row is a real mode change, by design.)
+1. **Preview never retunes or restarts the radio.** Choosing `rtl_433` attaches
+   to the running VFO without changing frequency, mode, or source rate;
+   native audio is silent until a voice row is selected. Unavailable data
+   entries remain passive previews.
 2. **Backend `availableIds` is the only truth for availability.** An id is
    only ever handed to `DecoderBackend.select` if the backend currently
-   reports it in `availableIds`, the radio is running in a compatible demod
-   mode, and the decoder does not require exclusive access. A decoder catalog entry that exists in
+   reports it in `availableIds`, the radio is running in a compatible mode,
+   and the decoder does not require exclusive access. A decoder catalog entry that exists in
    `decoder_contract.dart` but isn't reported by the backend can be
    *previewed* (its settings panel is visible) but can never be *started*.
-3. **No fake events.** `DecoderSession` never polls `DecoderBackend.poll`
-   and never synthesizes a `DecoderEvent`. Rendering real decode output
-   (SSTV images, rtl_433 messages, ADS-B aircraft) is future backend work;
-   today every data-decoder panel is a static, honest "nothing received"
-   placeholder.
+3. **No fake events.** `rtl_433` polls the oldest native event after its
+   sequence cursor. Its 500-row UI log is session-local, newest first.
+   Native FIFO capacity is 256; overflow drops the oldest and increments
+   `dropped_events`. Stop, deselect, retune and generation changes invalidate
+   old events. No raw IQ/PCM crosses FFI.
+
+## Native rtl_433 path
+
+The DSP worker branches from the receiver's existing CU8 input, applies the
+same tuned-VFO frequency shift and a low-pass FIR integer decimator, then
+passes interleaved complex floats at the integer rate nearest 250 kS/s to
+vendored upstream `rtl_433` (`native/third_party/rtl_433/PROVENANCE.md`).
+The tuner remains at its user-selected rate; for an unsuitable rate the
+decoder is not ready rather than changing the source. The embedded upstream
+`r_flow`/protocol registry produces JSON with its native field names and
+relative sample time. The branch does not receive the actual RF frequency,
+so it deliberately omits synthetic `freq`/`freq1`/`freq2` fields; signal
+levels are retained. `{"version":1,"settings":{}}` is the only supported
+configuration; frequency belongs to the normal radio/preset, not settings.
+
+`native/tests/rtl433_oracle.py` compares sensor fields against the pinned
+upstream CLI on external recordings. `--tap` additionally replays 250 kS/s
+CU8 recordings with zero-order interpolation into the tuned 2.5 MS/s branch;
+the FIR can change marginal pulse detection, so its match rate is separately
+reported. Neither oracle subprocess is part of the app runtime.
 
 ## Pieces
 
@@ -72,14 +91,12 @@ covered by `test/ui/decoder_session_test.dart`:
 - `lib/ui/decoders/decoder_session.dart` — `DecoderSession`, a
   `ChangeNotifier` constructed once per shell (`LegacyAppShell`), wrapping a
   `RadioController`. Holds the current preview id and per-decoder settings
-  (defaulted/validated against `DecoderSetting.allowed`).
+  (defaulted/validated against `DecoderSetting.allowed`) and the live log.
 - `lib/ui/decoders/decoder_panels.dart` — `DecoderSelector` (one scrollable
   dropdown over `decoderCatalog`, data rows marked "Недоступен" unless the
-  backend reports them) and the two per-id UI building blocks:
-  `VoiceDecoderPanel` (bandwidth/squelch/demod options such as WFM stereo
-  for the selected demodulator) and `DecoderPlaceholderPanel` (selected-only
-  SSTV image area, rtl_433 message log or ADS-B list, with truthful empty
-  states; disabled ineffective settings and an exclusive-receiver note).
+  backend reports them) and the selected-only panels:
+  `VoiceDecoderPanel` (bandwidth/squelch/demod options such as WFM stereo),
+  live `Rtl433DecoderPanel`, and previews for unavailable decoders.
 - `lib/ui/legacy/decoder_screen.dart` — the Decoder tab: selector + exactly
   one panel for `session.selectedId` (selected-only, not all panels stacked).
 - `lib/ui/radio_controller.dart` — `RadioController.decoderBackend` getter,
@@ -87,7 +104,7 @@ covered by `test/ui/decoder_session_test.dart`:
   `lib/main.dart` probes the additive extension without changing v3 requirements.
 - `native/include/sdrcore_decoder_v1.h` and `decoder.hpp` define a separate
   versioned C ABI and native C++ processing interface. `native/src/decoder/`
-  exposes unavailable registry entries, but deliberately attaches no engine.
+  exposes the in-process `rtl_433` factory and unavailable future entries.
 - `lib/ui/favorites/favorites.dart` — storage v3: `Favorite.decoderId` +
   `Favorite.decoderSettings`, with migration/normalization on load (see
   below).
@@ -123,7 +140,8 @@ anything decoder-related, only its decoder attachment is cleared:
   contradict. A data decoder ID keeps its own underlying `mode`.
   Applying a preset retunes to its frequency/mode, then calls
   `DecoderSession.applyStored(decoderId, settings, mode: mode)`, which
-  selects that row without starting an unavailable or exclusive engine.
+  selects that row and attaches `rtl_433` on a running receiver, without a
+  separate tuner handoff.
 - `decoderId` present but not in `decoderCatalog` (removed/renamed/future
   decoder) → cleared to `null`.
 - `decoderSettingsVersion` present but not equal to
@@ -164,11 +182,10 @@ never alias each other's settings. See
    /`applyStored` are generic over `DecoderSetting`; favorites
    normalization (`_normalizeDecoderSettings`) is generic too.
 4. When a real native backend is implemented, wire a single instance to the
-   existing handle's DSP input and bounded event slot, enforce required mode,
-   sample rate and exclusive handoff inside the native lifecycle, then report
-   availability. Audio decoders may attach only with a running compatible
-   mode; full-band decoders remain preview-only until an explicit safe
-   receiver-handoff/Start flow is implemented. Add real output polling/UI
+   existing handle's DSP input and bounded event queue, enforce required mode
+   and sample rate inside the native lifecycle, then report availability.
+   Full-band decoders remain preview-only until a safe receiver integration
+   is designed. Add real output polling/UI
    before claiming a working decoder. Versioned configuration sent over FFI
    has `{"version":1,"settings":{...}}`; favorites store the same settings
    under the selected ID with `decoderSettingsVersion`.
@@ -184,27 +201,22 @@ edit: its row is generated from `DemodMode` order in `decoderCatalog`.
 
 ## Known limitations (by design, today)
 
-- **No real decode output.** Every data-decoder panel always shows its
-  static empty state; there is no code path that could display stale or
-  synthetic data because none is ever generated client-side.
+- **Only rtl_433 has real decode output.** SSTV and ADS-B are preview-only.
 - **No Start/Stop control.** Decoder lifecycle (when a backend exists) is
   expected to be driven by `DecoderBackend.select` as a side effect of
   `DecoderSession.selectPreview`/`applyStored`, not a separate user action —
   there is deliberately no "Start" button to avoid implying a live run that
   isn't backed by anything.
-- **Exclusive-receiver decoders are preview-only.**
-  `rtl_433` and `adsb` are `exclusiveReceiver: true` in the contract (a real
-  backend would need the whole receiver, pausing normal voice reception
-  while running). Merely selecting a preview NEVER calls native select for
-  these IDs, even if a future library reports them installed.
+- **Full-band decoders are preview-only.** ADS-B has no backend. rtl_433 is
+  explicitly non-exclusive and consumes the tuned channel baseband.
 - **One shell-scoped session, not per-favorite live state.** `DecoderSession`
   belongs to the shell (`LegacyAppShell`), not to an individual favorite or
   channel. Applying a favorite/channel updates the *shared* session's
   preview; it is not possible to preview two different decoders
   simultaneously in one shell instance (matches the "one real receive
   channel" UI invariant).
-- **Settings UI is generic, not decoder-tailored.** All current settings
-  (`mode` for SSTV, `frequency_hz` for rtl_433) render as a dropdown of
+- **Settings UI is generic, not decoder-tailored.** The remaining SSTV `mode`
+  setting renders as a dropdown of
   `DecoderSetting.allowed` values. A decoder needing a different control
   (free-text, slider, etc.) will need a bespoke branch in
   `decoder_panels.dart`, not just a new `decoderCatalog` entry.
