@@ -2,7 +2,9 @@
 // Low-rate UI/control contract. DSP and samples always remain in native C++.
 import 'dart:typed_data';
 
-/// Data decoder IDs are NOT DemodMode IDs; voice remains the v3 radio path.
+import '../radio_controller.dart' show DemodMode;
+
+/// Data decoder IDs are distinct from stable v3 demodulator choice IDs.
 enum DecoderInput { audio, mpx, baseband, rawIq }
 
 enum DecoderResult { none, message, imageProgress, imageComplete, aircraft }
@@ -25,10 +27,14 @@ class DecoderDescriptor {
     required this.result,
     this.settings = const [],
     this.voice = false,
+    this.demodMode,
   });
   final String id, label;
   final DecoderInput input;
   final bool exclusiveReceiver, voice;
+
+  /// A v3 demodulator adapter; never an optional data-decoder factory.
+  final DemodMode? demodMode;
 
   /// Native v3 demod mode ID, or null if independent of demodulation.
   final int? requiredMode;
@@ -39,19 +45,41 @@ class DecoderDescriptor {
   final List<DecoderSetting> settings;
 }
 
-/// Static preview metadata is not backend availability. Query [DecoderBackend]
-/// for the actual installed native engines before enabling any Start action.
-const decoderCatalog = <DecoderDescriptor>[
-  DecoderDescriptor(
-    id: 'voice',
-    label: 'Аудио',
-    input: DecoderInput.audio,
-    exclusiveReceiver: false,
-    requiredMode: null,
-    requiredRateHz: null,
-    result: DecoderResult.none,
-    voice: true,
-  ),
+/// Stable UI/storage ID for the existing native v3 demod path.
+String decoderIdForMode(DemodMode mode) => 'demod:${mode.id}';
+
+DemodMode? demodModeFromDecoderId(String? id) {
+  for (final mode in DemodMode.values) {
+    if (id == decoderIdForMode(mode)) return mode;
+  }
+  return null;
+}
+
+/// Voice descriptors adapt v3 setMode; data descriptors use the optional
+/// native decoder extension. There is only one user-facing choice list.
+/// Static data metadata is not backend availability.
+final decoderCatalog = <DecoderDescriptor>[
+  for (final mode in [
+    DemodMode.nfm,
+    DemodMode.wfm,
+    DemodMode.am,
+    DemodMode.usb,
+    DemodMode.lsb,
+    DemodMode.dsb,
+    DemodMode.cw,
+    DemodMode.raw,
+  ])
+    DecoderDescriptor(
+      id: decoderIdForMode(mode),
+      label: mode.label,
+      input: DecoderInput.audio,
+      exclusiveReceiver: false,
+      requiredMode: mode.id,
+      requiredRateHz: null,
+      result: DecoderResult.none,
+      voice: true,
+      demodMode: mode,
+    ),
   DecoderDescriptor(
     id: 'sstv',
     label: 'SSTV',

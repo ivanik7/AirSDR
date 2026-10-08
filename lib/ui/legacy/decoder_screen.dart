@@ -8,12 +8,8 @@ import '../radio_controller.dart';
 import 'centered_receiver.dart';
 import 'theme.dart';
 
-/// Decoder tab: a selector (decoder_contract.dart `decoderCatalog`) plus
-/// exactly one panel for the currently previewed decoder
-/// (decoders/decoder_session.dart `DecoderSession`). Voice/audio
-/// ([DecoderSession.voiceId]) is the pre-existing receiver-controls panel;
-/// every other id is an honest unavailable-by-default placeholder until a
-/// native decoder backend exists.
+/// One flat choice list; v3 modes show live receiver controls and data
+/// decoders show only their own result preview.
 class DecoderScreen extends StatelessWidget {
   const DecoderScreen({
     super.key,
@@ -38,7 +34,7 @@ class DecoderScreen extends StatelessWidget {
           const SizedBox(height: 10),
           DecoderSelector(session: session),
           const SizedBox(height: 14),
-          if (selected == null || session.selectedId == DecoderSession.voiceId)
+          if (selected == null || selected.voice)
             VoiceDecoderPanel(controller: controller, receiver: receiver)
           else
             DecoderPlaceholderPanel(descriptor: selected, session: session),

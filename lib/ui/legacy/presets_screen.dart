@@ -21,28 +21,10 @@ String favoriteErrorText(ArgumentError e) => switch (e.name) {
   _ => '${e.message ?? e.invalidValue ?? 'неверные данные'}',
 };
 
-/// One entry of the unified decoder-choice dropdown (see
-/// [_decoderChoices]): either an explicit voice/demod-mode pin
-/// ([decoderIdForMode]) or a real data decoder from [decoderCatalog].
-class _DecoderChoice {
-  const _DecoderChoice(this.id, this.label);
-  final String id;
-  final String label;
-}
-
-/// Every selectable option for the preset editor's single decoder
-/// dropdown: one voice entry per [DemodMode] (selecting it also sets the
-/// preset's underlying saved mode — see [_PresetsScreenState.edit]),
-/// followed by every real data decoder in [decoderCatalog] (selecting one
-/// of those leaves the underlying mode exactly as it was: "data selection
-/// retains its underlying mode"). The historical literal `'voice'` catalog
-/// entry is never offered — plain voice is represented per-mode here, not
-/// as one undifferentiated choice.
-List<_DecoderChoice> _decoderChoices() => [
-  for (final m in DemodMode.values) _DecoderChoice(decoderIdForMode(m), m.label),
-  for (final d in decoderCatalog)
-    if (!d.voice) _DecoderChoice(d.id, d.label),
-];
+/// The preset editor uses the same flat [decoderCatalog] as the Decoder
+/// tab: a v3 mode choice also sets the preset's saved mode, while a data
+/// decoder choice keeps the underlying mode unchanged.
+List<DecoderDescriptor> _decoderChoices() => decoderCatalog;
 
 class PresetsScreen extends StatefulWidget {
   const PresetsScreen({
@@ -89,9 +71,7 @@ class _PresetsScreenState extends State<PresetsScreen> {
     // dialog's starting mode.
     var decoderChoice = existing != null
         ? existing.decoderChoice
-        : (session != null && session.selectedId != DecoderSession.voiceId
-              ? session.selectedId
-              : decoderIdForMode(mode));
+        : (session?.selectedId ?? decoderIdForMode(mode));
     final result = await showDialog<bool>(
       context: context,
       builder: (context) => StatefulBuilder(
@@ -248,7 +228,11 @@ class _PresetsScreenState extends State<PresetsScreen> {
       // Restores the preset's own decoder preview (plain voice/audio when
       // it has none) — never starts a backend decoder by itself; see
       // DecoderSession.applyStored.
-      widget.decoderSession?.applyStored(f.decoderId, f.decoderSettings);
+      widget.decoderSession?.applyStored(
+        f.decoderId,
+        f.decoderSettings,
+        mode: f.mode,
+      );
       setState(() => message = null);
       widget.onApplied();
     } on ArgumentError {

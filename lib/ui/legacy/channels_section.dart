@@ -19,7 +19,8 @@ import '../channels/channel_scanner.dart';
 import '../channels/channels.dart';
 import '../channels/signal_meter.dart';
 import '../decoders/decoder_session.dart';
-import '../favorites/favorites.dart' show decoderIdForMode, demodModeFromDecoderId;
+import '../favorites/favorites.dart'
+    show decoderIdForMode, demodModeFromDecoderId;
 import '../radio_controller.dart';
 import 'step_grid.dart';
 import 'theme.dart';
@@ -198,7 +199,7 @@ class _ChannelsSectionState extends State<ChannelsSection> {
         // tuned receiver — no explicit decoderId at all, exactly as if no
         // decoder had ever been chosen for it.
         ? null
-        : session != null && session.selectedId != DecoderSession.voiceId
+        : session != null && demodModeFromDecoderId(session.selectedId) == null
         // The active channel previewing a real data decoder: carry that
         // decoder id/settings over, same as before.
         ? session.selectedId
@@ -210,7 +211,8 @@ class _ChannelsSectionState extends State<ChannelsSection> {
       c.id,
       name: name.trim(),
       decoderId: decoderId,
-      decoderSettings: decoderId == null || demodModeFromDecoderId(decoderId) != null
+      decoderSettings:
+          decoderId == null || demodModeFromDecoderId(decoderId) != null
           ? null
           : session!.currentSettings,
     );

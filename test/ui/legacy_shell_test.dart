@@ -38,40 +38,41 @@ void main() {
     favorites.dispose();
   });
 
-  testWidgets('squelch controls live only in Decoder, not Settings or Receive', (
-    tester,
-  ) async {
-    final radio = DemoRadioController();
-    final favorites = FavoritesRepository();
-    await favorites.load();
-    await tester.pumpWidget(
-      MaterialApp(
-        home: LegacyAppShell(controller: radio, favorites: favorites),
-      ),
-    );
+  testWidgets(
+    'squelch controls live only in Decoder, not Settings or Receive',
+    (tester) async {
+      final radio = DemoRadioController();
+      final favorites = FavoritesRepository();
+      await favorites.load();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: LegacyAppShell(controller: radio, favorites: favorites),
+        ),
+      );
 
-    expect(find.byKey(const ValueKey('key-1')), findsOneWidget);
-    expect(
-      find.descendant(
-        of: find.byType(ReceiveScreen),
-        matching: find.byType(SquelchControls, skipOffstage: false),
-      ),
-      findsNothing,
-    );
-    await tester.tap(find.byKey(const ValueKey('tab-3')));
-    await tester.pump();
-    await tester.scrollUntilVisible(
-      find.byKey(const ValueKey('squelchStatus')),
-      180,
-      scrollable: find.byType(Scrollable).first,
-    );
-    expect(find.byType(SquelchControls), findsOneWidget);
-    expect(find.text('Авто'), findsOneWidget);
+      expect(find.byKey(const ValueKey('key-1')), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byType(ReceiveScreen),
+          matching: find.byType(SquelchControls, skipOffstage: false),
+        ),
+        findsNothing,
+      );
+      await tester.tap(find.byKey(const ValueKey('tab-3')));
+      await tester.pump();
+      await tester.scrollUntilVisible(
+        find.byKey(const ValueKey('squelchStatus')),
+        180,
+        scrollable: find.byType(Scrollable).first,
+      );
+      expect(find.byType(SquelchControls), findsOneWidget);
+      expect(find.text('Авто'), findsOneWidget);
 
-    await tester.pumpWidget(const SizedBox());
-    radio.dispose();
-    favorites.dispose();
-  });
+      await tester.pumpWidget(const SizedBox());
+      radio.dispose();
+      favorites.dispose();
+    },
+  );
 
   testWidgets(
     'add arbitrary current frequency, edit, group, delete and persist',
@@ -200,9 +201,9 @@ void main() {
     );
     await tester.tap(find.byKey(const ValueKey('tab-3')));
     await tester.pump();
-    await tester.tap(find.byKey(const ValueKey('legacyModeSelect')));
+    await tester.tap(find.byKey(const ValueKey('decoderSelector')));
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('legacyMode-USB')));
+    await tester.tap(find.byKey(const ValueKey('decoderSelect-demod:4')));
     await tester.pump();
     expect(radio.mode.label, 'USB');
     expect(radio.vfoOffset, 0);

@@ -6,7 +6,10 @@ import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import '../decoders/decoder_contract.dart' show decoderById;
+import '../decoders/decoder_contract.dart'
+    show decoderById, decoderIdForMode, demodModeFromDecoderId;
+export '../decoders/decoder_contract.dart'
+    show decoderIdForMode, demodModeFromDecoderId;
 import '../radio_controller.dart';
 
 const favoriteCategories = ['Все', 'FM', 'AIR', 'VHF', 'MAR', 'UHF'];
@@ -15,43 +18,6 @@ const favoriteCategories = ['Все', 'FM', 'AIR', 'VHF', 'MAR', 'UHF'];
 /// selection (and its settings) exactly as it is", distinct from a real
 /// `null` which explicitly clears the decoder back to plain voice/audio.
 const Object _unchangedDecoder = Object();
-
-/// Unified decoder-catalog id for an explicit voice/demod-mode choice
-/// (shared scheme with the native decoder registry: `demod:<DemodMode.id>`,
-/// DemodMode native ids NFM=0, WFM=1, AM=2, DSB=3, USB=4, CW=5, LSB=6,
-/// RAW=7). Distinct from the plain-voice convention (`decoderId == null`,
-/// [Favorite.mode] alone governs the receive path) — this id *pins* the
-/// mode as the user's deliberate decoder choice, e.g. when a preset is
-/// saved from an actively-receiving channel (see
-/// `channel_controller.dart`'s `saveAsPreset`) or shown as the current
-/// selection in the unified preset-editor dropdown
-/// ([Favorite.decoderChoice]).
-///
-/// NOTE for the integrating lead: this mirrors the shared-contract
-/// `decoderIdForMode`/`decoderById` additions planned for
-/// `decoders/decoder_contract.dart` (owned by a different agent in this
-/// task's split). Favorites-side code here never stores a `demod:` id to
-/// disk (see [_normalizeDecoderId], [FavoritesRepository.add]/`edit` —
-/// such a choice always resolves to `decoderId: null` + the matching
-/// `mode` before it reaches storage), so once decoder_contract.dart
-/// provides the canonical functions, this local copy can be deleted and
-/// call sites repointed to the shared one without changing behaviour.
-String decoderIdForMode(DemodMode mode) => 'demod:${mode.id}';
-
-final _demodDecoderId = RegExp(r'^demod:(\d+)$');
-
-/// Parses a [decoderIdForMode] id back to its [DemodMode]; null if [id]
-/// isn't that scheme or encodes an id no [DemodMode] declares.
-DemodMode? demodModeFromDecoderId(String? id) {
-  if (id == null) return null;
-  final m = _demodDecoderId.firstMatch(id);
-  if (m == null) return null;
-  final n = int.parse(m.group(1)!);
-  for (final mode in DemodMode.values) {
-    if (mode.id == n) return mode;
-  }
-  return null;
-}
 
 /// `id` valid for a known decoder (voice/demod-mode id or a real data
 /// decoder), else null (an unknown/removed/obsolete decoder id never
