@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:sdr_flutter/ui/decoders/decoder_contract.dart';
 import 'package:sdr_flutter/ui/demo_radio_controller.dart';
 import 'package:sdr_flutter/ui/legacy/app_shell.dart';
 import 'package:sdr_flutter/ui/legacy/decoder_screen.dart';
@@ -20,6 +21,33 @@ class _DemodRadio extends DemoRadioController {
     options[key] = value;
     notifyListeners();
   }
+}
+
+/// Reports a fixed, test-controlled set of decoders as installed; never
+/// synthesizes a [DecoderEvent] (decoder_contract.dart forbids fake output
+/// from an unsupported/placeholder backend, and this fake backend is a
+/// *supported* one for exactly [_available]).
+class _FakeBackend implements DecoderBackend {
+  _FakeBackend(this._available);
+  final Set<String> _available;
+  final List<String?> selected = [];
+  @override
+  Set<String> get availableIds => _available;
+  @override
+  bool select(String? id, Map<String, Object> versionedConfig) {
+    selected.add(id);
+    return id != null;
+  }
+
+  @override
+  DecoderEvent? poll(int afterSequence) => null;
+}
+
+class _BackedRadio extends DemoRadioController {
+  _BackedRadio(this._backend);
+  final DecoderBackend? _backend;
+  @override
+  DecoderBackend? get decoderBackend => _backend;
 }
 
 void main() {
@@ -107,35 +135,163 @@ void main() {
     },
   );
 
-  testWidgets('Decoder results are honest empty states without controls', (
-    tester,
-  ) async {
+  testWidgets('Decoder tab defaults to the voice panel, selector lists '
+      'every catalog entry', (tester) async {
     final radio = DemoRadioController();
     await tester.pumpWidget(
       MaterialApp(home: LegacyAppShell(controller: radio)),
     );
     await tester.tap(find.byKey(const ValueKey('tab-3')));
     await tester.pump();
-    for (final id in ['rtl433', 'sstvFax', 'adsb', 'textPacket']) {
-      await tester.scrollUntilVisible(
-        find.byKey(ValueKey('decoder-$id')),
-        150,
-        scrollable: find.descendant(
-          of: find.byType(DecoderScreen),
-          matching: find.byType(Scrollable),
-        ),
-      );
-      expect(find.byKey(ValueKey('decoder-$id')), findsOneWidget);
+    expect(find.byKey(const ValueKey('decoderSelector')), findsOneWidget);
+    for (final d in decoderCatalog) {
+      expect(find.byKey(ValueKey('decoderSelect-${d.id}')), findsOneWidget);
     }
-    expect(find.textContaining('RDS'), findsWidgets);
-    expect(find.textContaining('недоступ'), findsWidgets);
-    expect(find.textContaining('один приёмник'), findsWidgets);
-    expect(find.text('Start'), findsNothing);
-    expect(find.byKey(const ValueKey('demod:stereo')), findsNothing);
+    expect(find.byKey(const ValueKey('decoderPanel-voice')), findsOneWidget);
+    for (final id in ['sstv', 'rtl_433', 'adsb']) {
+      expect(find.byKey(ValueKey('decoderResult-$id')), findsNothing);
+    }
+    expect(find.byType(SquelchControls), findsOneWidget);
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox());
     radio.dispose();
   });
+
+  testWidgets('Unavailable SSTV panel shows an honest empty state and disabled '
+      'controls, selecting it never touches the radio', (tester) async {
+    final radio = DemoRadioController();
+    final beforeFreq = radio.tunedFrequency;
+    final beforeMode = radio.mode;
+    final beforeMuted = radio.muted;
+    await tester.pumpWidget(
+      MaterialApp(home: LegacyAppShell(controller: radio)),
+    );
+    await tester.tap(find.byKey(const ValueKey('tab-3')));
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('decoderSelect-sstv')));
+    await tester.pump();
+    expect(find.byKey(const ValueKey('decoderPanel-sstv')), findsOneWidget);
+    expect(find.byKey(const ValueKey('decoderResult-sstv')), findsOneWidget);
+    expect(find.byKey(const ValueKey('decoderResult-rtl_433')), findsNothing);
+    expect(find.byKey(const ValueKey('decoderResult-adsb')), findsNothing);
+    expect(
+      find.byKey(const ValueKey('decoderUnavailable-sstv')),
+      findsOneWidget,
+    );
+    expect(find.text('Start'), findsNothing);
+    final modeDropdown = tester.widget<DropdownButton<Object>>(
+      find.byKey(const ValueKey('decoderSetting-sstv-mode')),
+    );
+    expect(
+      modeDropdown.onChanged,
+      isNull,
+      reason: 'a setting a native backend never reads must not look live',
+    );
+    expect(radio.tunedFrequency, beforeFreq);
+    expect(radio.mode, beforeMode);
+    expect(radio.muted, beforeMuted);
+    expect(radio.running, isFalse);
+    await tester.pumpWidget(const SizedBox());
+    radio.dispose();
+  });
+
+  testWidgets(
+    'Unavailable rtl_433 panel is an exclusive-receiver decoder with a '
+    'disabled frequency choice',
+    (tester) async {
+      final radio = DemoRadioController();
+      await tester.pumpWidget(
+        MaterialApp(home: LegacyAppShell(controller: radio)),
+      );
+      await tester.tap(find.byKey(const ValueKey('tab-3')));
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('decoderSelect-rtl_433')));
+      await tester.pump();
+      expect(
+        find.byKey(const ValueKey('decoderPanel-rtl_433')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('decoderResult-rtl_433')),
+        findsOneWidget,
+      );
+      expect(find.byKey(const ValueKey('decoderResult-sstv')), findsNothing);
+      expect(
+        find.byKey(const ValueKey('decoderUnavailable-rtl_433')),
+        findsOneWidget,
+      );
+      final freqDropdown = tester.widget<DropdownButton<Object>>(
+        find.byKey(const ValueKey('decoderSetting-rtl_433-frequency_hz')),
+      );
+      expect(freqDropdown.onChanged, isNull);
+      expect(find.textContaining('единственный приёмник'), findsOneWidget);
+      expect(radio.running, isFalse, reason: 'selecting never starts anything');
+      await tester.pumpWidget(const SizedBox());
+      radio.dispose();
+    },
+  );
+
+  testWidgets(
+    'Unavailable ADS-B panel lists aircraft as empty with no settings to '
+    'disable',
+    (tester) async {
+      final radio = DemoRadioController();
+      await tester.pumpWidget(
+        MaterialApp(home: LegacyAppShell(controller: radio)),
+      );
+      await tester.tap(find.byKey(const ValueKey('tab-3')));
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('decoderSelect-adsb')));
+      await tester.pump();
+      expect(find.byKey(const ValueKey('decoderPanel-adsb')), findsOneWidget);
+      expect(find.byKey(const ValueKey('decoderResult-adsb')), findsOneWidget);
+      expect(find.byKey(const ValueKey('decoderResult-rtl_433')), findsNothing);
+      expect(
+        find.byKey(const ValueKey('decoderUnavailable-adsb')),
+        findsOneWidget,
+      );
+      expect(find.textContaining('единственный приёмник'), findsOneWidget);
+      expect(find.text('Start'), findsNothing);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+      radio.dispose();
+    },
+  );
+
+  testWidgets(
+    'a decoder the backend reports as installed enables its settings and '
+    'is actually selected on the backend',
+    (tester) async {
+      final backend = _FakeBackend({'sstv'});
+      final radio = _BackedRadio(backend);
+      radio.setMode(DemodMode.usb);
+      await radio.start();
+      await tester.pumpWidget(
+        MaterialApp(home: LegacyAppShell(controller: radio)),
+      );
+      await tester.tap(find.byKey(const ValueKey('tab-3')));
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('decoderSelect-sstv')));
+      await tester.pump();
+      expect(
+        find.byKey(const ValueKey('decoderUnavailable-sstv')),
+        findsNothing,
+      );
+      final modeDropdown = tester.widget<DropdownButton<Object>>(
+        find.byKey(const ValueKey('decoderSetting-sstv-mode')),
+      );
+      expect(modeDropdown.onChanged, isNotNull);
+      expect(backend.selected.last, 'sstv');
+      // rtl_433 was never reported available: still gated even after
+      // a different decoder became selectable.
+      await tester.tap(find.byKey(const ValueKey('decoderSelect-rtl_433')));
+      await tester.pump();
+      expect(backend.selected.last, isNull);
+      await tester.pumpWidget(const SizedBox());
+      await radio.stop();
+      radio.dispose();
+    },
+  );
 
   testWidgets('RAW channel bandwidth is locked and squelch unavailable', (
     tester,
@@ -187,5 +343,30 @@ void main() {
       await tester.pumpWidget(const SizedBox());
       radio.dispose();
     });
+
+    for (final id in ['sstv', 'rtl_433', 'adsb']) {
+      testWidgets('Decoder $id panel scrolls without overflow at $size', (
+        tester,
+      ) async {
+        tester.view.physicalSize = size * 2.625;
+        tester.view.devicePixelRatio = 2.625;
+        addTearDown(tester.view.reset);
+        final radio = DemoRadioController();
+        await tester.pumpWidget(
+          MaterialApp(home: LegacyAppShell(controller: radio)),
+        );
+        await tester.tap(find.byKey(const ValueKey('tab-3')));
+        await tester.pump();
+        await tester.tap(find.byKey(ValueKey('decoderSelect-$id')));
+        await tester.pump();
+        expect(find.byKey(ValueKey('decoderPanel-$id')), findsOneWidget);
+        expect(tester.takeException(), isNull);
+        await tester.drag(find.byType(DecoderScreen), const Offset(0, -900));
+        await tester.pump();
+        expect(tester.takeException(), isNull);
+        await tester.pumpWidget(const SizedBox());
+        radio.dispose();
+      });
+    }
   }
 }

@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 
 import '../bands/bands.dart';
 import '../channels/channel_controller.dart' show presetCategoryFor;
+import '../decoders/decoder_contract.dart';
+import '../decoders/decoder_session.dart';
 import '../favorites/favorites.dart';
 import '../radio_controller.dart';
 import 'centered_receiver.dart';
@@ -27,6 +29,7 @@ class PresetsScreen extends StatefulWidget {
     required this.favorites,
     this.bands,
     required this.onApplied,
+    this.decoderSession,
   });
   final RadioController controller;
   final CenteredReceiver receiver;
@@ -35,6 +38,14 @@ class PresetsScreen extends StatefulWidget {
   /// Sections of the list; without bands everything is «Вне диапазонов».
   final BandsRepository? bands;
   final VoidCallback onApplied;
+
+  /// Shell-scoped decoder preview (decoders/decoder_session.dart). A new
+  /// preset created while a data decoder is previewed carries that decoder
+  /// id/settings along (same as the channel "save as preset" menu);
+  /// applying a preset restores its stored decoder into the preview. Null
+  /// keeps presets plain voice/audio, same as before this parameter
+  /// existed.
+  final DecoderSession? decoderSession;
   @override
   State<PresetsScreen> createState() => _PresetsScreenState();
 }
@@ -46,6 +57,12 @@ class _PresetsScreenState extends State<PresetsScreen> {
     setState(() => message = null);
     var name = existing?.name ?? '';
     var mode = existing?.mode ?? widget.controller.mode;
+    final session = widget.decoderSession;
+    var decoderId =
+        existing?.decoderId ??
+        (existing == null
+            ? session?.selectedId ?? DecoderSession.voiceId
+            : DecoderSession.voiceId);
     final result = await showDialog<bool>(
       context: context,
       builder: (context) => StatefulBuilder(
@@ -76,6 +93,29 @@ class _PresetsScreenState extends State<PresetsScreen> {
                     if (m != null) update(() => mode = m);
                   },
                 ),
+                DropdownButton<String>(
+                  key: const ValueKey('favoriteDecoder'),
+                  isExpanded: true,
+                  value: decoderId,
+                  items: [
+                    for (final decoder in decoderCatalog)
+                      DropdownMenuItem(
+                        value: decoder.id,
+                        child: Text(
+                          decoder.label,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                  ],
+                  onChanged: (value) {
+                    if (value != null) update(() => decoderId = value);
+                  },
+                ),
+                if (decoderId != DecoderSession.voiceId &&
+                    !(session?.isAvailable(decoderId) ?? false))
+                  const Text(
+                    'Декодер недоступен: настройки сохраняются для будущей версии, но приём не запускается.',
+                  ),
               ],
             ),
           ),
@@ -97,6 +137,9 @@ class _PresetsScreenState extends State<PresetsScreen> {
       try {
         if (existing == null) {
           final hz = widget.controller.tunedFrequency.round();
+          final storedId = decoderId == DecoderSession.voiceId
+              ? null
+              : decoderId;
           widget.favorites.add(
             frequencyHz: hz,
             name: name,
@@ -108,6 +151,12 @@ class _PresetsScreenState extends State<PresetsScreen> {
             maxHz:
                 (widget.controller.selectedDevice?.maxFrequency ?? 999999999999)
                     .round(),
+            // Carries over whatever is currently previewed on the Decoder
+            // tab, same as the channel "save as preset" menu.
+            decoderId: storedId,
+            decoderSettings: storedId == null
+                ? null
+                : session?.settingsFor(storedId),
           );
         } else {
           widget.favorites.edit(
@@ -115,6 +164,12 @@ class _PresetsScreenState extends State<PresetsScreen> {
             name: name,
             mode: mode,
             category: existing.category,
+            decoderId: decoderId == DecoderSession.voiceId ? null : decoderId,
+            decoderSettings: decoderId == DecoderSession.voiceId
+                ? null
+                : decoderId == existing.decoderId
+                ? existing.decoderSettings
+                : session?.settingsFor(decoderId),
           );
         }
         if (mounted) setState(() => message = null);
@@ -158,6 +213,10 @@ class _PresetsScreenState extends State<PresetsScreen> {
   void apply(Favorite f) {
     try {
       widget.receiver.apply(f.frequencyHz, f.mode);
+      // Restores the preset's own decoder preview (plain voice/audio when
+      // it has none) — never starts a backend decoder by itself; see
+      // DecoderSession.applyStored.
+      widget.decoderSession?.applyStored(f.decoderId, f.decoderSettings);
       setState(() => message = null);
       widget.onApplied();
     } on ArgumentError {

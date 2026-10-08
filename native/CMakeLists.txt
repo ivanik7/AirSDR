@@ -8,6 +8,8 @@ add_library(sdrcore SHARED
     src/dsp/receiver.cpp
     src/usb_rtlsdr_adapter.cpp
     src/usb_hackrf_adapter.cpp
+    src/decoder/registry.cpp
+    src/decoder/decoder_abi.cpp
 )
 if(ANDROID)
     target_sources(sdrcore PRIVATE src/sdr_jni.cpp)
@@ -45,9 +47,14 @@ if(NOT ANDROID AND PROJECT_IS_TOP_LEVEL)
     # The integrator advances sdr_version only after all N2 layers are ready.
     add_library(sdrcore_v3_contract_compile OBJECT tests/v3_contract_compile.c)
     target_include_directories(sdrcore_v3_contract_compile PRIVATE include)
+    add_library(sdrcore_decoder_contract_compile OBJECT tests/decoder_contract_compile.c)
+    target_include_directories(sdrcore_decoder_contract_compile PRIVATE include)
     add_executable(sdrcore_abi_test tests/abi_test.c)
     target_link_libraries(sdrcore_abi_test PRIVATE sdrcore)
     add_test(NAME sdrcore_abi COMMAND sdrcore_abi_test)
+    add_executable(sdrcore_decoder_abi_test tests/decoder_abi_test.cpp)
+    target_link_libraries(sdrcore_decoder_abi_test PRIVATE sdrcore)
+    add_test(NAME sdrcore_decoder_abi COMMAND sdrcore_decoder_abi_test)
     add_executable(sdrcore_wfm_stereo_abi_test tests/wfm_stereo_abi_test.cpp)
     target_link_libraries(sdrcore_wfm_stereo_abi_test PRIVATE sdrcore Threads::Threads)
     add_test(NAME sdrcore_wfm_stereo_abi COMMAND sdrcore_wfm_stereo_abi_test)

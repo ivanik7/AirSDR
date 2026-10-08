@@ -165,8 +165,17 @@ class ChannelController {
   }
 
   /// Saves a slot into the presets under [name] (default: the slot's shown
-  /// name). Returns an error text or null.
-  String? saveAsPreset(String id, {String? name}) {
+  /// name). Returns an error text or null. [decoderId]/[decoderSettings]
+  /// carry over a decoder currently previewed for this receiver (the
+  /// Decoder tab's [DecoderSession]) so the new preset reopens with the
+  /// same preview; null/omitted means plain voice/audio, same as before
+  /// this parameter existed.
+  String? saveAsPreset(
+    String id, {
+    String? name,
+    String? decoderId,
+    Map<String, Object>? decoderSettings,
+  }) {
     final i = channels.indexOf(id);
     if (i < 0) return 'канал не найден';
     final c = channels.channels[i];
@@ -176,6 +185,8 @@ class ChannelController {
         name: name ?? displayName(c),
         mode: c.mode,
         category: presetCategoryFor(c.frequencyHz, c.mode),
+        decoderId: decoderId,
+        decoderSettings: decoderSettings,
       );
       return null;
     } on ArgumentError catch (e) {

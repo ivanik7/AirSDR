@@ -61,9 +61,10 @@ class _Abi2 {
       'sdr_version',
     );
     create = _lib
-        .lookupFunction<Pointer<_Handle> Function(), Pointer<_Handle> Function()>(
-          'sdr_create',
-        );
+        .lookupFunction<
+          Pointer<_Handle> Function(),
+          Pointer<_Handle> Function()
+        >('sdr_create');
     destroy = _lib
         .lookupFunction<
           Void Function(Pointer<_Handle>),
@@ -119,7 +120,11 @@ class _Abi2 {
   late final int Function(Pointer<_Handle>, Pointer<_NativeStats>) stats;
 }
 
-_NativeStats _snapshot(_Abi2 abi, Pointer<_Handle> h, Pointer<_NativeStats> buf) {
+_NativeStats _snapshot(
+  _Abi2 abi,
+  Pointer<_Handle> h,
+  Pointer<_NativeStats> buf,
+) {
   buf.ref.size = sizeOf<_NativeStats>();
   buf.ref.revision = 2;
   expect(abi.stats(h, buf), _sdrOk);
@@ -140,43 +145,40 @@ void main() {
     setUp(() {
       if (skipReason != null) return;
       abi = _Abi2(libraryPath!);
-      expect(abi.version(), 2);
+      // The v3 receiver preserves every v2 symbol and struct layout.
+      expect(abi.version(), inInclusiveRange(2, 3));
     });
 
-    test(
-      'open_file duplicates the fd; caller may close the original '
-      'immediately and the native stream keeps reading its own copy',
-      () {
-        final h = abi.create();
-        final path =
-            '/tmp/sdr_core_ffi_test_data_${DateTime.now().microsecondsSinceEpoch}.cu8';
-        File(path).writeAsBytesSync(const [1, 2, 3, 4, 5, 6, 7, 8]);
-        final fd = _openReadOnly(path);
-        expect(fd, greaterThanOrEqualTo(0));
+    test('open_file duplicates the fd; caller may close the original '
+        'immediately and the native stream keeps reading its own copy', () {
+      final h = abi.create();
+      final path =
+          '/tmp/sdr_core_ffi_test_data_${DateTime.now().microsecondsSinceEpoch}.cu8';
+      File(path).writeAsBytesSync(const [1, 2, 3, 4, 5, 6, 7, 8]);
+      final fd = _openReadOnly(path);
+      expect(fd, greaterThanOrEqualTo(0));
 
-        expect(abi.openFile(h, fd, 1000), _sdrOk);
-        _closeFd(fd); // Caller's original fd closed right after open_file.
-        expect(abi.start(h), _sdrOk);
+      expect(abi.openFile(h, fd, 1000), _sdrOk);
+      _closeFd(fd); // Caller's original fd closed right after open_file.
+      expect(abi.start(h), _sdrOk);
 
-        final buf = calloc<_NativeStats>();
-        try {
-          _NativeStats s = _snapshot(abi, h, buf);
-          for (var i = 0; i < 50 && s.inputSamples < 4; i++) {
-            sleep(const Duration(milliseconds: 10));
-            s = _snapshot(abi, h, buf);
-          }
-          expect(s.inputSamples, 4); // 8 bytes / 2 = 4 complex CU8 samples.
-          expect(s.inputSamples, s.processedSamples + s.droppedSamples);
-          expect(abi.stop(h), _sdrOk);
-          expect(abi.close(h), _sdrOk);
-        } finally {
-          calloc.free(buf);
+      final buf = calloc<_NativeStats>();
+      try {
+        _NativeStats s = _snapshot(abi, h, buf);
+        for (var i = 0; i < 50 && s.inputSamples < 4; i++) {
+          sleep(const Duration(milliseconds: 10));
+          s = _snapshot(abi, h, buf);
         }
-        abi.destroy(h);
-        File(path).deleteSync();
-      },
-      skip: skipReason,
-    );
+        expect(s.inputSamples, 4); // 8 bytes / 2 = 4 complex CU8 samples.
+        expect(s.inputSamples, s.processedSamples + s.droppedSamples);
+        expect(abi.stop(h), _sdrOk);
+        expect(abi.close(h), _sdrOk);
+      } finally {
+        calloc.free(buf);
+      }
+      abi.destroy(h);
+      File(path).deleteSync();
+    }, skip: skipReason);
 
     test(
       'configure validates frequency ceiling and gain range from the header',
@@ -184,17 +186,11 @@ void main() {
         final h = abi.create();
         expect(abi.openFile(h, _devZeroFd(), 2000000), _sdrOk);
         // Frequency ceiling: 7.25 GHz documented in sdrcore.h.
-        expect(
-          abi.configure(h, 7250000001, 2000000, 0),
-          _sdrInvalidArgument,
-        );
+        expect(abi.configure(h, 7250000001, 2000000, 0), _sdrInvalidArgument);
         expect(abi.configure(h, 7250000000, 2000000, 0), _sdrOk);
         // Gain range: tenths of a dB, header says +/-100.0 dB (+/-1000).
         expect(abi.configure(h, 1000000, 2000000, 1001), _sdrInvalidArgument);
-        expect(
-          abi.configure(h, 1000000, 2000000, -1001),
-          _sdrInvalidArgument,
-        );
+        expect(abi.configure(h, 1000000, 2000000, -1001), _sdrInvalidArgument);
         expect(abi.configure(h, 1000000, 2000000, 1000), _sdrOk);
         // Sample rate outside the accepted 1 kHz..20 MHz band.
         expect(abi.configure(h, 1000000, 999, 0), _sdrInvalidArgument);
@@ -205,70 +201,58 @@ void main() {
       skip: skipReason,
     );
 
-    test(
-      'open_usb rejects a non-USB fd for both driver enum values without '
-      'mutating state',
-      () {
-        final h = abi.create();
-        final fd = _devZeroFd();
-        expect(abi.openUsb(h, fd, _sdrRtlsdr), isNot(_sdrOk));
-        expect(abi.openUsb(h, fd, _sdrHackrf), isNot(_sdrOk));
-        // Passing a source that is not a USB enum value is a plain
-        // argument error, distinct from a driver open failure.
-        expect(abi.openUsb(h, fd, _sdrFile), _sdrInvalidArgument);
-        final buf = calloc<_NativeStats>();
-        try {
-          final s = _snapshot(abi, h, buf);
-          expect(s.state, _sdrIdle); // Rejected calls never left IDLE.
-        } finally {
-          calloc.free(buf);
-        }
-        _closeFd(fd);
-        abi.destroy(h);
-      },
-      skip: skipReason,
-    );
+    test('open_usb rejects a non-USB fd for both driver enum values without '
+        'mutating state', () {
+      final h = abi.create();
+      final fd = _devZeroFd();
+      expect(abi.openUsb(h, fd, _sdrRtlsdr), isNot(_sdrOk));
+      expect(abi.openUsb(h, fd, _sdrHackrf), isNot(_sdrOk));
+      // Passing a source that is not a USB enum value is a plain
+      // argument error, distinct from a driver open failure.
+      expect(abi.openUsb(h, fd, _sdrFile), _sdrInvalidArgument);
+      final buf = calloc<_NativeStats>();
+      try {
+        final s = _snapshot(abi, h, buf);
+        expect(s.state, _sdrIdle); // Rejected calls never left IDLE.
+      } finally {
+        calloc.free(buf);
+      }
+      _closeFd(fd);
+      abi.destroy(h);
+    }, skip: skipReason);
 
-    test(
-      'close() is a one-shot operation: a second close() on an idle handle '
-      'is rejected, and the handle remains usable afterward',
-      () {
-        final h = abi.create();
-        final fd = _devZeroFd();
-        expect(abi.openFile(h, fd, 1000), _sdrOk);
-        expect(abi.close(h), _sdrOk);
-        expect(abi.close(h), _sdrInvalidState);
-        // Still usable: open again on the same handle after close().
-        expect(abi.openFile(h, fd, 1000), _sdrOk);
-        expect(abi.close(h), _sdrOk);
-        _closeFd(fd);
-        abi.destroy(h);
-      },
-      skip: skipReason,
-    );
+    test('close() is a one-shot operation: a second close() on an idle handle '
+        'is rejected, and the handle remains usable afterward', () {
+      final h = abi.create();
+      final fd = _devZeroFd();
+      expect(abi.openFile(h, fd, 1000), _sdrOk);
+      expect(abi.close(h), _sdrOk);
+      expect(abi.close(h), _sdrInvalidState);
+      // Still usable: open again on the same handle after close().
+      expect(abi.openFile(h, fd, 1000), _sdrOk);
+      expect(abi.close(h), _sdrOk);
+      _closeFd(fd);
+      abi.destroy(h);
+    }, skip: skipReason);
 
-    test(
-      'start() while already RUNNING is rejected without disturbing the '
-      'running stream (serialized single-owner contract)',
-      () {
-        final h = abi.create();
-        final fd = _devZeroFd();
-        expect(abi.openFile(h, fd, 1000), _sdrOk);
-        expect(abi.start(h), _sdrOk);
-        expect(abi.start(h), _sdrInvalidState);
-        final buf = calloc<_NativeStats>();
-        try {
-          expect(_snapshot(abi, h, buf).state, _sdrRunning);
-        } finally {
-          calloc.free(buf);
-        }
-        abi.stop(h);
-        abi.close(h);
-        _closeFd(fd);
-        abi.destroy(h);
-      },
-      skip: skipReason,
-    );
+    test('start() while already RUNNING is rejected without disturbing the '
+        'running stream (serialized single-owner contract)', () {
+      final h = abi.create();
+      final fd = _devZeroFd();
+      expect(abi.openFile(h, fd, 1000), _sdrOk);
+      expect(abi.start(h), _sdrOk);
+      expect(abi.start(h), _sdrInvalidState);
+      final buf = calloc<_NativeStats>();
+      try {
+        expect(_snapshot(abi, h, buf).state, _sdrRunning);
+      } finally {
+        calloc.free(buf);
+      }
+      abi.stop(h);
+      abi.close(h);
+      _closeFd(fd);
+      abi.destroy(h);
+    }, skip: skipReason);
   });
 }
 

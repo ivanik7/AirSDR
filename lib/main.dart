@@ -11,6 +11,7 @@ import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 
 import 'native/android_native_device_source.dart';
+import 'native/native_decoder_api.dart';
 import 'native/native_radio_api.dart';
 import 'native/native_radio_controller.dart';
 import 'native/native_service_lifecycle.dart';
@@ -67,6 +68,7 @@ Future<RadioController> createAndroidRadioController({
     late NativeRadioController controller;
     controller = NativeRadioController(
       api: api,
+      decoderApi: FfiNativeDecoderApi.tryOpen(library),
       source: AndroidNativeDeviceSource(),
       audioSink: 'aaudio',
       configDir: configDir,
@@ -101,6 +103,7 @@ RadioController createLinuxRadioController({String? configDir}) {
     final sink = Platform.environment['SDR_AUDIO_SINK'];
     return NativeRadioController(
       api: api,
+      decoderApi: FfiNativeDecoderApi.tryOpen(library),
       source: HostNativeDeviceSource(api),
       audioSink: sink == null || sink.isEmpty ? 'null' : sink,
       configDir: configDir,

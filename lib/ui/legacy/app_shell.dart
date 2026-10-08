@@ -6,6 +6,7 @@ import '../channels/channel_controller.dart';
 import '../channels/channel_scanner.dart';
 import '../channels/channels.dart';
 import '../channels/signal_meter.dart';
+import '../decoders/decoder_session.dart';
 import '../favorites/favorites.dart';
 import '../radio_controller.dart';
 import '../sdr_ui_state.dart';
@@ -43,6 +44,7 @@ class _LegacyAppShellState extends State<LegacyAppShell> {
   late ChannelController channels;
   late ChannelScanner scanner;
   late SignalMeter meter;
+  late DecoderSession decoderSession;
   bool ownFavorites = false;
   bool ownChannels = false;
   bool ownBands = false;
@@ -78,6 +80,7 @@ class _LegacyAppShellState extends State<LegacyAppShell> {
     scanner = ChannelScanner(controller: channels);
     scanner.addListener(_scannerChanged);
     meter = SignalMeter(widget.controller);
+    decoderSession = DecoderSession(widget.controller);
     final radio = widget.controller;
     final slots = channelSlots;
     final bound = channels;
@@ -142,6 +145,7 @@ class _LegacyAppShellState extends State<LegacyAppShell> {
     receiver.dispose();
     spectrum.dispose();
     meter.dispose();
+    decoderSession.dispose();
     if (ownFavorites) favorites.dispose();
     if (ownChannels) channelSlots.dispose();
     if (ownBands) bands.dispose();
@@ -157,6 +161,7 @@ class _LegacyAppShellState extends State<LegacyAppShell> {
     receiver.dispose();
     spectrum.dispose();
     meter.dispose();
+    decoderSession.dispose();
     if (ownFavorites) favorites.dispose();
     if (ownChannels) channelSlots.dispose();
     if (ownBands) bands.dispose();
@@ -181,6 +186,7 @@ class _LegacyAppShellState extends State<LegacyAppShell> {
                   channels: channels,
                   scanner: scanner,
                   meter: meter,
+                  decoderSession: decoderSession,
                 ),
                 PresetsScreen(
                   controller: widget.controller,
@@ -188,6 +194,7 @@ class _LegacyAppShellState extends State<LegacyAppShell> {
                   favorites: favorites,
                   bands: bands,
                   onApplied: () => setState(() => tab = 0),
+                  decoderSession: decoderSession,
                 ),
                 SettingsScreen(
                   controller: widget.controller,
@@ -198,6 +205,7 @@ class _LegacyAppShellState extends State<LegacyAppShell> {
                 DecoderScreen(
                   controller: widget.controller,
                   receiver: receiver,
+                  session: decoderSession,
                 ),
               ],
             ),

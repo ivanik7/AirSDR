@@ -7,7 +7,10 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart' show debugPrint;
 
+import '../ui/decoders/decoder_contract.dart';
 import '../ui/radio_controller.dart';
+import 'native_decoder_api.dart';
+import 'native_decoder_backend.dart';
 import 'native_radio_api.dart';
 import 'native_radio_settings.dart';
 import 'sdr_core.dart';
@@ -85,7 +88,11 @@ class NativeRadioController extends RadioController {
     this.beforeStart,
     this.afterStop,
     this.configDir,
+    NativeDecoderApi? decoderApi,
   }) {
+    _decoderBackend = decoderApi == null
+        ? const NoDecoderBackend()
+        : NativeDecoderBackend(decoderApi, () => _handle);
     if (Platform.isAndroid && (beforeStart == null || afterStop == null)) {
       throw StateError(
         'Android native reception requires service ownership hooks',
@@ -158,6 +165,7 @@ class NativeRadioController extends RadioController {
   int? _legacyRtlGainIndex;
   String? _legacyRtlDeviceName;
   String? _gainMigrationWarning;
+  late final DecoderBackend _decoderBackend;
 
   double _center = 100000000, _offset = 0, _rate = 2400000, _gain = 20;
   double _bandwidth = DemodMode.wfm.params.defaultBandwidth;
@@ -883,6 +891,13 @@ class NativeRadioController extends RadioController {
 
   @override
   Map<String, Object?> get stats => _stats;
+
+  /// Exposes the optional native decoder extension
+  /// (lib/ui/decoders/decoder_contract.dart). Never null here: when no
+  /// [NativeDecoderApi] is injected the backend is [NoDecoderBackend], whose
+  /// availableIds is always empty (no fabricated availability).
+  @override
+  DecoderBackend get decoderBackend => _decoderBackend;
   @override
   void clearError() {
     _lastError = null;

@@ -18,6 +18,7 @@ import '../channels/channel_controller.dart';
 import '../channels/channel_scanner.dart';
 import '../channels/channels.dart';
 import '../channels/signal_meter.dart';
+import '../decoders/decoder_session.dart';
 import '../radio_controller.dart';
 import 'step_grid.dart';
 import 'theme.dart';
@@ -29,11 +30,17 @@ class ChannelsSection extends StatefulWidget {
     required this.scanner,
     required this.radio,
     required this.meter,
+    this.decoderSession,
   });
   final ChannelController controller;
   final ChannelScanner scanner;
   final RadioController radio;
   final SignalMeter meter;
+
+  /// Decoder currently previewed on the Decoder tab (shell-scoped); carried
+  /// over into a new preset when "Сохранить как пресет" is used. Null keeps
+  /// the pre-existing behaviour (plain voice/audio preset).
+  final DecoderSession? decoderSession;
 
   static const tileGap = 4.0;
 
@@ -176,7 +183,26 @@ class _ChannelsSectionState extends State<ChannelsSection> {
       ),
     );
     if (ok != true || !mounted) return;
-    final saveError = widget.controller.saveAsPreset(c.id, name: name.trim());
+    final session = widget.decoderSession;
+    // A decoder preview describes the currently tuned channel only. Never
+    // attach its options to a different (inactive or scanned) channel tile.
+    final currentChannel =
+        !widget.scanner.active &&
+        repo.activeId == c.id &&
+        widget.radio.tunedFrequency.round() == c.frequencyHz &&
+        widget.radio.mode == c.mode;
+    final decoderId =
+        currentChannel &&
+            session != null &&
+            session.selectedId != DecoderSession.voiceId
+        ? session.selectedId
+        : null;
+    final saveError = widget.controller.saveAsPreset(
+      c.id,
+      name: name.trim(),
+      decoderId: decoderId,
+      decoderSettings: decoderId == null ? null : session!.currentSettings,
+    );
     _snack(
       saveError == null
           ? 'Сохранено как пресет'
