@@ -28,6 +28,20 @@ class RtlSdrAdapter final : public UsbRxAdapter {
   // BUFFER_SMALL contract. SDR_INVALID_STATE if not open.
   int get_tuner_gains(int32_t* gains, uint32_t capacity,
                        uint32_t* count) override;
+  // Live retune while rtlsdr_read_async streams (rtl_tcp / SDR++ do the same):
+  // only the tuner PLL or gain registers are rewritten over control
+  // transfers; sample rate and the async transfers stay untouched.
+  bool supports_live_tuning() const override { return true; }
+  int set_frequency(uint64_t frequency_hz) override;
+  int set_gain(int32_t gain_tenths_db) override;
+  // All submitted bulk transfers (kTransfers x kTransferBytes) may already
+  // hold pre-retune IQ when the tuner is reprogrammed.
+  size_t retune_settle_bytes() const override {
+    return static_cast<size_t>(kTransfers) * kTransferBytes;
+  }
+
+  static constexpr uint32_t kTransfers = 16;
+  static constexpr uint32_t kTransferBytes = 8192;
 
  private:
   struct rtlsdr_dev* dev_ = nullptr;

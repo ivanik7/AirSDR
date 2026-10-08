@@ -117,8 +117,9 @@ class ReceiverImpl final : public Receiver {
   void configure(const SdrV3Controls& controls, const SdrV3Display& display) override {
     // The ABI owner validates the request. Guard against zero rate in standalone use.
     const bool initial = !configured_;
+    // A VFO offset or LO move is not a channel change (see tune_change).
     const bool channel_change = initial || controls.sample_rate != controls_.sample_rate ||
-        controls.vfo_offset_hz != controls_.vfo_offset_hz || controls.mode != controls_.mode ||
+        controls.mode != controls_.mode ||
         controls.bandwidth_hz != controls_.bandwidth_hz;
     const bool squelch_change = initial || channel_change || controls.squelch != controls_.squelch ||
         controls.squelch_level_db != controls_.squelch_level_db ||
@@ -128,6 +129,22 @@ class ReceiverImpl final : public Receiver {
         display.view_offset_hz != display_.view_offset_hz ||
         controls.center_frequency_hz != controls_.center_frequency_hz ||
         controls.sample_rate != controls_.sample_rate;
+    // Tuned-frequency move without a channel reshape (waterfall drag, step,
+    // LO recenter). SDR++ and the old Dart engine only retarget the VFO
+    // translator here (rx_vfo.setOffset); resetting the filters, resampler,
+    // deemphasis and squelch gate punched a hole into the audio on every
+    // drag event (t_c364ac15).
+    const bool tune_change = !channel_change &&
+        (controls.vfo_offset_hz != controls_.vfo_offset_hz ||
+         controls.center_frequency_hz != controls_.center_frequency_hz);
+    const bool lo_change = !initial &&
+        controls.center_frequency_hz != controls_.center_frequency_hz;
+    // A move by more than half the channel puts another signal into it:
+    // the squelch and stereo pilot state of the old one no longer apply.
+    const double tuned_delta = std::fabs(
+        (static_cast<double>(controls.center_frequency_hz) + controls.vfo_offset_hz) -
+        (static_cast<double>(controls_.center_frequency_hz) + controls_.vfo_offset_hz));
+    const bool station_change = tune_change && 2 * tuned_delta > controls.bandwidth_hz;
     controls_ = controls;
     display_ = display;
     configured_ = controls.sample_rate > 0;
@@ -135,17 +152,28 @@ class ReceiverImpl final : public Receiver {
     const double sr = controls.sample_rate;
     if (display_change && fft_size_for(controls.sample_rate) != fft_n_)
       set_fft_size(fft_size_for(controls.sample_rate));
+    if (tune_change) {
+      // Phase-continuous NCO retarget; the IQ for the new LO (if any) is
+      // still behind blocks of the old one, retune() marks that boundary.
+      oscillator_step_ = std::polar(1.0f, static_cast<float>(-2 * kPi * channel_offset_hz(controls) / sr));
+      if (station_change) {
+        if (lo_change) {
+          station_change_pending_ = true;  // applied by retune()
+        } else {
+          reset_squelch();
+          reacquire_pilot();
+        }
+      }
+    }
     if (channel_change) {
       // SSB offsets name the lower/upper passband edge, not its center.
       // Note: bandwidth_hz is unsigned; scale before negating.
       const double half_bw = 0.5 * static_cast<double>(controls.bandwidth_hz);
-      double channel_offset = static_cast<double>(controls.vfo_offset_hz);
-      if (controls.mode == SDR_V3_USB) channel_offset += half_bw;
-      if (controls.mode == SDR_V3_LSB) channel_offset -= half_bw;
-      const double angle = -2 * kPi * channel_offset / sr;
+      const double angle = -2 * kPi * channel_offset_hz(controls) / sr;
       oscillator_step_ = std::polar(1.0f, static_cast<float>(angle));
       oscillator_ = {1, 0};
       oscillator_count_ = 0;
+      station_change_pending_ = false;
       const bool wide = controls.bandwidth_hz >= 80000;
       first_factor_ = std::max(1u, std::min(wide ? 4u : 8u,
           static_cast<unsigned>(sr / (wide ? 550000.0 : 280000.0))));
@@ -192,7 +220,7 @@ class ReceiverImpl final : public Receiver {
       }
       reset_channel();
     }
-    if (squelch_change) reset_squelch();
+    if (squelch_change && !channel_change) reset_squelch();
     if (display_change) fft_count_ = 0;
   }
 
@@ -200,8 +228,16 @@ class ReceiverImpl final : public Receiver {
   // (see process_if()). Re-arms pilot acquisition on every toggle so the
   // PLL/blend state always starts clean instead of resuming mid-transient.
   void set_wfm_stereo(bool enabled) override {
+    if (enabled && !stereo_enabled_) {
+      // The right chain was not fed while stereo was off: continue it from
+      // the (mono) left chain instead of stale or zeroed state (no click).
+      audio_history_r_ = audio_history_;
+      deemphasis_r_ = deemphasis_;
+      audio_dc_in_r_ = audio_dc_in_;
+      audio_dc_out_r_ = audio_dc_out_;
+    }
     stereo_enabled_ = enabled;
-    reset_pilot();
+    reacquire_pilot();
   }
 
   void reset() override {
@@ -211,8 +247,19 @@ class ReceiverImpl final : public Receiver {
     oscillator_count_ = 0;
     fft_count_ = 0;
     fft_since_row_ = 0;
+    station_change_pending_ = false;
     reset_channel();
     reset_squelch();
+  }
+
+  void retune() override {
+    fft_count_ = 0;
+    fft_since_row_ = 0;
+    // Same station under a new LO (drag recenter): nothing else changes.
+    if (!station_change_pending_) return;
+    station_change_pending_ = false;
+    reset_squelch();
+    reacquire_pilot();
   }
 
   void process(const uint8_t* cu8, size_t bytes, ProcessResult& result) override {
@@ -264,6 +311,14 @@ class ReceiverImpl final : public Receiver {
 
  private:
   static constexpr size_t kAudioTaps = 32, kPhases = 64;
+  // NCO frequency: SSB offsets name the lower/upper passband edge.
+  static double channel_offset_hz(const SdrV3Controls& c) {
+    const double half_bw = 0.5 * static_cast<double>(c.bandwidth_hz);
+    double offset = static_cast<double>(c.vfo_offset_hz);
+    if (c.mode == SDR_V3_USB) offset += half_bw;
+    if (c.mode == SDR_V3_LSB) offset -= half_bw;
+    return offset;
+  }
   void reset_squelch() {
     squelch_ready_ = false;
     squelch_open_ = false;
@@ -277,7 +332,9 @@ class ReceiverImpl final : public Receiver {
     floor_count_ = floor_index_ = settle_count_ = segment_count_ = open_count_ = hang_count_ = 0;
     metric_count_ = 0;
     segment_power_ = 0;
-    gate_ = 0;
+    // Without squelch the gate is always open; ramping it from zero after
+    // every tune would be an audible dip.
+    gate_ = controls_.squelch == SDR_V3_SQUELCH_OFF ? 1.0f : 0.0f;
   }
   void reset_channel() {
     previous_ = {};
@@ -292,6 +349,19 @@ class ReceiverImpl final : public Receiver {
     next_audio_time_ = 0;
     reset_pilot();
     reset_squelch();
+  }
+  // New station: re-lock the 19 kHz pilot from scratch (mono until locked)
+  // but keep the right channel's resampler/deemphasis/DC state running, so
+  // the stereo->mono collapse does not add a hole or click.
+  void reacquire_pilot() {
+    nominal_angle_ = 0;
+    tracked_phase_ = 0;
+    tracked_freq_ = 0;
+    pilot_bb1_ = pilot_bb2_ = {0, 0};
+    pilot_mag_smooth_ = 0;
+    pilot_locked_ = false;
+    stereo_blend_ = 0;
+    lmr_lp1_ = lmr_lp2_ = 0;
   }
   // Re-arms the 19 kHz pilot PLL and the stereo-only filter/deemphasis state.
   // Called on every retune/mode change, and on every set_wfm_stereo() toggle
@@ -629,6 +699,9 @@ class ReceiverImpl final : public Receiver {
   SdrV3Controls controls_{};
   SdrV3Display display_{};
   bool configured_ = false;
+  // An LO change moved the tuned frequency to another channel; retune()
+  // (first block of the new LO) resets squelch learning and pilot lock.
+  bool station_change_pending_ = false;
   ComplexDecimator first_, second_;
   unsigned first_factor_ = 1, second_factor_ = 1;
   double if_rate_ = 48000, audio_cutoff_ = 15000;

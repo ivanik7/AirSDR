@@ -38,6 +38,20 @@
 //                  unmodified; `count` always receives the required count.
 //                  The default implementation reports SDR_UNSUPPORTED with
 //                  count=0 for adapters without a discoverable gain table.
+//   set_frequency(..) / set_gain(..) retune the LO or gain of an open device
+//                  WHILE start() may be streaming on the producer thread
+//                  (live tuning, like SDR++'s rtl_sdr source). Only used when
+//                  supports_live_tuning() is true. Called from the core's
+//                  tuner worker thread, which holds neither the core ring mutex nor any
+//                  lock the push callback needs (the libusb event thread may
+//                  be inside push() while a synchronous control transfer
+//                  waits for it), never concurrently with configure(),
+//                  close() or each other. Adapters without live tuning keep
+//                  the full stop -> configure -> restart path.
+//   retune_settle_bytes() is the amount of IQ already queued in the driver's
+//                  in-flight transfers at the moment of a live retune; the
+//                  core discards that much input so no pre-retune samples
+//                  are demodulated or displayed under the new tune.
 // All methods return SDR_OK (0) or a negative SdrResult-compatible code.
 class UsbRxAdapter {
  public:
@@ -55,6 +69,10 @@ class UsbRxAdapter {
     if (count) *count = 0;
     return SDR_UNSUPPORTED;
   }
+  virtual bool supports_live_tuning() const { return false; }
+  virtual int set_frequency(uint64_t /*frequency_hz*/) { return SDR_UNSUPPORTED; }
+  virtual int set_gain(int32_t /*gain_tenths_db*/) { return SDR_UNSUPPORTED; }
+  virtual size_t retune_settle_bytes() const { return 0; }
 };
 
 #endif  // SDRCORE_USB_ADAPTER_H

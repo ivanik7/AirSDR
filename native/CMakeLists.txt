@@ -88,11 +88,34 @@ if(NOT ANDROID AND PROJECT_IS_TOP_LEVEL)
     target_compile_features(sdrcore_rtl_gain_list_test PRIVATE cxx_std_17)
     target_link_libraries(sdrcore_rtl_gain_list_test PRIVATE sdrcore_rtlsdr sdrcore_hackrf sdrcore_audio Threads::Threads)
     add_test(NAME sdrcore_rtl_gain_list COMMAND sdrcore_rtl_gain_list_test)
+    add_executable(sdrcore_live_retune_test
+        tests/live_retune_test.cpp
+        src/dsp/receiver.cpp
+        src/usb_rtlsdr_adapter.cpp
+        src/usb_hackrf_adapter.cpp)
+    target_include_directories(sdrcore_live_retune_test PRIVATE include)
+    target_compile_features(sdrcore_live_retune_test PRIVATE cxx_std_17)
+    target_link_libraries(sdrcore_live_retune_test PRIVATE sdrcore_rtlsdr sdrcore_hackrf sdrcore_audio Threads::Threads)
+    add_test(NAME sdrcore_live_retune COMMAND sdrcore_live_retune_test)
     add_executable(sdrcore_host_rtl_gain_test tests/host_rtl_gain_test.c)
     target_link_libraries(sdrcore_host_rtl_gain_test PRIVATE sdrcore)
     add_test(NAME sdrcore_host_rtl_gain COMMAND sdrcore_host_rtl_gain_test)
     add_executable(sdrcore_host_rx_diag tests/host_rx_diag.c)
     target_link_libraries(sdrcore_host_rx_diag PRIVATE sdrcore)
+    # Manual real-hardware diagnostic (needs an attached RTL-SDR); not a ctest.
+    add_executable(sdrcore_host_retune_latency tests/host_retune_latency.c)
+    target_link_libraries(sdrcore_host_retune_latency PRIVATE sdrcore)
+    # Manual probe of stale IQ after a live tuner retune (vendored librtlsdr).
+    add_executable(sdrcore_host_retune_settle tests/host_retune_settle.c)
+    target_include_directories(sdrcore_host_retune_settle PRIVATE third_party/rtl-sdr/include)
+    target_link_libraries(sdrcore_host_retune_settle PRIVATE sdrcore_rtlsdr Threads::Threads m)
+    # Manual probe: bulk IQ arrival gaps while the tuner is retuned live.
+    add_executable(sdrcore_host_retune_iq_gaps tests/host_retune_iq_gaps.c)
+    target_include_directories(sdrcore_host_retune_iq_gaps PRIVATE third_party/rtl-sdr/include)
+    target_link_libraries(sdrcore_host_retune_iq_gaps PRIVATE sdrcore_rtlsdr Threads::Threads m)
+    # Manual real-hardware audio continuity check under UI-like retunes.
+    add_executable(sdrcore_host_retune_audio tests/host_retune_audio.c)
+    target_link_libraries(sdrcore_host_retune_audio PRIVATE sdrcore Threads::Threads)
     # DSP-only, white-box: links receiver.cpp directly against the public
     # sdrcore::dsp::Receiver interface (no ABI/sdrcore.cpp, no USB adapters,
     # no Dart/FFI) so the WFM stereo decoder is checkable in isolation with
@@ -103,4 +126,12 @@ if(NOT ANDROID AND PROJECT_IS_TOP_LEVEL)
     target_include_directories(sdrcore_wfm_stereo_dsp_test PRIVATE include)
     target_compile_features(sdrcore_wfm_stereo_dsp_test PRIVATE cxx_std_17)
     add_test(NAME sdrcore_wfm_stereo_dsp COMMAND sdrcore_wfm_stereo_dsp_test)
+    # DSP-only: audio stays continuous across VFO drags and LO retunes.
+    add_executable(sdrcore_retune_audio_continuity_test
+        tests/retune_audio_continuity_test.cpp
+        src/dsp/receiver.cpp)
+    target_include_directories(sdrcore_retune_audio_continuity_test PRIVATE include)
+    target_compile_features(sdrcore_retune_audio_continuity_test PRIVATE cxx_std_17)
+    target_compile_options(sdrcore_retune_audio_continuity_test PRIVATE -O2)
+    add_test(NAME sdrcore_retune_audio_continuity COMMAND sdrcore_retune_audio_continuity_test)
 endif()

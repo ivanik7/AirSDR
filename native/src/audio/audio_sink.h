@@ -52,6 +52,12 @@ struct AudioSinkStats {
   float peak = 0.0f;              // max |sample| seen since open()
   uint32_t sample_rate = 0;       // 0 while closed
   int32_t last_error = 0;         // 0 or negative SdrResult-compatible code
+  // Real-time backends only (AAudio): playback ring underflows while
+  // playing, frames of silence the callback had to insert (pre-roll included)
+  // and the device's own XRun count.
+  uint64_t underflows = 0;
+  uint64_t zero_filled_frames = 0;
+  int32_t xruns = 0;
 };
 
 class AudioSink {

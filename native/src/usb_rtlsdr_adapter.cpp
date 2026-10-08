@@ -46,6 +46,27 @@ int RtlSdrAdapter::configure(uint64_t frequency_hz, uint32_t sample_rate,
   return SDR_OK;
 }
 
+int RtlSdrAdapter::set_frequency(uint64_t frequency_hz) {
+  if (!dev_) return SDR_INVALID_STATE;
+  if (frequency_hz > 0xFFFFFFFFull) return SDR_INVALID_ARGUMENT;
+  // Same retry policy as SDR++'s rtl_sdr source tune() and the old Dart
+  // engine: while bulk transfers stream, a tuner I2C control transfer can
+  // fail transiently (LIBUSB_ERROR_PIPE seen on the Blog V4); librtlsdr then
+  // sets dev->freq = 0 and a repeated attempt usually succeeds.
+  const uint32_t freq = static_cast<uint32_t>(frequency_hz);
+  for (int i = 0; i < 10; ++i) {
+    if (rtlsdr_set_center_freq(dev_, freq) == 0 &&
+        rtlsdr_get_center_freq(dev_) == freq) return SDR_OK;
+  }
+  return SDR_IO_ERROR;
+}
+
+int RtlSdrAdapter::set_gain(int32_t gain_tenths_db) {
+  if (!dev_) return SDR_INVALID_STATE;
+  // configure() already selected manual gain mode for this session.
+  return rtlsdr_set_tuner_gain(dev_, gain_tenths_db) == 0 ? SDR_OK : SDR_IO_ERROR;
+}
+
 int RtlSdrAdapter::get_tuner_gains(int32_t* gains, uint32_t capacity,
                                     uint32_t* count) {
   if (!count) return SDR_INVALID_ARGUMENT;
@@ -112,7 +133,8 @@ int RtlSdrAdapter::start(PushFn push, void* ctx) {
   // Keep callback buffers aligned with the ring slot size. The upstream
   // default (262144 bytes) would overrun a single slot and starve the
   // consumer; 16 submitted buffers keep sufficient USB transfers in flight.
-  const int rc = rtlsdr_read_async(dev_, rtlsdr_async_trampoline, &async_ctx, 16, 8192);
+  const int rc = rtlsdr_read_async(dev_, rtlsdr_async_trampoline, &async_ctx,
+                                   kTransfers, kTransferBytes);
   stream_finished_ = true;
   stop_requested_ = false;
   return rc == 0 ? SDR_OK : (rc == -1 ? SDR_DEVICE_GONE : SDR_IO_ERROR);

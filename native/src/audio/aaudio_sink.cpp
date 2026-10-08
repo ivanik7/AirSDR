@@ -2,10 +2,12 @@
 #include "aaudio_sink.h"
 
 #include <aaudio/AAudio.h>
+#include <android/log.h>
 #include <dlfcn.h>
 
 #include <atomic>
 #include <algorithm>
+#include <chrono>
 #include <memory>
 #include <mutex>
 
@@ -36,6 +38,10 @@ struct Api {
   FN(aaudio_result_t, AAudioStream_requestStart, AAudioStream*);
   FN(aaudio_result_t, AAudioStream_requestStop, AAudioStream*);
   FN(aaudio_result_t, AAudioStream_close, AAudioStream*);
+  // Optional diagnostics; the sink works without them.
+  FN(int32_t, AAudioStream_getXRunCount, AAudioStream*);
+  FN(int32_t, AAudioStream_getFramesPerBurst, AAudioStream*);
+  FN(int32_t, AAudioStream_getBufferSizeInFrames, AAudioStream*);
 #undef FN
 
   Api() {
@@ -59,6 +65,13 @@ struct Api {
     RESOLVE(AAudioStream_requestStop);
     RESOLVE(AAudioStream_close);
 #undef RESOLVE
+    AAudioStream_getXRunCount = reinterpret_cast<decltype(AAudioStream_getXRunCount)>(
+        dlsym(library, "AAudioStream_getXRunCount"));
+    AAudioStream_getFramesPerBurst = reinterpret_cast<decltype(AAudioStream_getFramesPerBurst)>(
+        dlsym(library, "AAudioStream_getFramesPerBurst"));
+    AAudioStream_getBufferSizeInFrames =
+        reinterpret_cast<decltype(AAudioStream_getBufferSizeInFrames)>(
+            dlsym(library, "AAudioStream_getBufferSizeInFrames"));
   }
   ~Api() { if (library) dlclose(library); }
   bool available() const { return AAudioStream_close != nullptr; }
@@ -79,7 +92,8 @@ class AAudioSink final : public AudioSink {
     close();
     auto& a = api();
     if (!a.available()) return kAudioIoError;
-    ring_ = std::make_unique<PcmRing>(16384);  // ~340 ms at 48 kHz
+    // ~340 ms capacity, 60 ms pre-roll and re-prime after an underflow.
+    ring_ = std::make_unique<PcmRing>(kPlaybackRingFrames, kPlaybackPrefillFrames);
     AAudioStreamBuilder* builder = nullptr;
     if (a.AAudio_createStreamBuilder(&builder) != AAUDIO_OK) {
       ring_.reset();
@@ -114,17 +128,49 @@ class AAudioSink final : public AudioSink {
     std::lock_guard<std::mutex> lock(mutex_);
     stats_ = AudioSinkStats{};
     stats_.sample_rate = sample_rate;
+    last_log_ = std::chrono::steady_clock::now();
+    logged_underflows_ = 0;
+    logged_xruns_ = 0;
+    min_queued_ = ~size_t{0};
+    if (a.AAudioStream_getFramesPerBurst && a.AAudioStream_getBufferSizeInFrames)
+      __android_log_print(ANDROID_LOG_INFO, "sdrcore",
+                          "aaudio open: burst %d frames, device buffer %d frames, "
+                          "ring %zu, pre-roll %zu",
+                          a.AAudioStream_getFramesPerBurst(stream_),
+                          a.AAudioStream_getBufferSizeInFrames(stream_), kPlaybackRingFrames,
+                          kPlaybackPrefillFrames);
     return kAudioOk;
   }
 
   size_t write(const float* stereo, size_t frames) override {
     if (!stereo || closing_.load(std::memory_order_acquire) || !ring_) return 0;
+    const size_t before = ring_->queued();
     const size_t accepted = ring_->push(stereo, frames);
     std::lock_guard<std::mutex> lock(mutex_);
     for (size_t i = 0; i < accepted; ++i)
       update_level_stats(stats_, stereo[i * 2], stereo[i * 2 + 1]);
     stats_.frames_written += accepted;
     stats_.frames_dropped += frames - accepted;
+    min_queued_ = std::min(min_queued_, before);
+    refresh_realtime_stats_locked();
+    const auto now = std::chrono::steady_clock::now();
+    if (now - last_log_ >= std::chrono::seconds(1)) {
+      // Once a second, only when something went wrong or worth tracking:
+      // the lowest ring level seen just before a push is the jitter margin.
+      if (stats_.underflows != logged_underflows_ || stats_.xruns != logged_xruns_ ||
+          min_queued_ < kPlaybackPrefillFrames / 2)
+        __android_log_print(ANDROID_LOG_INFO, "sdrcore",
+                            "aaudio: underflows %llu (+%llu), zero-filled %llu frames, "
+                            "xruns %d, min ring level %zu frames",
+                            static_cast<unsigned long long>(stats_.underflows),
+                            static_cast<unsigned long long>(stats_.underflows - logged_underflows_),
+                            static_cast<unsigned long long>(stats_.zero_filled_frames),
+                            stats_.xruns, min_queued_);
+      logged_underflows_ = stats_.underflows;
+      logged_xruns_ = stats_.xruns;
+      min_queued_ = ~size_t{0};
+      last_log_ = now;
+    }
     return accepted;
   }
 
@@ -149,6 +195,15 @@ class AAudioSink final : public AudioSink {
   }
 
  private:
+  void refresh_realtime_stats_locked() {
+    const auto ring = ring_->stats();
+    stats_.underflows = ring.underflows;
+    stats_.zero_filled_frames = ring.zero_frames;
+    if (stream_ && api().AAudioStream_getXRunCount) {
+      const int32_t xruns = api().AAudioStream_getXRunCount(stream_);
+      if (xruns >= 0) stats_.xruns = xruns;
+    }
+  }
   static aaudio_data_callback_result_t dataCallback(AAudioStream*, void* user,
                                                      void* data, int32_t frames) {
     auto* self = static_cast<AAudioSink*>(user);
@@ -169,6 +224,10 @@ class AAudioSink final : public AudioSink {
   std::atomic<int32_t> error_{0};
   mutable std::mutex mutex_;
   AudioSinkStats stats_;
+  std::chrono::steady_clock::time_point last_log_{};
+  uint64_t logged_underflows_ = 0;
+  int32_t logged_xruns_ = 0;
+  size_t min_queued_ = ~size_t{0};
 };
 }  // namespace
 
