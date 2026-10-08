@@ -74,9 +74,13 @@ class Rtl433 final : public Decoder {
     cfg_->report_meta = 0;
     cfg_->center_frequency = DEFAULT_FREQUENCY;
     cfg_->demod->center_frequency = DEFAULT_FREQUENCY;
-    cfg_->demod->sample_size = 2;
+    // Mirror OpenWebRX+'s IsmDemodulator invocation,
+    // `rtl_433 -r cf32:- -s 250000 -Y autolevel ...`: CF32 input converted
+    // by upstream to CS16 (magnitude path), with automatic level adjustment.
+    cfg_->demod->sample_size = sizeof(int16_t) * 2;
     cfg_->demod->raw_handler = &cfg_->raw_handler;
-    cfg_->demod->load_info.format = CU8_IQ; // file oracle processes silent frames
+    cfg_->demod->load_info.format = CF32_IQ; // file/stdin input processes silent frames
+    cfg_->demod->auto_level = 1;
     cfg_->demod->fsk_pulse_detect_mode = FSK_PULSE_DETECT_OLD;
     register_all_protocols(cfg_, 0);
     for (void **it = cfg_->demod->r_devs.elems; it && *it; ++it) {
@@ -115,6 +119,8 @@ class Rtl433 final : public Decoder {
     if (!cfg_) return;
     pending_.clear();
     pending_dropped_ = 0;
+    filled_ = 0;
+    pushed_frames_ = 0;
     // Upstream reset intentionally preserves registered protocol configuration.
     cfg_->demod->input_pos = 0;
     cfg_->demod->sample_file_pos = 0;
@@ -130,21 +136,30 @@ class Rtl433 final : public Decoder {
       cfg_->demod->samp_rate = rate_hz;
       reset();
     }
-    // The native DSP branch represents centered RTL CU8 as (u8-127.5)/128.
-    // Round at the CU8 boundary, not at a CS16 boundary, and preserve block
-    // continuity across process() calls. A fixed buffer bounds worker memory.
-    constexpr size_t kFramesPerBlock = 16384;
+    // Same conversion as upstream's CF32 file/stdin reader (rtl_433.c):
+    // truncate float * INT16_MAX to int, clamp to [-INT16_MAX, INT16_MAX].
+    // Upstream reads `cf32:-` in fixed DEFAULT_BUF_LENGTH-byte CS16 frames;
+    // squelch/autolevel run per frame, so keep the same framing (65536
+    // complex samples, ~262 ms at 250 kS/s) across process() calls.
+    constexpr size_t kFramesPerBlock = DEFAULT_BUF_LENGTH / (2 * sizeof(int16_t));
+    iq_.resize(kFramesPerBlock * 2);
     while (frames) {
-      size_t count = std::min(frames, kFramesPerBlock);
-      iq_.resize(count * 2);
+      const size_t count = std::min(frames, kFramesPerBlock - filled_);
+      int16_t* out = iq_.data() + filled_ * 2;
       for (size_t i = 0; i < count * 2; ++i) {
-        const float scaled = std::isfinite(samples[i]) ? samples[i] * 128.0f + 127.5f : 127.5f;
-        iq_[i] = static_cast<uint8_t>(std::clamp(std::lround(scaled), 0L, 255L));
+        const float value = std::isfinite(samples[i]) ? std::clamp(samples[i], -2.0f, 2.0f) : 0.0f;
+        const int scaled = static_cast<int>(value * INT16_MAX);
+        out[i] = static_cast<int16_t>(std::clamp(scaled, -INT16_MAX, +INT16_MAX));
       }
-      cfg_->demod->sample_file_pos += static_cast<float>(count) / rate_hz;
-      push_sdr_flow(cfg_, iq_.data(), static_cast<uint32_t>(count * 2));
+      filled_ += count;
       samples += count * 2;
       frames -= count;
+      if (filled_ < kFramesPerBlock) break;
+      pushed_frames_ += filled_;
+      cfg_->demod->sample_file_pos = static_cast<float>(pushed_frames_) / rate_hz;
+      push_sdr_flow(cfg_, reinterpret_cast<unsigned char*>(iq_.data()),
+                    static_cast<uint32_t>(filled_ * 2 * sizeof(int16_t)));
+      filled_ = 0;
     }
   }
 
@@ -197,7 +212,9 @@ class Rtl433 final : public Decoder {
     delete reinterpret_cast<Output*>(output);
   }
   r_cfg_t* cfg_ = nullptr;
-  std::vector<uint8_t> iq_;
+  std::vector<int16_t> iq_;
+  size_t filled_ = 0;
+  uint64_t pushed_frames_ = 0;
   std::deque<Event> pending_;
   uint64_t pending_dropped_ = 0;
 };
