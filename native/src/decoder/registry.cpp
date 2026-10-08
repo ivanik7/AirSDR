@@ -1,22 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Static decoder registry (native/include/decoder.hpp). This file declares
-// WHAT decoder backends exist and their contract metadata; it implements NO
-// decoding. Every entry below has a null `create` factory, matching
-// decoder.hpp's "a null factory denotes an inspectable but unavailable
-// registry entry" rule: no SSTV, rtl_433 or ADS-B engine ships yet. Voice
-// demodulation (v3 mode/WFM stereo) is intentionally absent from this list;
-// it is not a data decoder instance (see decoder.hpp's header comment and
-// lib/ui/decoders/decoder_contract.dart's `voice` catalog entry, which is
-// marked `voice: true` and has no native registry counterpart).
+// Static data-decoder registry. rtl_433 is embedded in-process; SSTV and
+// ADS-B remain unavailable. Voice demodulators belong to v3, not this list.
 #include "decoder.hpp"
 
 namespace sdrcore::decoder {
+std::unique_ptr<Decoder> create_rtl433();
 
 const std::vector<Registration>& registry() {
-  // Metadata mirrors the Dart preview catalog
-  // (lib/ui/decoders/decoder_contract.dart `decoderCatalog`) so the two
-  // layers describe the same conceptual decoders, even though neither this
-  // native registry nor the Dart catalog claims a working backend today.
+  // Metadata mirrors the Dart decoder catalog.
   static const std::vector<Registration> kRegistry = {
       Registration{
           Descriptor{
@@ -38,7 +29,7 @@ const std::vector<Registration>& registry() {
               /*required_rate_hz=*/0,  // Negotiated integer decimation.
               /*result=*/Result::message,
           },
-          /*create=*/nullptr,
+          /*create=*/create_rtl433,
       },
       Registration{
           Descriptor{
