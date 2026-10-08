@@ -224,3 +224,229 @@ edit: its row is generated from `DemodMode` order in `decoderCatalog`.
   enumerate a Blog V4 during the final checks. Native/Flutter/Linux host
   gates are reported separately in the task handoff; subjective Android audio
   quality and phone screen appearance are not inferred from host tests.
+
+## WFM RDS integration contract (design; not yet implemented)
+
+This section supersedes the historical RDS/SDR++ suggestion in
+`~/prj/docs/30-openwebrx-decoders-plan.md`. The implementation target is the
+OpenWebRX+ **redsea** chain, not a newly written or simplified RDS decoder.
+RDS is implicit in `demod:1` WFM, never a new catalog entry or a selectable
+`Decoder` instance. It must not mute/stall the existing stereo audio, change
+the tuner rate, claim USB separately, or move the VFO.
+
+### Verified upstream chain and rate boundary
+
+At OpenWebRX+ commit `f1e0d1a`:
+
+1. `csdr/chain/analog.py:45-106` constructs `FmDemod -> Limit ->
+   FractionalDecimator(FLOAT, 200000 / audioOutputRate, prefilter=True) ->
+   WfmDeemphasis(audioOutputRate, tau)`. `_connect` inserts a FLOAT
+   `metaTapBuffer` **immediately after Limit**, before that fractional
+   decimator and deemphasis. Therefore the RDS tap is at the *fixed 200 kS/s
+   IF*, not at the lower audio output rate. `getFixedIfSampleRate()` returns
+   200000. `setMetaWriter` activates the parallel chain only if the `rds`
+   feature is available; `stop` stops it. Changing RBDS stops and recreates
+   that chain. This is metadata alongside WFM audio, not a separate mode.
+2. `csdr/chain/toolbox.py:104-123`: `RdsDemodulator(200000, rbds)` converts
+   the tapped FLOAT MPX to SHORT and feeds `RedseaModule` then `RdsParser`;
+   its independent 171000 default is *not* the rate chosen by `WFm`.
+   `csdr/module/toolbox.py:79-84` actually launches
+   `redsea --input mpx --samplerate 200000` plus `--rbds` when requested.
+   No `--bler`, `--show-partial`, `--streams`, or `--timestamp` flag is set.
+   The input is raw signed 16-bit mono PCM and redsea emits line-delimited
+   JSON groups. `owrx/config/defaults.py:22-23` defaults RBDS to false;
+   `owrx/controllers/settings/decoding.py:64-67` exposes the North-American
+   checkbox, routed through `owrx/dsp.py:563,610`.
+3. redsea `src/constants.hh:22-36` requires MPX at **at least 128 kS/s**;
+   `src/dsp/subcarrier.cc:95-108,155-218` resamples to 171 kS/s internally.
+   It mixes 57 kHz to baseband, low-passes at 2.4 kHz, decimates by 24
+   (7.125 kS/s), uses a liquid-dsp RRC symbol synchronizer (2.375 ksym/s),
+   PSK phase tracking, biphase pairing and differential decoding to 1187.5
+   bit/s. Retain its actual PLL/timing/filtering and multi-group FEC, not
+   only the high-level RDS message tables. Default: one RDS1 data stream;
+   RDS2 streams require `--streams` and are **not** enabled upstream here.
+4. `src/redsea.cc:152-175` feeds a `SubcarrierSet` into a `Channel`, resetting
+   subcarrier acquisition/PI after >10 s without block sync (if >5 s since
+   prior reset). `src/channel.hh:36-79` confirms a changed PI after three
+   consecutive copies; `src/channel.cc:149-168` then creates a fresh Station.
+   `src/block_sync.cc` owns 26-bit block synchronization, syndrome/FEC and
+   error thresholds. Do not equate a fleeting PI bit error with a new station.
+
+The app's MPX is `value` in `native/src/dsp/receiver.cpp:647-697`, after the
+tuned complex-IQ channel FIR/decimation and FM discriminator, but **before**
+the 19 kHz pilot stereo branch, 48 kHz audio resampling, deemphasis, squelch,
+mute and volume. `if_rate_` is derived from source rate/bandwidth in
+`receiver.cpp:181-204`, not fixed at 200 kS/s; the default WFM bandwidth is
+150 kHz (`lib/ui/radio_controller.dart:144`). Feed the same mono MPX to a
+native RDS-only rate converter targeting 200 kS/s, then let redsea perform
+its own 200k -> 171k resampling. **Do not** feed 48 kHz PCM, or assume
+`if_rate_` is always above 128 kS/s. The existing channel filter cutoff is
+`bandwidth_hz / 2`; for narrow WFM settings excluding the 57 kHz subcarrier,
+report no RDS signal/unsupported bandwidth rather than widening or retuning
+the user's channel. Compare the two discriminator scales and FLOAT->SHORT
+conversion on recorded MPX before asserting oracle parity. Preserve stereo
+output unchanged; process RDS only when WFM is active.
+
+### redsea output and OpenWebRX+ accumulation
+
+`src/options.hh:30-56` and `src/station.cc:85-208,216-345,418-509,577-655`
+define the default JSON group output. `pi` is a hex string such as `0x1234`;
+`group` is the current group ID (not persistent station metadata). `tp` is a
+bool; `prog_type` is a **name**, not an integer PTY. RBDS changes the PTY
+table and adds `callsign` or `callsign_uncertain` derived from PI (an uncertain
+name must not be presented as verified). `ps` is emitted after segment
+assembly; `radiotext` after completion/terminator or a repeat-confirmed
+nonterminated message; A/B changes clear the redsea RadioText assembly
+(`station.cc:458-509`). `ta`, `is_music` and nested `di` flags (including
+`di.stereo`, which is *broadcast metadata*, not actual audio pilot lock)
+come from group 0. `alt_frequencies_a` is an integer list in **kHz**;
+`alt_frequencies_b` has `tuned_frequency`, `same_programme`,
+`regional_variants`, also kHz (`station.cc:261-325`, `util/util.cc:79-103,
+131-188`). `country` comes from the ECC/PI mapping; `clock_time` is a
+formatted timestamp. Additional decoded keys can include
+`prog_item_number`/`prog_item_started`, `radiotext_plus` (nested tags),
+`pty_name`, `other_network` (EON), `tmc`, `rft`, etc. Keep the underlying
+decoder's semantics even when the compact UI does not display every field.
+
+Default `--input mpx --samplerate 200000 [--rbds]` does **not** emit `bler`
+(`--bler` is opt-in, averaged over 12 groups), `partial_ps`/
+`partial_radiotext`/`partial_alt_frequencies` (`--show-partial`), or an
+explicit `sync` field. An Android BLER/sync indicator is an intentional
+extension: enable redsea's existing `Options.bler` for a real BLER measurement
+and derive sync from its actual block-sync state / fresh valid-group clock;
+never invent values or treat `di.stereo` as sync. For strict upstream oracle
+comparison disable that extension or exclude only the additional fields.
+
+`owrx/toolbox.py:88-119::RdsParser`: decode each JSON line, remove `group`,
+reset to `{mode: 'WFM', frequency: previousFrequency?}` when
+`data.get('pi') != cached.get('pi')`, and return no update if incoming
+`data.items() <= cached.items()`; otherwise merge the sparse group delta
+and return the accumulated map. This includes the literal behavior that a
+group *without* `pi` may clear a previously set PI. `setDialFrequency`
+unconditionally resets to `{mode:'WFM',frequency: Hz}`. Model our normal
+valid-group flow as sparse updates; do not replace the full state with each
+group; the upstream `dict.update` is **shallow** (a new `di` object replaces
+the previous one, not a deep merge). If the detail UI wants all four DI bits,
+accumulate them separately as a documented UI extension rather than claiming
+this is upstream parser behavior. Reset on confirmed PI change. If a no-PI
+group is forwarded, preserve the parser's literal comparison behavior rather
+than silently assigning the old PI.
+`htdocs/lib/MetaPanel.js:372-557` shows PS (or RT+ long name), PI/callsign,
+PTY, RadioText (RT+ preferred) and local-format CT; it clears on PI change
+and after **10 seconds without RDS updates**. The upstream web panel does
+not itself display AF/BLER/TP/TA. Our requested detail panel extends it,
+but should retain the same partial-field/timeout honesty. Previewing other
+data decoders must not produce fake RDS or keep stale WFM metadata visible.
+
+### Source/Android dependency inventory and decision
+
+redsea commit `7555c9f6259d50718697ee8c9f218ea012c6892c`, version 1.3.1
+(`meson.build:1-12`). Use its actual sources in `native/third_party/redsea/`
+with pinned provenance, `LICENSE` and each original copyright header:
+
+- Keep `src/block_sync.{cc,hh}`, `channel.{cc,hh}`, `group.{cc,hh}`,
+  `station.{cc,hh}`, `tables.{cc,hh}`, `rft.{cc,hh}`,
+  `text/{rdsstring.cc,rdsstring.hh,radiotext.hh}`,
+  `util/{util.cc,util.hh,tree.hh,maybe.hh,csv.cc,csv.hh,base64.hh}`,
+  `constants.hh`, `options.hh`, `io/bitbuffer.hh`, `io/output.{cc,hh}`;
+  retain `tmc/{tmc.cc,tmc.hh,message.cc,message.hh,eventdb.cc,eventdb.hh,
+  events_data.cc,locationdb.cc,locationdb.hh}` if retaining Station's full
+  TMC/RDS2/RT+ behavior. `station.hh` depends on `tmc.hh` and `rft.hh`, so
+  leaving out TMC is **not** a link-only choice; explicitly gate functionality
+  and account for fidelity loss if trimming. Keep
+  `dsp/{subcarrier.cc,subcarrier.hh,liquid_wrappers.cc,liquid_wrappers.hh}`
+  for the same DSP behavior. `src/redsea.cc`, `options.cc`, `io/input.cc`
+  are CLI/arg parsing/file I/O and should not ship in the app. Adapt the
+  `MPXBuffer` type out of `io/input.hh`, which currently includes `<sndfile.h>`;
+  this is the required small source edit to avoid shipping libsndfile.
+- `io/output.cc` uses nlohmann `ordered_json` for upstream-compatible JSON;
+  vendor the >=3.9 header/source under its own MIT license, or provide an
+  equivalent verified serializer. `text/rdsstring.cc` uses iconvpp/iconv for
+  UCS-2 enhanced RDS text **in addition** to its built-in RDS G0 table;
+  those tables alone do not guarantee full text parity. Android's Bionic
+  iconv availability must be checked by an actual NDK build; replace only
+  the UCS-2 -> UTF-8 conversion with a tested native conversion if needed.
+  `tmc/locationdb.cc` uses iconv as well if location tables are shipped.
+- `meson.build:37-116` declares libsndfile, nlohmann_json, iconv and
+  liquid-dsp. The first is file-only; the second is JSON output; iconv is
+  enhanced text/TMC locations; liquid is used **at runtime** for AGC, FIR,
+  NCO/PLL, RRC symbol sync, PSK modem and rational resampler. No standalone
+  liquid source checkout was found under `~/prj/ref`, nor were the above
+  libraries available via this host's pkg-config at documentation time;
+  Android build and CPU use are therefore **not yet verified**. Pin a
+  compatible liquid-dsp revision, build it from source with an NDK-compatible
+  recipe for arm64-v8a (including headers and any required math linkage), and validate
+  native host and Android linkage/size. Replacing those DSP blocks with
+  homegrown code is *not* automatically more faithful or smaller; only
+  select that fallback after a documented, measured build/license obstacle
+  and same-MPX oracle comparison. Preserve upstream 57 kHz recovery first.
+
+The repository root `LICENSE` is MIT-form; many redsea `src/*.cc` headers use
+the different permissive ISC-style text. Preserve **both** notices, rather
+than calling every source file MIT. liquid-dsp is MIT/X11 (upstream
+`https://liquidsdr.org/license/`); nlohmann/json is MIT. Check the precise
+revision and licenses of every newly vendored dependency, including iconvpp,
+before release. The resulting app remains GPL-3.0-or-later; no copyleft
+conflict is evident from these permissive licenses. An unverified Android
+build is not proof of feasibility.
+
+### Low-rate native -> Dart event schema and lifecycle (v1 proposal)
+
+Reuse `SdrDecoderEvent` (`native/include/sdrcore_decoder_v1.h:14-69`):
+`kind=SDR_DECODER_MESSAGE`, UTF-8 JSON <=64 KiB, FIFO <=256, monotonically
+increasing `sequence`, stamped `stream_generation`, `dropped_events` counter.
+Do **not** call `sdr_decoder_select("rds")`: the existing receiver owns at
+most one selected data decoder (`native/src/sdrcore.cpp:988-1040`), and its
+consumer currently mutes audio whenever a data decoder is selected
+(`sdrcore.cpp:440-463`). Instead add a dedicated internal WFM metadata sink
+fed by MPX and enqueue its output into the existing per-handle FIFO; enable
+polling even with no selected data decoder. RDS and selectable data decoder
+events must never be confused. Existing `rtl_433` payloads remain untouched.
+
+Schema: `{"source":"rds","version":1,"event":"state",` followed by
+`"frequency_hz":<integer>,"rbds":<bool>,"fields":{...}}`. `fields` is a
+bounded **accumulated snapshot** of redsea's canonical JSON keys (without
+`group`), including `pi`, `ps`, `radiotext`, `prog_type`, `tp`, `ta`,
+`is_music`, nested `di`, `alt_frequencies_a`/`alt_frequencies_b` in kHz,
+`country`, `clock_time`, `callsign`/`callsign_uncertain`, and optionally
+`radiotext_plus`, `other_network`, etc. Absent keys mean unknown, not false
+or empty. `"sync":<bool>` and optional `"bler":<number>` are top-level
+adapter observations (BLER only when measured), not purported default
+redsea keys. Separate `{"source":"rds","version":1,"event":"reset",` with
+`"frequency_hz":...,"rbds":...,"reason":"retune|mode|generation|pi|rbds|signal_lost"}`
+has **no `fields`**. The first subsequent state contains only data obtained
+on the new station. Reset must not be coalesced away or hidden by change
+rate limiting. Invalid/oversized nested output is dropped and counted,
+never truncated into misleading partial JSON.
+
+Emit a snapshot on actual change; cap non-reset updates (e.g. <=4/s), while
+preserving the latest complete snapshot across a throttle interval. Emit a
+reset immediately when tuned dial frequency changes (including small steps
+or drag), before new groups; also on WFM exit, stream start/stop or new
+generation, RBDS toggle and confirmed PI switch. LO recenter with unchanged
+effective dial frequency need not clear station metadata, but if the DSP
+resampler is restarted then reacquire sync without replaying old results.
+On 10 s without valid decoded data, emit `signal_lost` and clear visible
+fields, matching the OpenWebRX+ panel timeout. Controls can be accepted
+asynchronously relative to USB: drop queued old-tune groups and never publish
+MPX from `slot_stale` or while `tune_in_progress()`; stamp only coherent
+post-tune groups. Dart clears proactively on requested tune/mode changes and
+on generation mismatch, discards events whose generation/frequency does not
+match applied state, and applies `reset` before any later state. Sequence
+cursors must advance across resets; do not reset the global sequence to zero.
+As the FIFO currently clears on deselect/retune and drains only when a data
+decoder is attached, the native child must update **both** drain/invalidating
+paths; keep rtl_433's existing selection and FIFO semantics intact. WFM
+settings storage: `rbds` defaults false, belongs to WFM (`demod:1`) preset
+settings and changes in place without tuner or stereo interruption. Define a
+small additive native control method for it rather than changing v3 structs.
+
+Oracle for the children: replay **identical** saved post-discriminator MPX
+into the embedded branch and `redsea --input mpx --samplerate 200000
+[--rbds]` (same quantization, same record window). Compare group JSON
+before our event coalescing, excluding only explicitly added BLER/sync keys;
+also test native block/FEC and PI/PS/RT A/B reset against redsea's included
+`test/resources/mpx-testfile-yksi.flac` and `rds2-minirds-192k.flac` after
+license-safe decoding. Check no WFM stereo underruns, rate/bandwidth gating,
+generation/tune resets, Android arm64 linkage and size. These are future
+acceptance criteria, **not** tests completed by this documentation card.
