@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "receiver.h"
 #include "decoder.hpp"
+#include "../rds/rds.h"
 
 #include <algorithm>
 #include <array>
@@ -143,6 +144,9 @@ class ReceiverImpl final : public Receiver {
     const bool decoder_tune_change = initial || controls.sample_rate != controls_.sample_rate ||
         controls.vfo_offset_hz != controls_.vfo_offset_hz ||
         controls.center_frequency_hz != controls_.center_frequency_hz;
+    const bool rds_tune_change = !initial &&
+        (static_cast<int64_t>(controls.center_frequency_hz) + controls.vfo_offset_hz !=
+         static_cast<int64_t>(controls_.center_frequency_hz) + controls_.vfo_offset_hz);
     // A move by more than half the channel puts another signal into it:
     // the squelch and stereo pilot state of the old one no longer apply.
     const double tuned_delta = std::fabs(
@@ -187,6 +191,14 @@ class ReceiverImpl final : public Receiver {
                    controls.mode <= SDR_V3_WFM ? 50000.0 : 0.0));
       second_factor_ = std::max(1u, static_cast<unsigned>(first_rate / target));
       if_rate_ = first_rate / second_factor_;
+      if (controls.mode == SDR_V3_WFM && controls.bandwidth_hz >= 120000 &&
+          if_rate_ >= 128000) {
+        if (!rds_) rds_ = std::make_unique<sdrcore::rds::Sink>();
+        rds_->configure(static_cast<uint32_t>(std::lround(if_rate_)), rbds_);
+        rds_->reset();
+      } else {
+        rds_.reset();
+      }
       power_alpha_ = static_cast<float>(1 - std::exp(-1.0 / (if_rate_ * 0.02)));
       noise_alpha_ = static_cast<float>(1 - std::exp(-1.0 / (if_rate_ * 0.01)));
       noise_lp_alpha_ = static_cast<float>(std::exp(-2 * kPi *
@@ -230,6 +242,7 @@ class ReceiverImpl final : public Receiver {
       configure_decoder_branch();
       decoder_->reset();
     }
+    if (rds_ && rds_tune_change && !channel_change) rds_->reset();
   }
 
   // Preference only; separation additionally requires a locked 19 kHz pilot
@@ -248,6 +261,21 @@ class ReceiverImpl final : public Receiver {
     reacquire_pilot();
   }
 
+  void set_rds_rbds(bool enabled) override {
+    if (rbds_ == enabled) return;
+    rbds_ = enabled;
+    if (rds_) rds_->configure(static_cast<uint32_t>(std::lround(if_rate_)), rbds_);
+  }
+  void set_rds_suspended(bool suspended) override {
+    if (rds_suspended_ == suspended) return;
+    rds_suspended_ = suspended;
+    if (rds_) rds_->reset();
+  }
+  bool take_rds_group(std::string& json) override {
+    return rds_ && rds_->take_group(json);
+  }
+  bool rds_synced() const override { return rds_ && rds_->synced(); }
+
   uint32_t set_decoder(sdrcore::decoder::Decoder* decoder) override {
     if (decoder_ == decoder) return decoder_rate_hz();
     decoder_ = decoder;
@@ -259,6 +287,8 @@ class ReceiverImpl final : public Receiver {
   uint32_t decoder_rate_hz() const override { return decoder_ ? decoder_rate_ : 0; }
 
   void reset() override {
+    if (rds_) rds_->reset();
+    rds_suspended_ = false;
     decoder_decimator_.reset();
     decoder_oscillator_ = {1, 0};
     if (decoder_) decoder_->reset();
@@ -274,6 +304,7 @@ class ReceiverImpl final : public Receiver {
   }
 
   void retune() override {
+    if (rds_) rds_->reset();
     decoder_decimator_.reset();
     decoder_oscillator_ = {1, 0};
     if (decoder_) decoder_->reset();
@@ -298,6 +329,10 @@ class ReceiverImpl final : public Receiver {
     // One allocation at most per call, never in the per-sample loop.
     const size_t estimate = static_cast<size_t>(std::ceil(pairs * 48000.0 / controls_.sample_rate)) + 4;
     result.audio.reserve(2 * estimate);
+    if (rds_ && !rds_suspended_) {
+      rds_mpx_.clear();
+      rds_mpx_.reserve(pairs / std::max(1u, first_factor_ * second_factor_) + 2);
+    }
     if (decoder_ && decoder_rate_) process_decoder(cu8, pairs);
     const size_t row_period = std::max<size_t>(fft_n_, (controls_.sample_rate + 29u) / 30u);
     for (size_t i = 0; i < pairs; ++i) {
@@ -326,6 +361,8 @@ class ReceiverImpl final : public Receiver {
         oscillator_count_ = 0;
       }
     }
+    if (rds_ && !rds_suspended_ && !rds_mpx_.empty())
+      rds_->process(rds_mpx_.data(), rds_mpx_.size());
     result.signal_db = controls_.squelch == SDR_V3_SQUELCH_AUTO &&
         controls_.mode == SDR_V3_NFM ? metric_db_ :
         static_cast<float>(10 * std::log10(std::max(power_smooth_, kFloor)));
@@ -689,6 +726,8 @@ class ReceiverImpl final : public Receiver {
       if (cw_mag > 0) cw_ /= cw_mag;
     }
     audio_history_[audio_index_] = value;
+    if (rds_ && !rds_suspended_ && controls_.mode == SDR_V3_WFM)
+      rds_mpx_.push_back(value);  // Before stereo/audio filtering and deemphasis.
     if (controls_.mode == SDR_V3_WFM && stereo_enabled_) {
       float lpr = value, lmr = 0.0f;
       process_pilot(value, lpr, lmr);
@@ -764,6 +803,10 @@ class ReceiverImpl final : public Receiver {
   bool station_change_pending_ = false;
   ComplexDecimator first_, second_;
   sdrcore::decoder::Decoder* decoder_ = nullptr;
+  std::unique_ptr<sdrcore::rds::Sink> rds_;
+  std::vector<float> rds_mpx_;
+  bool rbds_ = false;
+  bool rds_suspended_ = false;
   ComplexDecimator decoder_decimator_;
   uint32_t decoder_rate_ = 0;
   Complex decoder_oscillator_{1, 0}, decoder_step_{1, 0};

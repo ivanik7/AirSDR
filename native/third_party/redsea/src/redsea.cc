@@ -1,0 +1,265 @@
+/*
+ * redsea - RDS decoder
+ * Copyright (c) Oona Räisänen OH2EIQ (windyoona@gmail.com)
+ *
+ * Permission to use, copy, modify, and/or distribute this software for any
+ * purpose with or without fee is hereby granted, provided that the above
+ * copyright notice and this permission notice appear in all copies.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+ * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+ * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+ * ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+ * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+ * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+ * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+ *
+ */
+#include <unistd.h>
+
+#include <cstdint>
+#include <exception>
+#include <iostream>
+#include <memory>
+#include <vector>
+
+#include "config.h"
+#include "src/channel.hh"
+#include "src/dsp/subcarrier.hh"
+#include "src/group.hh"
+#include "src/io/input.hh"
+#include "src/options.hh"
+
+namespace {
+
+void printUsage() {
+  std::cout
+      << "Usage:\n\n"
+         "Live from radio:   rtl_fm [rtl_options] | redsea -r <samplerate> [redsea_options]\n"
+         "From WAV file:     redsea -f <input_wave_file.wav>\n"
+         "From raw PCM file: redsea -r <samplerate> < raw_pcm_file.raw\n\n"
+         "-b, --input-bits       (for backwards compatibility)\n"
+         "\n"
+         "-c, --channels CHANS   Number of channels in the raw input signal. Channels are\n"
+         "                       interleaved streams of samples that are demodulated\n"
+         "                       independently.\n"
+         "\n"
+         "-e, --feed-through     Echo the input signal to stdout and print decoded groups\n"
+         "                       to stderr. This only works for raw PCM.\n"
+         "\n"
+         "-E, --bler             Display the average block error rate, or the percentage\n"
+         "                       of blocks that had errors before error correction.\n"
+         "                       Averaged over the last 12 groups. For hex input, this is\n"
+         "                       the percentage of missing blocks.\n"
+         "\n"
+         "-f, --file FILENAME    Read MPX input from a wave file with headers (.wav,\n"
+         "                       .flac, ...). If you have headered wave data via stdin,\n"
+         "                       use '-'. Or you can specify another format with --input.\n"
+         "\n"
+         "-h, --input-hex        (for backwards compatibility)\n"
+         "\n"
+         "-i, --input FORMAT     Decode stdin input as FORMAT (see the redsea wiki in github\n"
+         "                       for more info).\n"
+         "                         bits Unsynchronized ASCII bit stream (01101011...). All "
+         "characters\n"
+         "                              but '0' and '1' are ignored.\n"
+         "                         hex  RDS Spy hex format. (Timestamps will be ignored)\n"
+         "                         mpx  MPX as raw mono S16LE PCM. Remember to also specify\n"
+         "                              --samplerate. If you're reading from a sound file with "
+         "headers\n"
+         "                              (WAV, FLAC, ...) don't specify this.\n"
+         "                         tef  Serial data from the TEF6686 tuner.\n"
+         "\n"
+         "-l, --loctable DIR     Load TMC location table from a directory in TMC Exchange\n"
+         "                       format. This option can be specified multiple times to\n"
+         "                       load several location tables.\n"
+         "\n"
+         "--no-fec               Disable forward error correction; always reject blocks\n"
+         "                       with incorrect syndromes. In noisy conditions, fewer errors\n"
+         "                       will slip through, but also fewer blocks in total. See wiki\n"
+         "                       for discussion.\n"
+         "\n"
+         "-o, --output FORMAT    Print output as FORMAT:\n"
+         "                         hex  RDS Spy hex format.\n"
+         "                         json Newline-delimited JSON (default).\n"
+         "\n"
+         "-p, --show-partial     Under noisy conditions, redsea may not be able to fully\n"
+         "                       receive all information. Multi-group data such as PS\n"
+         "                       names, RadioText, and alternative frequencies are\n"
+         "                       especially vulnerable. This option makes it display them\n"
+         "                       even if not fully received, prefixed with partial_.\n"
+         "\n"
+         "-r, --samplerate RATE  Set sample frequency of raw PCM input in Hz. Will\n"
+         "                       resample if this differs from 171000 Hz.\n"
+         "\n"
+         "-R, --show-raw         Include raw group data as hex in the JSON stream.\n"
+         "\n"
+         "-s, --streams          Decode RDS2 data streams 1, 2, and 3, if they exist.\n"
+         "                       Not needed with hex input (always decoded).\n"
+         "\n"
+         "-t, --timestamp FORMAT Add time of decoding to JSON groups; see man strftime\n"
+         "                       for formatting options (or try \"%c\"). Use \"%f\" to add\n"
+         "                       hundredths of seconds.\n"
+         "\n"
+         "                       This timestamp represents the time when the last bit of\n"
+         "                       the group was read in by redsea; see \"Time and timestamps\"\n"
+         "                       in the wiki for more.\n"
+         "\n"
+         "--time-from-start      Add the stream (file) position, in seconds, to each\n"
+         "                       group. It works only for MPX input and represents the\n"
+         "                       number of seconds from the beginning of the file until\n"
+         "                       the first bit of each group.\n"
+         "\n"
+         "-u, --rbds             RBDS mode; use North American program type names and\n"
+         "                       \"back-calculate\" the station's call sign from its PI\n"
+         "                       code. Note that this calculation gives an incorrect call\n"
+         "                       sign for most stations that transmit TMC.\n"
+         "\n"
+         "-v, --version          Print version string and exit.\n"
+         "\n"
+         "-x, --output-hex       Same as --output hex (for backwards compatibility).\n"
+         "\n";
+}
+
+void printVersion() {
+#ifdef DEBUG
+  std::cout << "redsea " << VERSION << "-debug by OH2EIQ" << '\n';
+#else
+  std::cout << "redsea " << VERSION << " by OH2EIQ" << '\n';
+#endif
+}
+
+// \brief Process MPX from stdin or a file
+// \return Process exit code
+int processMPXInput(redsea::Options options) {
+  redsea::MPXReader mpx;
+
+  try {
+    mpx.init(options);
+  } catch (redsea::BeyondEofError&) {
+    std::cerr << "redsea: error: Unexpected end of input\n";
+    return EXIT_FAILURE;
+  } catch (const std::exception& e) {
+    std::cerr << "redsea: error: Can't open input file (" << e.what() << ")\n";
+    return EXIT_FAILURE;
+  }
+
+  options.samplerate   = mpx.getSamplerate();
+  options.num_channels = mpx.getNumChannels();
+
+  auto& output_ostream = options.feed_thru ? std::cerr : std::cout;
+
+  const int num_data_streams = options.streams ? 4 : 1;
+
+  // Each PCM channel is matched with 1 subcarrier set
+  std::vector<std::unique_ptr<redsea::Channel>> channels;
+  std::vector<std::unique_ptr<redsea::SubcarrierSet>> subcarriers;
+  for (std::uint32_t ch = 0; ch < options.num_channels; ch++) {
+    channels.emplace_back(std::make_unique<redsea::Channel>(options, ch));
+    subcarriers.push_back(std::make_unique<redsea::SubcarrierSet>(options.samplerate));
+  }
+
+  while (!mpx.eof()) {
+    for (std::uint32_t ch = 0; ch < options.num_channels; ch++) {
+      const auto bits = subcarriers[ch]->chunkToBits(mpx.readChunk(ch), num_data_streams);
+      channels[ch]->processBits(bits, output_ostream);
+      if (channels[ch]->getSecondsSinceCarrierLost() > 10.f &&
+          subcarriers[ch]->getSecondsSinceLastReset() > 5.f) {
+        subcarriers[ch]->reset();
+        channels[ch]->resetPI();
+      }
+    }
+  }
+
+  for (std::uint32_t ch = 0; ch < options.num_channels; ch++) channels[ch]->flush(output_ostream);
+
+  return EXIT_SUCCESS;
+}
+
+// \brief Decode ASCII bit input from stdin
+// \return Process exit code
+int processASCIIBitsInput(const redsea::Options& options) {
+  redsea::Channel channel(options, 0);
+  redsea::AsciiBitReader ascii_reader(options);
+
+  auto& output_ostream = options.feed_thru ? std::cerr : std::cout;
+
+  while (!ascii_reader.eof()) {
+    channel.processBit(ascii_reader.readBit(std::cin), 0, output_ostream);
+  }
+
+  channel.flush(output_ostream);
+
+  return EXIT_SUCCESS;
+}
+
+// \brief Decode ASCII hex input from stdin
+// \return Process exit code
+int processHexInput(const redsea::Options& options) {
+  redsea::Channel channel(options, 0);
+  auto& output_ostream = options.feed_thru ? std::cerr : std::cout;
+
+  while (!std::cin.eof()) {
+    const auto group = readHexGroup(options, std::cin);
+    channel.processAndPrintGroup(group, group.getDataStream(), output_ostream);
+  }
+
+  return EXIT_SUCCESS;
+}
+
+// \brief Decode TEF6686 serial input from stdin
+// \return Process exit code
+int processTEFInput(const redsea::Options& options) {
+  redsea::Channel channel(options, 0);
+  auto& output_ostream = options.feed_thru ? std::cerr : std::cout;
+
+  while (!std::cin.eof()) {
+    channel.processAndPrintGroup(readTEFGroup(options), 0, output_ostream);
+  }
+
+  return EXIT_SUCCESS;
+}
+
+}  // namespace
+
+int main(int argc, char** argv) {
+  if (isatty(fileno(stdin)) && argc == 1) {
+    printUsage();
+    return EXIT_FAILURE;
+  }
+
+  redsea::Options options;
+
+  try {
+    options = redsea::getOptions(argc, argv);
+  } catch (const std::exception& e) {
+    std::cerr << "redsea: error: " << e.what() << std::endl;
+    return EXIT_FAILURE;
+  }
+
+  if (options.print_usage) {
+    printUsage();
+  }
+
+  if (options.print_version) {
+    printVersion();
+  }
+
+  if (options.early_exit) {
+    return options.init_error ? EXIT_FAILURE : EXIT_SUCCESS;
+  }
+
+  try {
+    redsea::tmc::TMCService::init(options.loctable_dirs, options.feed_thru);
+  } catch (const std::exception& e) {
+    std::cerr << "redsea: error: Failed to load TMC location table (" << e.what() << ")\n";
+  }
+
+  switch (options.input_type) {
+    case redsea::InputType::MPX_raw_stdin: return processMPXInput(options);
+    case redsea::InputType::MPX_container: return processMPXInput(options);
+    case redsea::InputType::ASCIIbits:     return processASCIIBitsInput(options);
+    case redsea::InputType::Hex:           return processHexInput(options);
+    case redsea::InputType::TEF6686:       return processTEFInput(options);
+  }
+}

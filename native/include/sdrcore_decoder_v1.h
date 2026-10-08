@@ -70,6 +70,11 @@ SDRCORE_API int32_t sdr_decoder_poll(SdrHandle* handle, uint64_t after_sequence,
                                      SdrDecoderEvent* event, uint8_t* payload,
                                      uint32_t capacity);
 
+// WFM-only in-pipeline redsea metadata. Independent of sdr_decoder_select,
+// defaults to RDS (0); RBDS (1) reinitializes only the metadata branch.
+// No tuner, audio or v3 struct changes. Invalid handle/value/state follow v3.
+SDRCORE_API int32_t sdr_rds_set_rbds(SdrHandle* handle, uint32_t enabled);
+
 #ifdef __cplusplus
 }
 #endif

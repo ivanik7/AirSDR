@@ -7,6 +7,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <string>
 #include <vector>
 
 namespace sdrcore::decoder { class Decoder; }
@@ -36,6 +37,12 @@ class Receiver {
                          const SdrV3Display& display) = 0;
   // Called by the same DSP owner mutex as configure/process; no IQ restart.
   virtual void set_wfm_stereo(bool enabled) = 0;
+  // Internal WFM metadata sink, independent of the selected data decoder.
+  // Suspend during stale USB slots: they still feed audio, never metadata.
+  virtual void set_rds_rbds(bool enabled) = 0;
+  virtual void set_rds_suspended(bool suspended) = 0;
+  virtual bool take_rds_group(std::string& json) = 0;
+  virtual bool rds_synced() const = 0;
   // Borrowed, DSP-lock protected. The branch is filtered and integer-decimated
   // to a complex 200-300 kS/s tuned VFO; zero means source rate is unsuitable.
   // Attach/detach, retune, rate and stream generation changes reset the branch.

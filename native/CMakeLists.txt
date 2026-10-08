@@ -2,6 +2,11 @@ cmake_minimum_required(VERSION 3.22)
 project(sdrcore VERSION 1.0.0 LANGUAGES C CXX)
 
 add_subdirectory(third_party)
+include(third_party/rds.cmake)
+add_library(sdrcore_rds STATIC src/rds/rds.cpp)
+set_target_properties(sdrcore_rds PROPERTIES POSITION_INDEPENDENT_CODE ON)
+target_compile_features(sdrcore_rds PRIVATE cxx_std_17)
+target_link_libraries(sdrcore_rds PUBLIC sdrcore_redsea)
 
 # rtl_433 upstream sources are embedded, not run as a subprocess. Preserve
 # upstream source verbatim; link only the engine/API and protocol decoders.
@@ -41,11 +46,11 @@ else()
 endif()
 target_compile_features(sdrcore PRIVATE cxx_std_17)
 find_package(Threads REQUIRED)
-target_link_libraries(sdrcore PRIVATE Threads::Threads sdrcore_rtlsdr sdrcore_hackrf sdrcore_rtl433 m)
+target_link_libraries(sdrcore PRIVATE Threads::Threads sdrcore_rtlsdr sdrcore_hackrf sdrcore_rtl433 sdrcore_rds m)
 if(UNIX AND NOT APPLE)
     # Do not export upstream's API from libsdrcore: otherwise exported but
     # unused CLI/network sections keep unresolved CLI dependencies alive.
-    target_link_options(sdrcore PRIVATE -Wl,--exclude-libs,libsdrcore_rtl433.a
+    target_link_options(sdrcore PRIVATE -Wl,--exclude-libs,ALL
         -Wl,--gc-sections)
 endif()
 set_target_properties(sdrcore PROPERTIES
@@ -70,6 +75,18 @@ target_link_libraries(sdrcore PRIVATE sdrcore_audio)
 # the Flutter Linux runner adds native/ as a subdirectory and needs the library only.
 if(NOT ANDROID AND PROJECT_IS_TOP_LEVEL)
     enable_testing()
+    # Existing native tests use assert() for API calls with side effects;
+    # retain those calls even when the production library is built Release.
+    add_compile_options(-UNDEBUG)
+    add_executable(sdrcore_rds_core_test tests/rds_core_test.cpp)
+    target_link_libraries(sdrcore_rds_core_test PRIVATE sdrcore_rds)
+    target_compile_features(sdrcore_rds_core_test PRIVATE cxx_std_17)
+    target_compile_options(sdrcore_rds_core_test PRIVATE -UNDEBUG)
+    add_test(NAME sdrcore_rds_core COMMAND sdrcore_rds_core_test)
+    add_executable(sdrcore_rds_abi_test tests/rds_abi_test.cpp)
+    target_link_libraries(sdrcore_rds_abi_test PRIVATE sdrcore)
+    target_compile_options(sdrcore_rds_abi_test PRIVATE -UNDEBUG)
+    add_test(NAME sdrcore_rds_abi COMMAND sdrcore_rds_abi_test)
     # Check the N2 header layouts independently of the DSP implementation.
     # The integrator advances sdr_version only after all N2 layers are ready.
     add_library(sdrcore_v3_contract_compile OBJECT tests/v3_contract_compile.c)
@@ -93,6 +110,7 @@ if(NOT ANDROID AND PROJECT_IS_TOP_LEVEL)
     target_compile_features(sdrcore_rtl433_tap_oracle PRIVATE cxx_std_17)
     target_compile_options(sdrcore_rtl433_tap_oracle PRIVATE -O2)
     target_link_libraries(sdrcore_rtl433_tap_oracle PRIVATE sdrcore_rtl433 m)
+    target_link_libraries(sdrcore_rtl433_tap_oracle PRIVATE sdrcore_rds)
     target_link_options(sdrcore_rtl433_tap_oracle PRIVATE -Wl,--gc-sections)
     add_executable(sdrcore_abi_test tests/abi_test.c)
     target_link_libraries(sdrcore_abi_test PRIVATE sdrcore)
@@ -121,6 +139,7 @@ if(NOT ANDROID AND PROJECT_IS_TOP_LEVEL)
     target_include_directories(sdrcore_ring_boundary_test PRIVATE include)
     target_compile_features(sdrcore_ring_boundary_test PRIVATE cxx_std_17)
     target_link_libraries(sdrcore_ring_boundary_test PRIVATE sdrcore_rtlsdr sdrcore_hackrf sdrcore_audio Threads::Threads)
+    target_link_libraries(sdrcore_ring_boundary_test PRIVATE sdrcore_rds)
     add_test(NAME sdrcore_ring_boundary COMMAND sdrcore_ring_boundary_test)
     add_executable(sdrcore_rtl_libusb_init_failure_test tests/rtl_libusb_init_failure_test.c)
     target_include_directories(sdrcore_rtl_libusb_init_failure_test PRIVATE
@@ -141,6 +160,7 @@ if(NOT ANDROID AND PROJECT_IS_TOP_LEVEL)
     target_include_directories(sdrcore_rtl_gain_list_test PRIVATE include)
     target_compile_features(sdrcore_rtl_gain_list_test PRIVATE cxx_std_17)
     target_link_libraries(sdrcore_rtl_gain_list_test PRIVATE sdrcore_rtlsdr sdrcore_hackrf sdrcore_audio Threads::Threads)
+    target_link_libraries(sdrcore_rtl_gain_list_test PRIVATE sdrcore_rds)
     add_test(NAME sdrcore_rtl_gain_list COMMAND sdrcore_rtl_gain_list_test)
     add_executable(sdrcore_live_retune_test
         tests/live_retune_test.cpp
@@ -151,6 +171,7 @@ if(NOT ANDROID AND PROJECT_IS_TOP_LEVEL)
     target_include_directories(sdrcore_live_retune_test PRIVATE include)
     target_compile_features(sdrcore_live_retune_test PRIVATE cxx_std_17)
     target_link_libraries(sdrcore_live_retune_test PRIVATE sdrcore_rtlsdr sdrcore_hackrf sdrcore_audio Threads::Threads)
+    target_link_libraries(sdrcore_live_retune_test PRIVATE sdrcore_rds)
     add_test(NAME sdrcore_live_retune COMMAND sdrcore_live_retune_test)
     add_executable(sdrcore_host_rtl_gain_test tests/host_rtl_gain_test.c)
     target_link_libraries(sdrcore_host_rtl_gain_test PRIVATE sdrcore)
@@ -181,6 +202,7 @@ if(NOT ANDROID AND PROJECT_IS_TOP_LEVEL)
     target_include_directories(sdrcore_wfm_stereo_dsp_test PRIVATE include)
     target_compile_features(sdrcore_wfm_stereo_dsp_test PRIVATE cxx_std_17)
     add_test(NAME sdrcore_wfm_stereo_dsp COMMAND sdrcore_wfm_stereo_dsp_test)
+    target_link_libraries(sdrcore_wfm_stereo_dsp_test PRIVATE sdrcore_rds)
     # DSP-only: audio stays continuous across VFO drags and LO retunes.
     add_executable(sdrcore_retune_audio_continuity_test
         tests/retune_audio_continuity_test.cpp
@@ -189,10 +211,12 @@ if(NOT ANDROID AND PROJECT_IS_TOP_LEVEL)
     target_compile_features(sdrcore_retune_audio_continuity_test PRIVATE cxx_std_17)
     target_compile_options(sdrcore_retune_audio_continuity_test PRIVATE -O2)
     add_test(NAME sdrcore_retune_audio_continuity COMMAND sdrcore_retune_audio_continuity_test)
+    target_link_libraries(sdrcore_retune_audio_continuity_test PRIVATE sdrcore_rds)
     add_executable(sdrcore_baseband_tap_test tests/baseband_tap_test.cpp src/dsp/receiver.cpp)
     target_include_directories(sdrcore_baseband_tap_test PRIVATE include)
     target_compile_features(sdrcore_baseband_tap_test PRIVATE cxx_std_17)
     add_test(NAME sdrcore_baseband_tap COMMAND sdrcore_baseband_tap_test)
+    target_link_libraries(sdrcore_baseband_tap_test PRIVATE sdrcore_rds)
     add_executable(sdrcore_baseband_tap_abi_test
         tests/baseband_tap_abi_test.cpp src/dsp/receiver.cpp
         src/usb_rtlsdr_adapter.cpp src/usb_hackrf_adapter.cpp)
@@ -200,5 +224,6 @@ if(NOT ANDROID AND PROJECT_IS_TOP_LEVEL)
     target_compile_features(sdrcore_baseband_tap_abi_test PRIVATE cxx_std_17)
     target_link_libraries(sdrcore_baseband_tap_abi_test PRIVATE
         sdrcore_rtlsdr sdrcore_hackrf sdrcore_audio Threads::Threads)
+    target_link_libraries(sdrcore_baseband_tap_abi_test PRIVATE sdrcore_rds)
     add_test(NAME sdrcore_baseband_tap_abi COMMAND sdrcore_baseband_tap_abi_test)
 endif()

@@ -8,6 +8,7 @@
 #include "usb_adapter.h"
 #include "usb_hackrf_adapter.h"
 #include "usb_rtlsdr_adapter.h"
+#include <nlohmann/json.hpp>
 
 #include <algorithm>
 #include <array>
@@ -86,28 +87,102 @@ struct SdrHandle {
   uint64_t decoder_sequence = 0;
   uint64_t decoder_dropped = 0;
   bool decoder_attached = false;
+  bool rbds = false;
+  nlohmann::json rds_fields = nlohmann::json::object();
+  std::string rds_pi_candidate;
+  unsigned rds_pi_repeats = 0;
+  std::chrono::steady_clock::time_point rds_last_emit{};
+  std::chrono::steady_clock::time_point rds_last_group{};
+  bool rds_pending = false;
+  bool rds_synced = false;
   void invalidate_decoder_events() { decoder_events.clear(); }
+  uint64_t tuned_frequency() const {
+    return static_cast<uint64_t>(static_cast<int64_t>(controls.center_frequency_hz) +
+                                 controls.vfo_offset_hz);
+  }
+  void enqueue_decoder_event(sdrcore::decoder::Event event) {
+    if (event.payload.size() > SDR_DECODER_MAX_PAYLOAD) {
+      ++decoder_dropped;
+      return;
+    }
+    if (decoder_events.size() == SDR_DECODER_QUEUE_CAPACITY) {
+      decoder_events.pop_front();
+      ++decoder_dropped;
+    }
+    QueuedDecoderEvent queued_event;
+    queued_event.header.size = sizeof(SdrDecoderEvent);
+    queued_event.header.revision = SDR_DECODER_REVISION;
+    queued_event.header.sequence = ++decoder_sequence;
+    queued_event.header.stream_generation = snapshot.stream_generation;
+    queued_event.header.kind = static_cast<uint32_t>(event.kind);
+    queued_event.header.payload_bytes = static_cast<uint32_t>(event.payload.size());
+    queued_event.header.dropped_events = decoder_dropped;
+    queued_event.payload = std::move(event.payload);
+    decoder_events.push_back(std::move(queued_event));
+  }
+  void enqueue_rds_json(const nlohmann::json& object) {
+    const std::string text = object.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace);
+    enqueue_decoder_event({sdrcore::decoder::Result::message,
+                           std::vector<uint8_t>(text.begin(), text.end())});
+  }
+  void reset_rds(const char* reason) {
+    rds_fields = nlohmann::json::object();
+    rds_pi_candidate.clear();
+    rds_pi_repeats = 0;
+    rds_pending = false;
+    rds_synced = false;
+    rds_last_group = {};
+    rds_last_emit = {};
+    enqueue_rds_json({{"source", "rds"}, {"version", 1}, {"event", "reset"},
+                      {"frequency_hz", tuned_frequency()}, {"rbds", rbds},
+                      {"reason", reason}});
+  }
+  void drain_rds_groups() {
+    if (!receiver || controls.mode != SDR_V3_WFM) return;
+    std::string raw;
+    const auto now = std::chrono::steady_clock::now();
+    while (receiver->take_rds_group(raw)) {
+      auto group = nlohmann::json::parse(raw, nullptr, false);
+      if (group.is_discarded() || !group.is_object()) { ++decoder_dropped; continue; }
+      group.erase("group");
+      if (group.contains("pi") && group["pi"].is_string() &&
+          rds_fields.contains("pi") && group["pi"] != rds_fields["pi"]) {
+        const auto candidate = group["pi"].get<std::string>();
+        rds_pi_repeats = candidate == rds_pi_candidate ? rds_pi_repeats + 1 : 1;
+        rds_pi_candidate = candidate;
+        if (rds_pi_repeats < 3) continue;
+        reset_rds("pi");
+      } else {
+        rds_pi_candidate.clear();
+        rds_pi_repeats = 0;
+      }
+      bool changed = false;
+      for (auto it = group.begin(); it != group.end(); ++it) {
+        if (!rds_fields.contains(it.key()) || rds_fields[it.key()] != it.value()) {
+          rds_fields[it.key()] = it.value();
+          changed = true;
+        }
+      }
+      rds_last_group = now;
+      if (!rds_synced) { rds_synced = true; changed = true; }
+      rds_pending |= changed;
+    }
+    if (rds_last_group != std::chrono::steady_clock::time_point{} &&
+        now - rds_last_group > std::chrono::seconds(10)) reset_rds("signal_lost");
+    if (rds_pending && (rds_last_emit == std::chrono::steady_clock::time_point{} ||
+        now - rds_last_emit >= std::chrono::milliseconds(250))) {
+      enqueue_rds_json({{"source", "rds"}, {"version", 1}, {"event", "state"},
+                        {"frequency_hz", tuned_frequency()}, {"rbds", rbds},
+                        {"fields", rds_fields}, {"sync", receiver->rds_synced()}});
+      rds_pending = false;
+      rds_last_emit = now;
+    }
+  }
   void drain_decoder_events() {
     if (!decoder) return;
     sdrcore::decoder::Event event;
     for (size_t i = 0; i < SDR_DECODER_QUEUE_CAPACITY && decoder->take_event(event); ++i) {
-      if (event.payload.size() > SDR_DECODER_MAX_PAYLOAD) {
-        ++decoder_dropped;
-        continue;
-      }
-      if (decoder_events.size() == SDR_DECODER_QUEUE_CAPACITY) {
-        decoder_events.pop_front();
-        ++decoder_dropped;
-      }
-      QueuedDecoderEvent queued_event;
-      queued_event.header.size = sizeof(SdrDecoderEvent);
-      queued_event.header.revision = SDR_DECODER_REVISION;
-      queued_event.header.sequence = ++decoder_sequence;
-      queued_event.header.stream_generation = snapshot.stream_generation;
-      queued_event.header.kind = static_cast<uint32_t>(event.kind);
-      queued_event.header.payload_bytes = static_cast<uint32_t>(event.payload.size());
-      queued_event.payload = std::move(event.payload);
-      decoder_events.push_back(std::move(queued_event));
+      enqueue_decoder_event(std::move(event));
       event = {};
     }
     decoder_dropped += decoder->take_dropped_count();
@@ -370,6 +445,8 @@ struct SdrHandle {
       try {
         if (retune_freq) {
           invalidate_decoder_events();
+          if (req.mode == SDR_V3_WFM || dsp_controls.mode == SDR_V3_WFM)
+            reset_rds(req.mode != dsp_controls.mode ? "mode" : "retune");
           // IQ queued in the ring and the driver's in-flight transfers that
           // will still be delivered were captured before the new tune.
           for (size_t i = 0, s = head; i < queued; ++i, s = (s + 1) % kSlots)
@@ -447,16 +524,21 @@ struct SdrHandle {
           receiver->set_decoder(stale ? nullptr : decoder.get());
           decoder_attached = !stale;
         }
+        receiver->set_rds_suspended(stale);
         receiver->process(block.data(), length, result);
-        if (decoder && decoder_attached) {
+        if (decoder && decoder_attached || dsp_controls.mode == SDR_V3_WFM) {
           std::lock_guard<std::mutex> state_lock(mutex);
           if (!stale && dequeued_sequence == snapshot.control_sequence &&
-              !tune_in_progress() && snapshot.state == SDR_RUNNING)
-            drain_decoder_events();
+              !tune_in_progress() && snapshot.state == SDR_RUNNING) {
+            if (decoder && decoder_attached) drain_decoder_events();
+            drain_rds_groups();
+          }
           else {
             sdrcore::decoder::Event discarded;
-            for (size_t i = 0; i < SDR_DECODER_QUEUE_CAPACITY &&
+            for (size_t i = 0; decoder && i < SDR_DECODER_QUEUE_CAPACITY &&
                  decoder->take_event(discarded); ++i) discarded = {};
+            std::string discarded_rds;
+            while (receiver->take_rds_group(discarded_rds)) {}
           }
         }
         if (decoder) std::fill(result.audio.begin(), result.audio.end(), 0.0f);
@@ -743,10 +825,16 @@ extern "C" int32_t sdr_v3_set_controls(SdrHandle* h, const SdrV3Controls* in) {
     if (live_capable && (h->tune_in_progress() ||
         h->controls.center_frequency_hz != in->center_frequency_hz ||
         h->controls.gain_tenths_db != in->gain_tenths_db)) {
+      const bool rds_tune_changed =
+          static_cast<int64_t>(h->controls.center_frequency_hz) + h->controls.vfo_offset_hz !=
+          static_cast<int64_t>(in->center_frequency_hz) + in->vfo_offset_hz;
+      const bool rds_mode_changed = h->controls.mode != in->mode;
       h->controls = *in;
       if (h->dsp_controls.center_frequency_hz != in->center_frequency_hz ||
           h->dsp_controls.vfo_offset_hz != in->vfo_offset_hz)
         h->invalidate_decoder_events();
+      if (rds_tune_changed || rds_mode_changed)
+        h->reset_rds(rds_mode_changed ? "mode" : "retune");
       h->tune_request = *in;
       h->tune_pending = true;
       // The epoch advances now: rows and squelch decisions of the previous
@@ -787,6 +875,11 @@ extern "C" int32_t sdr_v3_set_controls(SdrHandle* h, const SdrV3Controls* in) {
       }
     }
     if (!h->receiver) h->receiver = sdrcore::dsp::make_receiver();
+    const bool old_wfm = h->v3_configured && h->controls.mode == SDR_V3_WFM;
+    const bool rds_mode_changed = h->v3_configured && h->controls.mode != in->mode;
+    const bool rds_tune_changed = h->v3_configured &&
+        (static_cast<int64_t>(h->controls.center_frequency_hz) + h->controls.vfo_offset_hz !=
+         static_cast<int64_t>(in->center_frequency_hz) + in->vfo_offset_hz);
     SdrV3Display display = h->display;
     if (!display.size || !valid_display(display, in->sample_rate)) {
       display = SdrV3Display{};
@@ -796,12 +889,18 @@ extern "C" int32_t sdr_v3_set_controls(SdrHandle* h, const SdrV3Controls* in) {
       display.width = 512;
     }
     h->receiver->configure(*in, display);
+    h->receiver->set_rds_rbds(h->rbds);
     if (h->decoder && (h->dsp_controls.center_frequency_hz != in->center_frequency_hz ||
                        h->dsp_controls.vfo_offset_hz != in->vfo_offset_hz ||
                        h->dsp_controls.sample_rate != in->sample_rate))
       h->invalidate_decoder_events();
     h->controls = *in;
     h->dsp_controls = *in;
+    if ((old_wfm || in->mode == SDR_V3_WFM) &&
+        (rds_mode_changed || rds_tune_changed)) {
+      h->invalidate_decoder_events();
+      h->reset_rds(rds_mode_changed ? "mode" : "retune");
+    }
     h->display = display;
     h->v3_configured = true;
     h->stats.frequency_hz = in->center_frequency_hz;
@@ -863,6 +962,23 @@ extern "C" int32_t sdr_v3_set_wfm_stereo(SdrHandle* h, uint32_t enabled) {
   return SDR_OK;
 }
 
+extern "C" int32_t sdr_rds_set_rbds(SdrHandle* h, uint32_t enabled) {
+  if (!h || enabled > 1) return SDR_INVALID_ARGUMENT;
+  try {
+    std::lock_guard<std::mutex> dsp_lock(h->dsp_mutex);
+    std::lock_guard<std::mutex> lock(h->mutex);
+    if (!h->v3_configured || !h->receiver ||
+        (h->stats.state != SDR_OPEN && h->stats.state != SDR_RUNNING) ||
+        (h->stats.state == SDR_RUNNING && !h->v3_active)) return SDR_INVALID_STATE;
+    if (h->rbds == (enabled != 0)) return SDR_OK;
+    h->rbds = enabled != 0;
+    h->receiver->set_rds_rbds(h->rbds);
+    h->invalidate_decoder_events();
+    if (h->controls.mode == SDR_V3_WFM) h->reset_rds("rbds");
+  } catch (...) { return SDR_INTERNAL_ERROR; }
+  return SDR_OK;
+}
+
 extern "C" int32_t sdr_v3_set_audio_sink(SdrHandle* h, const char* spec,
                                              uint32_t length) {
   if (!h || !spec || !length || length > SDR_V3_MAX_SINK_SPEC_BYTES ||
@@ -911,6 +1027,7 @@ extern "C" int32_t sdr_v3_start(SdrHandle* h) {
       h->snapshot.state = SDR_RUNNING;
       ++h->snapshot.stream_generation;
       h->invalidate_decoder_events();
+      if (h->controls.mode == SDR_V3_WFM) h->reset_rds("generation");
       h->snapshot.squelch_ready = 0;
       h->snapshot.squelch_open = 0;
       h->fft_unread = false;
@@ -947,6 +1064,8 @@ extern "C" int32_t sdr_v3_stop(SdrHandle* h) {
   h->stats.state = SDR_OPEN;
   h->snapshot.state = SDR_OPEN;
   h->invalidate_decoder_events();
+  h->rds_fields = nlohmann::json::object();
+  h->rds_pending = h->rds_synced = false;
   h->snapshot.squelch_ready = 0;
   h->snapshot.squelch_open = 0;
   h->fft_unread = false;
