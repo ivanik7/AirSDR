@@ -57,8 +57,11 @@ int main(int argc, char** argv) {
   }
   // Drive the pulse detector through the trailing silence that rtl_433's
   // file reader supplies at EOF; without silence a pulse at EOF is incomplete.
+  // Complete the adapter's fixed upstream-sized frame, then one more frame.
   std::fill(normalized.begin(), normalized.end(), 0.0f);
-  engine->process(normalized.data(), normalized.size() / 2, rate);
-  feed();
+  for (int i = 0; i < 9; ++i) {
+    engine->process(normalized.data(), normalized.size() / 2, rate);
+    feed();
+  }
   return 0;
 }
