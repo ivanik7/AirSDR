@@ -13,6 +13,7 @@ extern "C" {
 // decoder extension (voice demodulation remains fully functional).
 #define SDR_DECODER_REVISION 1u
 #define SDR_DECODER_MAX_PAYLOAD 65536u
+#define SDR_DECODER_QUEUE_CAPACITY 256u
 #define SDR_DECODER_NO_DATA 1
 #define SDR_DECODER_BUFFER_SMALL -7
 
@@ -40,6 +41,7 @@ typedef struct SdrDecoderEvent {
   uint64_t stream_generation;     // v3 generation, for stale-result rejection
   uint32_t kind;                  // SdrDecoderResult
   uint32_t payload_bytes;         // Required UTF-8 JSON bytes or image bytes
+  uint64_t dropped_events;        // Cumulative FIFO overflow since selection
 } SdrDecoderEvent;
 
 SDRCORE_API uint32_t sdr_decoder_version(void);
@@ -57,10 +59,13 @@ SDRCORE_API int32_t sdr_decoder_descriptor(uint32_t index,
 SDRCORE_API int32_t sdr_decoder_select(SdrHandle* handle, const char* id,
                                        uint32_t id_bytes, const char* config,
                                        uint32_t config_bytes);
-// Latest event newer than after_sequence. Poll on UI thread only for low-rate
+// OLDEST queued event newer than after_sequence. A bounded 256-entry FIFO
+// drops oldest on overflow and reports a cumulative dropped_events counter.
+// Poll on UI thread only for low-rate
 // results. NO_DATA leaves outputs unchanged; BUFFER_SMALL writes only
 // event.payload_bytes. On success outputs are coherent copies, never retained.
-// Stop/close/destroy invalidate events. No IQ/PCM crosses this boundary.
+// Stop/deselect/retune/generation change/close/destroy invalidate events.
+// No IQ/PCM crosses this boundary.
 SDRCORE_API int32_t sdr_decoder_poll(SdrHandle* handle, uint64_t after_sequence,
                                      SdrDecoderEvent* event, uint8_t* payload,
                                      uint32_t capacity);

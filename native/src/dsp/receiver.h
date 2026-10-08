@@ -9,6 +9,8 @@
 #include <memory>
 #include <vector>
 
+namespace sdrcore::decoder { class Decoder; }
+
 namespace sdrcore {
 namespace dsp {
 
@@ -34,6 +36,11 @@ class Receiver {
                          const SdrV3Display& display) = 0;
   // Called by the same DSP owner mutex as configure/process; no IQ restart.
   virtual void set_wfm_stereo(bool enabled) = 0;
+  // Borrowed, DSP-lock protected. The branch is filtered and integer-decimated
+  // to a complex 200-300 kS/s tuned VFO; zero means source rate is unsuitable.
+  // Attach/detach, retune, rate and stream generation changes reset the branch.
+  virtual uint32_t set_decoder(sdrcore::decoder::Decoder* decoder) = 0;
+  virtual uint32_t decoder_rate_hz() const = 0;
   virtual void reset() = 0;
   // Live LO retune on a continuing stream: forgets what belonged to the old
   // station (FFT accumulation, squelch learning, WFM pilot lock) but keeps

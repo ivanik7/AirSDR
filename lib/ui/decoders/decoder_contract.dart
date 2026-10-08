@@ -99,18 +99,12 @@ final decoderCatalog = <DecoderDescriptor>[
   DecoderDescriptor(
     id: 'rtl_433',
     label: 'rtl_433',
-    input: DecoderInput.rawIq,
-    exclusiveReceiver: true,
+    input: DecoderInput.baseband,
+    exclusiveReceiver: false,
     requiredMode: null,
-    requiredRateHz: 250000,
+    requiredRateHz: null,
     result: DecoderResult.message,
-    settings: [
-      DecoderSetting(
-        'frequency_hz',
-        433920000,
-        allowed: [315000000, 433920000, 868000000, 915000000],
-      ),
-    ],
+    settings: const [], // v1 {"version":1,"settings":{}}; tuning is the VFO.
   ),
   DecoderDescriptor(
     id: 'adsb',

@@ -32,10 +32,10 @@ const std::vector<Registration>& registry() {
       Registration{
           Descriptor{
               /*id=*/"rtl_433",
-              /*input=*/Input::raw_iq,
-              /*exclusive_receiver=*/true,  // Wideband capture displaces listening.
+              /*input=*/Input::baseband,
+              /*exclusive_receiver=*/false,  // Shares the tuned VFO.
               /*required_mode=*/0xFFFFFFFFu,  // Independent of demod mode.
-              /*required_rate_hz=*/250000,
+              /*required_rate_hz=*/0,  // Negotiated integer decimation.
               /*result=*/Result::message,
           },
           /*create=*/nullptr,
