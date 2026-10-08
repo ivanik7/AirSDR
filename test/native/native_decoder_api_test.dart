@@ -19,9 +19,9 @@ void main() {
 
   test('decoder Dart struct sizes match the compiled C ABI header', () {
     // SdrDecoderDescriptor: 4+4+32+4*6 = 64 bytes. SdrDecoderEvent:
-    // 4+4+8+8+4+4 = 32 bytes. Both must round-trip in sync with any
+    // 4+4+8+8+4+4+8 = 40 bytes. Both must round-trip in sync with any
     // native/include/sdrcore_decoder_v1.h struct edit.
-    expect(FfiNativeDecoderApi.layoutSizes, [64, 32]);
+    expect(FfiNativeDecoderApi.layoutSizes, [64, 40]);
   });
 
   test('required v3 radio symbols resolve from a real host library whether or '
@@ -44,9 +44,10 @@ void main() {
     expect(decoder, isNotNull);
     final descriptors = decoder!.descriptors();
     expect(descriptors.map((d) => d.id), ['sstv', 'rtl_433', 'adsb']);
-    expect(descriptors.every((d) => !d.available), isTrue);
-    expect(descriptors[1].exclusiveReceiver, isTrue);
-    expect(descriptors[1].requiredRateHz, 250000);
+    expect(descriptors[1].available, isTrue);
+    expect(descriptors[1].input, 3);
+    expect(descriptors[1].exclusiveReceiver, isFalse);
+    expect(descriptors[1].requiredRateHz, isNull);
   }, skip: skipReason);
 
   test('tryOpen returns null against the current process (no sdr_decoder_* symbols)', () {

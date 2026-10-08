@@ -129,13 +129,17 @@ class DecoderEvent {
     this.sequence,
     this.streamGeneration,
     this.kind,
-    this.payload,
-  );
+    this.payload, {
+    this.droppedEvents = 0,
+  });
   final int sequence, streamGeneration;
   final DecoderResult kind;
 
   /// Copied bounded payload; image bytes are not IQ or PCM samples.
   final Uint8List payload;
+
+  /// Cumulative overflow of the native event FIFO since decoder selection.
+  final int droppedEvents;
 }
 
 /// Optional additive native decoder extension, never a Dart DSP substitute.

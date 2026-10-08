@@ -78,6 +78,7 @@ final class NativeDecoderBackend implements DecoderBackend {
       event.streamGeneration,
       kind,
       event.payload,
+      droppedEvents: event.droppedEvents,
     );
   }
 }

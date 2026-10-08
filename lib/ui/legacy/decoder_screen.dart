@@ -34,7 +34,9 @@ class DecoderScreen extends StatelessWidget {
           const SizedBox(height: 10),
           DecoderSelector(session: session),
           const SizedBox(height: 14),
-          if (selected == null || selected.voice)
+          if (selected?.id == 'rtl_433')
+            Rtl433DecoderPanel(session: session)
+          else if (selected == null || selected.voice)
             VoiceDecoderPanel(controller: controller, receiver: receiver)
           else
             DecoderPlaceholderPanel(descriptor: selected, session: session),

@@ -50,11 +50,13 @@ final class NativeDecoderEvent {
     required this.streamGeneration,
     required this.kind,
     required this.payload,
+    this.droppedEvents = 0,
   });
   final int sequence;
   final int streamGeneration;
   final int kind;
   final Uint8List payload;
+  final int droppedEvents;
 }
 
 /// Dart surface of the optional sdrcore_decoder_v1 extension. A null
@@ -70,7 +72,7 @@ abstract interface class NativeDecoderApi {
   /// decoder and tuning unchanged (native contract).
   bool select(Pointer<SdrHandle> handle, String? id, String configJson);
 
-  /// Latest event strictly newer than [afterSequence], or null for
+  /// Oldest queued event strictly newer than [afterSequence], or null for
   /// NO_DATA / any failure. Never retains a native pointer.
   NativeDecoderEvent? poll(Pointer<SdrHandle> handle, int afterSequence);
 }
@@ -111,6 +113,8 @@ final class _Event extends Struct {
   external int kind;
   @Uint32()
   external int payloadBytes;
+  @Uint64()
+  external int droppedEvents;
 }
 
 String _idText(Array<Uint8> data) {
@@ -187,7 +191,13 @@ final class FfiNativeDecoderApi implements NativeDecoderApi {
           int,
         )
       >('sdr_decoder_select');
-  late final int Function(Pointer<SdrHandle>, int, Pointer<_Event>, Pointer<Uint8>, int)
+  late final int Function(
+    Pointer<SdrHandle>,
+    int,
+    Pointer<_Event>,
+    Pointer<Uint8>,
+    int,
+  )
   _poll = _lib
       .lookupFunction<
         Int32 Function(
@@ -284,7 +294,13 @@ final class FfiNativeDecoderApi implements NativeDecoderApi {
     try {
       evPtr.ref.size = sizeOf<_Event>();
       evPtr.ref.revision = sdrDecoderRevision;
-      final code = _poll(handle, afterSequence, evPtr, payload, sdrDecoderMaxPayload);
+      final code = _poll(
+        handle,
+        afterSequence,
+        evPtr,
+        payload,
+        sdrDecoderMaxPayload,
+      );
       if (code == _sdrDecoderNoData) return null;
       if (code != 0) return null; // includes BUFFER_SMALL: never fabricated.
       final e = evPtr.ref;
@@ -295,6 +311,7 @@ final class FfiNativeDecoderApi implements NativeDecoderApi {
         streamGeneration: e.streamGeneration,
         kind: e.kind,
         payload: Uint8List.fromList(payload.asTypedList(n)),
+        droppedEvents: e.droppedEvents,
       );
     } finally {
       calloc.free(evPtr);

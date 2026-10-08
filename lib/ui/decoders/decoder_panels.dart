@@ -192,12 +192,127 @@ String _settingValueLabel(String key, Object value) {
   return '$value';
 }
 
-/// Honest empty-state panel for a data decoder that is not (yet) backed by
-/// a real engine: an icon + "nothing received" text, its declared settings
-/// shown but disabled while unavailable (changing them could never take
-/// effect without a backend), and — for an [DecoderDescriptor.exclusiveReceiver]
-/// decoder — a note that starting it would stop normal voice reception.
-/// Never shows a Start control or any other control that would look live.
+/// Live rtl_433 FIFO messages and decoder status; the VFO remains the
+/// receiver's normal frequency control, not a second decoder setting.
+class Rtl433DecoderPanel extends StatelessWidget {
+  const Rtl433DecoderPanel({super.key, required this.session});
+  final DecoderSession session;
+
+  @override
+  Widget build(BuildContext context) {
+    final messages = session.messages;
+    final available = session.isAvailable('rtl_433');
+    final status = !available
+        ? 'Недоступен в текущей нативной сборке'
+        : session.failureReason ??
+              (session.active
+                  ? 'Декодирование активно'
+                  : session.radio.running
+                  ? 'Декодер не запущен'
+                  : session.radio.lastError ?? 'Приём остановлен');
+    return Column(
+      key: const ValueKey('decoderPanel-rtl_433'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        legacyCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('rtl_433 · сообщения', style: plex(size: 14)),
+              const SizedBox(height: 6),
+              Text(
+                status,
+                key: const ValueKey('rtl433Status'),
+                style: plex(
+                  size: 12,
+                  color: session.active
+                      ? LegacyColors.accent
+                      : LegacyColors.muted,
+                ),
+              ),
+              Text(
+                'Вход: ${session.inputRateHz} Гц · Потеряно событий: ${session.droppedEvents}',
+                key: const ValueKey('rtl433RateDrops'),
+                style: plex(size: 11, color: LegacyColors.muted),
+              ),
+              Text(
+                'Частота задаётся обычной настройкой приёмника (VFO).',
+                style: plex(size: 11, color: LegacyColors.muted),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                'Сообщения · ${messages.length}',
+                style: plex(size: 14),
+              ),
+            ),
+            TextButton.icon(
+              key: const ValueKey('rtl433Clear'),
+              onPressed: messages.isEmpty ? null : session.clearMessages,
+              icon: const Icon(Icons.delete_outline, size: 18),
+              label: const Text('Очистить'),
+            ),
+          ],
+        ),
+        KeyedSubtree(
+          key: const ValueKey('decoderResult-rtl_433'),
+          child: messages.isEmpty
+              ? legacyCard(
+                  child: Text(
+                    'Журнал сообщений пуст',
+                    style: plex(size: 12, color: LegacyColors.muted),
+                  ),
+                )
+              : ListView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: messages.length,
+                  itemBuilder: (context, index) {
+                    final message = messages[index];
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 6),
+                      child: legacyCard(
+                        child: Material(
+                          type: MaterialType.transparency,
+                          child: ExpansionTile(
+                            key: ValueKey('rtl433Message-${message.sequence}'),
+                            tilePadding: EdgeInsets.zero,
+                            childrenPadding: EdgeInsets.zero,
+                            title: Text(
+                              message.summary,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: plex(size: 13),
+                            ),
+                            subtitle: Text(
+                              '#${message.sequence}',
+                              style: plex(size: 11),
+                            ),
+                            children: [
+                              SelectableText(
+                                message.formattedJson,
+                                key: ValueKey('rtl433Json-${message.sequence}'),
+                                style: plex(mono: true, size: 11),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Honest empty-state panel for decoders without a result UI or native engine.
 class DecoderPlaceholderPanel extends StatelessWidget {
   const DecoderPlaceholderPanel({
     super.key,
