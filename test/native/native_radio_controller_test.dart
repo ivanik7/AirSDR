@@ -206,13 +206,20 @@ void main() {
     expect(FfiNativeRadioApi.layoutSizes, [72, 24, 152, 64, 236]);
   });
 
-  test('ABI 2 library cannot be mistaken for an N2 receiver', () {
+  test('native receiver accepts v3 and rejects an ABI 2-only library', () {
     final path = Platform.environment['SDRCORE_HOST_LIBRARY'];
     if (path == null) return;
-    expect(
-      () => FfiNativeRadioApi.open(libraryPath: path),
-      throwsA(isA<UnsupportedError>()),
-    );
+    final version = DynamicLibrary.open(path)
+        .lookupFunction<Uint32 Function(), int Function()>('sdr_version')();
+    if (version == 2) {
+      expect(
+        () => FfiNativeRadioApi.open(libraryPath: path),
+        throwsA(isA<UnsupportedError>()),
+      );
+    } else {
+      expect(version, 3);
+      expect(() => FfiNativeRadioApi.open(libraryPath: path), returnsNormally);
+    }
   });
 
   late FakeApi api;
@@ -346,22 +353,28 @@ void main() {
       expect(r.demodOptions, {'stereo': false});
     });
 
-    test('setDemodOption("stereo", true) calls sdr_v3_set_wfm_stereo', () async {
-      final r = create();
-      await until(() => r.running);
-      api.stereoCalls.clear();
-      r.setDemodOption('stereo', true);
-      expect(api.stereoCalls, [true]);
-      expect(r.demodOptions, {'stereo': true});
-    });
+    test(
+      'setDemodOption("stereo", true) calls sdr_v3_set_wfm_stereo',
+      () async {
+        final r = create();
+        await until(() => r.running);
+        api.stereoCalls.clear();
+        r.setDemodOption('stereo', true);
+        expect(api.stereoCalls, [true]);
+        expect(r.demodOptions, {'stereo': true});
+      },
+    );
 
-    test('toggling to the same value is a no-op (no extra native call)', () async {
-      final r = create();
-      await until(() => r.running);
-      api.stereoCalls.clear();
-      r.setDemodOption('stereo', false);
-      expect(api.stereoCalls, isEmpty);
-    });
+    test(
+      'toggling to the same value is a no-op (no extra native call)',
+      () async {
+        final r = create();
+        await until(() => r.running);
+        api.stereoCalls.clear();
+        r.setDemodOption('stereo', false);
+        expect(api.stereoCalls, isEmpty);
+      },
+    );
 
     test('non-bool or unknown option keys are ignored', () async {
       final r = create();
@@ -373,14 +386,17 @@ void main() {
       expect(r.demodOptions, {'stereo': false});
     });
 
-    test('rejection rolls back and reports an error without changing state', () async {
-      final r = create();
-      await until(() => r.running);
-      api.rejectStereo = true;
-      r.setDemodOption('stereo', true);
-      expect(r.demodOptions, {'stereo': false});
-      expect(r.lastError, contains('Native stereo failed'));
-    });
+    test(
+      'rejection rolls back and reports an error without changing state',
+      () async {
+        final r = create();
+        await until(() => r.running);
+        api.rejectStereo = true;
+        r.setDemodOption('stereo', true);
+        expect(r.demodOptions, {'stereo': false});
+        expect(r.lastError, contains('Native stereo failed'));
+      },
+    );
 
     test('preference is retained across mode switches, not reset', () async {
       final r = create();
@@ -391,27 +407,33 @@ void main() {
       expect(r.demodOptions, {'stereo': true});
     });
 
-    test('is reapplied on every (re)start since native resets it per open', () async {
-      final r = create();
-      await until(() => r.running);
-      r.setDemodOption('stereo', true);
-      await r.stop();
-      api.stereoCalls.clear();
-      await r.start();
-      await until(() => r.running);
-      expect(api.stereoCalls, [true]);
-    });
+    test(
+      'is reapplied on every (re)start since native resets it per open',
+      () async {
+        final r = create();
+        await until(() => r.running);
+        r.setDemodOption('stereo', true);
+        await r.stop();
+        api.stereoCalls.clear();
+        await r.start();
+        await until(() => r.running);
+        expect(api.stereoCalls, [true]);
+      },
+    );
 
-    test('updates the stored preference without a native call while stopped', () async {
-      final r = create(autoStart: false);
-      await Future<void>.delayed(const Duration(milliseconds: 20));
-      r.setDemodOption('stereo', true);
-      expect(r.demodOptions, {'stereo': true});
-      expect(api.stereoCalls, isEmpty);
-      await r.start();
-      await until(() => r.running);
-      expect(api.stereoCalls, [true]);
-    });
+    test(
+      'updates the stored preference without a native call while stopped',
+      () async {
+        final r = create(autoStart: false);
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+        r.setDemodOption('stereo', true);
+        expect(r.demodOptions, {'stereo': true});
+        expect(api.stereoCalls, isEmpty);
+        await r.start();
+        await until(() => r.running);
+        expect(api.stereoCalls, [true]);
+      },
+    );
   });
 
   test(

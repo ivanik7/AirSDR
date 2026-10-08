@@ -11,7 +11,11 @@ void main() {
     'Linux host calls the real sdrcore C ABI through Dart FFI',
     () {
       final core = SdrCore.open(libraryPath: libraryPath);
-      expect(core.version, SdrCore.abiVersion); // Calls native sdr_version.
+      // ABI 3 extends ABI 2 without changing the older struct layouts.
+      expect(
+        core.version,
+        inInclusiveRange(SdrCore.abiVersion, SdrCore.maxAbiVersion),
+      ); // Calls native sdr_version.
 
       final first = core.create();
       final second = core.create();

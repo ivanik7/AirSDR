@@ -6,6 +6,7 @@ import '../channels/channel_controller.dart';
 import '../channels/channel_scanner.dart';
 import '../channels/signal_meter.dart';
 
+import '../decoders/decoder_session.dart';
 import '../favorites/favorites.dart';
 import '../radio_controller.dart';
 import '../sdr_ui_state.dart';
@@ -27,6 +28,7 @@ class ReceiveScreen extends StatefulWidget {
     required this.channels,
     required this.scanner,
     required this.meter,
+    this.decoderSession,
   });
   final RadioController controller;
   final CenteredReceiver receiver;
@@ -38,6 +40,10 @@ class ReceiveScreen extends StatefulWidget {
   final ChannelController channels;
   final ChannelScanner scanner;
   final SignalMeter meter;
+
+  /// Forwarded to [ChannelsSection] so "save channel as preset" carries over
+  /// the previewed decoder (decoders/decoder_session.dart).
+  final DecoderSession? decoderSession;
   @override
   State<ReceiveScreen> createState() => _ReceiveScreenState();
 }
@@ -253,6 +259,7 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
             scanner: widget.scanner,
             radio: r,
             meter: widget.meter,
+            decoderSession: widget.decoderSession,
           ),
         ),
         const SizedBox(height: 2),

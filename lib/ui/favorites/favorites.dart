@@ -6,9 +6,43 @@ import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../decoders/decoder_contract.dart' show decoderById;
 import '../radio_controller.dart';
 
 const favoriteCategories = ['Все', 'FM', 'AIR', 'VHF', 'MAR', 'UHF'];
+
+/// Sentinel for [Favorite.copyWith]'s `decoderId`: "leave the decoder
+/// selection (and its settings) exactly as it is", distinct from a real
+/// `null` which explicitly clears the decoder back to plain voice/audio.
+const Object _unchangedDecoder = Object();
+
+/// `id` valid for a known decoder, else null (an unknown/removed decoder id
+/// never survives into a live [Favorite]).
+String? _normalizeDecoderId(Object? id) =>
+    id is String && decoderById(id) != null ? id : null;
+
+/// Resolves [raw] against decoder [decoderId]'s declared settings
+/// (decoder_contract.dart `DecoderSetting`): a present, allowed value is
+/// kept, anything missing/invalid/unknown falls back to the setting's
+/// default. Always returns a fresh map (copy isolation — callers never get
+/// back a reference they handed in, and no two [Favorite]s can end up
+/// sharing one mutable settings map).
+Map<String, Object> _normalizeDecoderSettings(
+  String? decoderId,
+  Map<String, Object?>? raw,
+) {
+  final descriptor = decoderId == null ? null : decoderById(decoderId);
+  if (descriptor == null) return const <String, Object>{};
+  return <String, Object>{
+    for (final spec in descriptor.settings)
+      spec.key:
+          (raw != null &&
+              raw[spec.key] != null &&
+              (spec.allowed.isEmpty || spec.allowed.contains(raw[spec.key])))
+          ? raw[spec.key]!
+          : spec.defaultValue,
+  };
+}
 
 @immutable
 class Favorite {
@@ -20,6 +54,8 @@ class Favorite {
     required this.category,
     this.enabled = true,
     this.builtIn = false,
+    this.decoderId,
+    this.decoderSettings = const <String, Object>{},
   });
   final String id;
   final int frequencyHz;
@@ -29,30 +65,68 @@ class Favorite {
   final bool enabled;
   final bool builtIn;
 
+  /// Decoder previewed/applied with this preset (decoder_contract.dart
+  /// `DecoderDescriptor.id`), or null for the plain voice/audio path. Never
+  /// an id the live [decoderCatalog] (via [decoderById]) doesn't recognize —
+  /// storage v3 normalizes that away on load (see [FavoritesRepository]).
+  final String? decoderId;
+
+  /// Fully resolved settings of [decoderId] (every declared key present,
+  /// defaulted where unset). Empty when [decoderId] is null. Own map
+  /// instance per [Favorite] — never shared with another instance or with
+  /// caller-owned storage.
+  final Map<String, Object> decoderSettings;
+
   Favorite copyWith({
     String? name,
     DemodMode? mode,
     String? category,
     bool? enabled,
-  }) => Favorite(
-    id: id,
-    frequencyHz: frequencyHz,
-    name: name ?? this.name,
-    mode: mode ?? this.mode,
-    category: category ?? this.category,
-    enabled: enabled ?? this.enabled,
-    builtIn: builtIn,
-  );
+    Object? decoderId = _unchangedDecoder,
+    Map<String, Object>? decoderSettings,
+  }) {
+    final unchanged = identical(decoderId, _unchangedDecoder);
+    final newDecoderId = unchanged
+        ? this.decoderId
+        : _normalizeDecoderId(decoderId);
+    final newSettings = unchanged
+        ? _normalizeDecoderSettings(
+            newDecoderId,
+            decoderSettings ?? this.decoderSettings,
+          )
+        : _normalizeDecoderSettings(newDecoderId, decoderSettings);
+    return Favorite(
+      id: id,
+      frequencyHz: frequencyHz,
+      name: name ?? this.name,
+      mode: mode ?? this.mode,
+      category: category ?? this.category,
+      enabled: enabled ?? this.enabled,
+      builtIn: builtIn,
+      decoderId: newDecoderId,
+      decoderSettings: newSettings,
+    );
+  }
 
-  Map<String, Object> toJson() => {
-    'id': id,
-    'frequencyHz': frequencyHz,
-    'name': name,
-    'mode': mode.label,
-    'category': category,
-    'enabled': enabled,
-    'builtIn': builtIn,
-  };
+  Map<String, Object> toJson() {
+    final json = <String, Object>{
+      'id': id,
+      'frequencyHz': frequencyHz,
+      'name': name,
+      'mode': mode.label,
+      'category': category,
+      'enabled': enabled,
+      'builtIn': builtIn,
+    };
+    final decoder = decoderId;
+    if (decoder != null) {
+      json['decoderId'] = decoder;
+      json['decoderSettingsVersion'] =
+          FavoritesRepository.decoderSettingsSchemaVersion;
+      json['decoderSettings'] = decoderSettings;
+    }
+    return json;
+  }
 }
 
 // Default presets offered once to every install. IDs are stable: a default
@@ -109,7 +183,22 @@ class FavoritesRepository extends ChangeNotifier {
 
   /// v1: 12 archive built-ins re-added on every load. v2: [builtInFavorites]
   /// plus `seenDefaults` (defaults already offered, deleted ones included).
-  static const storageVersion = 2;
+  /// v3: per-entry optional decoder selection (`decoderId` +
+  /// `decoderSettingsVersion` + `decoderSettings`); v1/v2 entries (no
+  /// decoder keys), an entry with an unrecognized `decoderId`, and an entry
+  /// whose `decoderSettingsVersion` does not match
+  /// [decoderSettingsSchemaVersion] all load as plain voice/audio (decoder
+  /// cleared) rather than being rejected or guessed at — only the decoder
+  /// attachment is dropped, the preset itself survives.
+  static const storageVersion = 3;
+
+  /// Schema version of a single entry's `decoderSettings` map. Bumped
+  /// whenever the *shape* of a decoder's settings changes in a
+  /// backward-incompatible way (not merely a new decoder/catalog entry);
+  /// an entry stamped with a different version is treated as an unknown/
+  /// invalid decoder attachment on load (see [storageVersion]).
+  static const decoderSettingsSchemaVersion = 1;
+
   final List<Favorite> _entries = [...builtInFavorites];
   final Set<String> _seenDefaults = {for (final f in builtInFavorites) f.id};
   List<Favorite> get entries => List.unmodifiable(_entries);
@@ -164,6 +253,25 @@ class FavoritesRepository extends ChangeNotifier {
           id = 'user-${nextId++}';
           builtIn = false;
         }
+        // Storage v3: a recognized decoder id stamped with the current
+        // settings schema version; anything else (v1/v2 entries without
+        // the keys at all, an unknown id, a mismatched settings version)
+        // normalizes to "no decoder" — never an unknown/invalid decoder
+        // reaching the UI, and never dropping the favorite itself for it.
+        final rawDecoderId = m['decoderId'];
+        final decoderVersion = (m['decoderSettingsVersion'] as num?)?.toInt();
+        final decoderId =
+            rawDecoderId is String &&
+                decoderVersion == decoderSettingsSchemaVersion
+            ? _normalizeDecoderId(rawDecoderId)
+            : null;
+        final rawSettings = m['decoderSettings'];
+        final decoderSettings = _normalizeDecoderSettings(
+          decoderId,
+          rawSettings is Map
+              ? rawSettings.map((k, v) => MapEntry(k.toString(), v as Object?))
+              : null,
+        );
         parsed.add(
           Favorite(
             id: id,
@@ -173,6 +281,8 @@ class FavoritesRepository extends ChangeNotifier {
             category: category,
             enabled: m['enabled'] == true,
             builtIn: builtIn,
+            decoderId: decoderId,
+            decoderSettings: decoderSettings,
           ),
         );
       }
@@ -192,7 +302,7 @@ class FavoritesRepository extends ChangeNotifier {
             item,
       ];
       final migrated =
-          version < 2 ||
+          version < storageVersion ||
           builtInFavorites.any((item) => !seen.contains(item.id));
       seen.addAll(builtInFavorites.map((f) => f.id));
       if (_changed) return;
@@ -246,28 +356,38 @@ class FavoritesRepository extends ChangeNotifier {
     required String category,
     int minHz = 1,
     int maxHz = 999999999999,
+    String? decoderId,
+    Map<String, Object>? decoderSettings,
   }) {
     _validate(frequencyHz, name, category, minHz, maxHz);
     if (_entries.any((e) => e.frequencyHz == frequencyHz)) {
       throw ArgumentError.value(frequencyHz, 'frequencyHz', 'Already saved');
     }
+    final normalizedId = _normalizeDecoderId(decoderId);
     final f = Favorite(
       id: 'user-${_nextId++}',
       frequencyHz: frequencyHz,
       name: name.trim(),
       mode: mode,
       category: category,
+      decoderId: normalizedId,
+      decoderSettings: _normalizeDecoderSettings(normalizedId, decoderSettings),
     );
     _entries.add(f);
     _save();
     return f;
   }
 
+  /// [decoderId]/[decoderSettings] default to leaving the preset's current
+  /// decoder selection untouched; pass `decoderId: null` explicitly to clear
+  /// it back to plain voice/audio.
   void edit(
     String id, {
     required String name,
     required DemodMode mode,
     required String category,
+    Object? decoderId = _unchangedDecoder,
+    Map<String, Object>? decoderSettings,
   }) {
     final i = _entries.indexWhere((e) => e.id == id);
     if (i < 0) throw ArgumentError.value(id, 'id');
@@ -276,6 +396,8 @@ class FavoritesRepository extends ChangeNotifier {
       name: name.trim(),
       mode: mode,
       category: category,
+      decoderId: decoderId,
+      decoderSettings: decoderSettings,
     );
     _save();
   }

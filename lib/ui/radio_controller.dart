@@ -21,6 +21,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
+import 'decoders/decoder_contract.dart' show DecoderBackend;
 import 'source_setting.dart' show SourceSetting;
 
 export 'source_setting.dart'
@@ -502,4 +503,10 @@ abstract class RadioController extends ChangeNotifier {
   /// Retries the automatic connection after a refused permission / failed open (the user's
   /// "retry" button). Does not override an explicit Stop.
   Future<void> retryDevice() async {}
+
+  /// Optional additive native decoder backend (decoders/decoder_contract.dart).
+  /// Default: null — no backend wired in, so the Decoder tab shows every data
+  /// decoder as unavailable without mocking any output. A native/FFI
+  /// implementation overrides this getter; voice/audio is never gated by it.
+  DecoderBackend? get decoderBackend => null;
 }
