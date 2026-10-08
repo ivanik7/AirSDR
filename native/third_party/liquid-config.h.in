@@ -1,0 +1,11 @@
+// SPDX-License-Identifier: MIT
+// Portable liquid-dsp configuration for the embedded scalar build.
+// Generated in the CMake build tree, never in the vendored source directory.
+#ifndef SDRCORE_LIQUID_CONFIG_H
+#define SDRCORE_LIQUID_CONFIG_H
+
+#define SIZEOF_INT @LIQUID_SIZEOF_INT@
+#define LIQUID_FFTOVERRIDE 1
+#define LIQUID_SIMDOVERRIDE 1
+
+#endif

@@ -1,6 +1,10 @@
 # redsea 1.3.1 (7555c9f) and liquid-dsp 1.6.0 are compiled from vendored
 # permissively licensed source. CLI, libsndfile input and subprocesses are not linked.
 set(LIQUID_ROOT ${CMAKE_CURRENT_LIST_DIR}/liquid-dsp-1.6.0)
+include(CheckTypeSize)
+check_type_size("int" LIQUID_SIZEOF_INT)
+configure_file(${CMAKE_CURRENT_LIST_DIR}/liquid-config.h.in
+    ${CMAKE_CURRENT_BINARY_DIR}/liquid-config/config.h @ONLY)
 file(GLOB LIQUID_SOURCES CONFIGURE_DEPENDS ${LIQUID_ROOT}/src/*/src/*.c)
 list(FILTER LIQUID_SOURCES EXCLUDE REGEX "\\.proto\\.c$")
 list(FILTER LIQUID_SOURCES EXCLUDE REGEX "[._](avx|av|sse|mmx|neon)[^/]*\\.c$")
@@ -9,7 +13,8 @@ add_library(sdrcore_liquid STATIC ${LIQUID_SOURCES})
 set_target_properties(sdrcore_liquid PROPERTIES POSITION_INDEPENDENT_CODE ON C_STANDARD 99)
 target_compile_options(sdrcore_liquid PRIVATE -O2 -ffunction-sections -fdata-sections -w)
 target_include_directories(sdrcore_liquid PUBLIC ${LIQUID_ROOT}/include)
-target_include_directories(sdrcore_liquid PRIVATE ${LIQUID_ROOT} ${LIQUID_ROOT}/scripts)
+target_include_directories(sdrcore_liquid PRIVATE
+    ${CMAKE_CURRENT_BINARY_DIR}/liquid-config ${LIQUID_ROOT})
 target_link_libraries(sdrcore_liquid PUBLIC m)
 
 set(REDSEA_ROOT ${CMAKE_CURRENT_LIST_DIR}/redsea)
