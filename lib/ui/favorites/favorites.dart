@@ -16,10 +16,54 @@ const favoriteCategories = ['Все', 'FM', 'AIR', 'VHF', 'MAR', 'UHF'];
 /// `null` which explicitly clears the decoder back to plain voice/audio.
 const Object _unchangedDecoder = Object();
 
-/// `id` valid for a known decoder, else null (an unknown/removed decoder id
-/// never survives into a live [Favorite]).
-String? _normalizeDecoderId(Object? id) =>
-    id is String && decoderById(id) != null ? id : null;
+/// Unified decoder-catalog id for an explicit voice/demod-mode choice
+/// (shared scheme with the native decoder registry: `demod:<DemodMode.id>`,
+/// DemodMode native ids NFM=0, WFM=1, AM=2, DSB=3, USB=4, CW=5, LSB=6,
+/// RAW=7). Distinct from the plain-voice convention (`decoderId == null`,
+/// [Favorite.mode] alone governs the receive path) — this id *pins* the
+/// mode as the user's deliberate decoder choice, e.g. when a preset is
+/// saved from an actively-receiving channel (see
+/// `channel_controller.dart`'s `saveAsPreset`) or shown as the current
+/// selection in the unified preset-editor dropdown
+/// ([Favorite.decoderChoice]).
+///
+/// NOTE for the integrating lead: this mirrors the shared-contract
+/// `decoderIdForMode`/`decoderById` additions planned for
+/// `decoders/decoder_contract.dart` (owned by a different agent in this
+/// task's split). Favorites-side code here never stores a `demod:` id to
+/// disk (see [_normalizeDecoderId], [FavoritesRepository.add]/`edit` —
+/// such a choice always resolves to `decoderId: null` + the matching
+/// `mode` before it reaches storage), so once decoder_contract.dart
+/// provides the canonical functions, this local copy can be deleted and
+/// call sites repointed to the shared one without changing behaviour.
+String decoderIdForMode(DemodMode mode) => 'demod:${mode.id}';
+
+final _demodDecoderId = RegExp(r'^demod:(\d+)$');
+
+/// Parses a [decoderIdForMode] id back to its [DemodMode]; null if [id]
+/// isn't that scheme or encodes an id no [DemodMode] declares.
+DemodMode? demodModeFromDecoderId(String? id) {
+  if (id == null) return null;
+  final m = _demodDecoderId.firstMatch(id);
+  if (m == null) return null;
+  final n = int.parse(m.group(1)!);
+  for (final mode in DemodMode.values) {
+    if (mode.id == n) return mode;
+  }
+  return null;
+}
+
+/// `id` valid for a known decoder (voice/demod-mode id or a real data
+/// decoder), else null (an unknown/removed/obsolete decoder id never
+/// survives into a live [Favorite]). The historical literal `'voice'` id
+/// is explicitly obsolete under the unified catalog — plain voice is
+/// `decoderId == null` (the stored [Favorite.mode] governs), never a
+/// stored `'voice'` string.
+String? _normalizeDecoderId(Object? id) {
+  if (id is! String || id == 'voice') return null;
+  if (demodModeFromDecoderId(id) != null) return id;
+  return decoderById(id) != null ? id : null;
+}
 
 /// Resolves [raw] against decoder [decoderId]'s declared settings
 /// (decoder_contract.dart `DecoderSetting`): a present, allowed value is
@@ -77,6 +121,15 @@ class Favorite {
   /// caller-owned storage.
   final Map<String, Object> decoderSettings;
 
+  /// Decoder-catalog choice to show for this preset in the unified preset
+  /// editor's single decoder dropdown: the stored [decoderId] when there
+  /// is one, otherwise the explicit voice/demod-mode id for [mode]
+  /// ([decoderIdForMode]) — never a "no decoder" sentinel, so the dropdown
+  /// always has a concrete, valid selection without mutating stored data.
+  /// A built-in constructed with `decoderId: null` (storage-untouched)
+  /// still resolves to a real choice here purely for display.
+  String get decoderChoice => decoderId ?? decoderIdForMode(mode);
+
   Favorite copyWith({
     String? name,
     DemodMode? mode,
@@ -89,6 +142,12 @@ class Favorite {
     final newDecoderId = unchanged
         ? this.decoderId
         : _normalizeDecoderId(decoderId);
+    // An explicit voice/demod-mode decoder id always pins the mode it
+    // encodes — it can never contradict `mode` (see decoderIdForMode's
+    // doc). A data decoder id or no decoder at all leaves `mode`
+    // resolution exactly as before (new value, else unchanged).
+    final explicitMode = demodModeFromDecoderId(newDecoderId);
+    final newMode = explicitMode ?? (mode ?? this.mode);
     final newSettings = unchanged
         ? _normalizeDecoderSettings(
             newDecoderId,
@@ -99,7 +158,7 @@ class Favorite {
       id: id,
       frequencyHz: frequencyHz,
       name: name ?? this.name,
-      mode: mode ?? this.mode,
+      mode: newMode,
       category: category ?? this.category,
       enabled: enabled ?? this.enabled,
       builtIn: builtIn,
@@ -272,12 +331,21 @@ class FavoritesRepository extends ChangeNotifier {
               ? rawSettings.map((k, v) => MapEntry(k.toString(), v as Object?))
               : null,
         );
+        // A recognized explicit voice/demod-mode decoder id always pins
+        // the receive mode it encodes (decoderIdForMode) — it overrides a
+        // stored `mode` that happens to disagree. Legacy data (no
+        // decoderId at all, or the obsolete literal `'voice'`, both of
+        // which normalize `decoderId` to null above) has no such pin: the
+        // stored `mode` stays authoritative exactly as before storage v3
+        // ever had decoders. A data-decoder id (sstv/rtl_433/adsb) never
+        // encodes a mode either, so it also leaves the stored mode as-is.
+        final explicitMode = demodModeFromDecoderId(decoderId);
         parsed.add(
           Favorite(
             id: id,
             frequencyHz: hz,
             name: name,
-            mode: mode,
+            mode: explicitMode ?? mode,
             category: category,
             enabled: m['enabled'] == true,
             builtIn: builtIn,
@@ -364,11 +432,14 @@ class FavoritesRepository extends ChangeNotifier {
       throw ArgumentError.value(frequencyHz, 'frequencyHz', 'Already saved');
     }
     final normalizedId = _normalizeDecoderId(decoderId);
+    // A newly saved explicit voice/demod-mode choice always wins over a
+    // caller-passed `mode` that disagrees with it — see decoderIdForMode.
+    final explicitMode = demodModeFromDecoderId(normalizedId);
     final f = Favorite(
       id: 'user-${_nextId++}',
       frequencyHz: frequencyHz,
       name: name.trim(),
-      mode: mode,
+      mode: explicitMode ?? mode,
       category: category,
       decoderId: normalizedId,
       decoderSettings: _normalizeDecoderSettings(normalizedId, decoderSettings),
