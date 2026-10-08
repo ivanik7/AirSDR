@@ -91,9 +91,9 @@ void main() {
       );
       await tester.pump();
       expect(radio.bandwidth, isNot(DemodMode.wfm.params.defaultBandwidth));
-      await tester.tap(find.byKey(const ValueKey('legacyModeSelect')));
+      await tester.tap(find.byKey(const ValueKey('decoderSelector')));
       await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const ValueKey('legacyMode-NFM')));
+      await tester.tap(find.byKey(const ValueKey('decoderSelect-demod:0')));
       await tester.pump();
       expect(radio.mode, DemodMode.nfm);
       expect(radio.bandwidth, DemodMode.nfm.params.defaultBandwidth);
@@ -144,6 +144,8 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('tab-3')));
     await tester.pump();
     expect(find.byKey(const ValueKey('decoderSelector')), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('decoderSelector')));
+    await tester.pumpAndSettle();
     for (final d in decoderCatalog) {
       expect(find.byKey(ValueKey('decoderSelect-${d.id}')), findsOneWidget);
     }
@@ -168,6 +170,8 @@ void main() {
     );
     await tester.tap(find.byKey(const ValueKey('tab-3')));
     await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('decoderSelector')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('decoderSelect-sstv')));
     await tester.pump();
     expect(find.byKey(const ValueKey('decoderPanel-sstv')), findsOneWidget);
@@ -205,6 +209,8 @@ void main() {
       );
       await tester.tap(find.byKey(const ValueKey('tab-3')));
       await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('decoderSelector')));
+      await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('decoderSelect-rtl_433')));
       await tester.pump();
       expect(
@@ -241,6 +247,8 @@ void main() {
       );
       await tester.tap(find.byKey(const ValueKey('tab-3')));
       await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('decoderSelector')));
+      await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('decoderSelect-adsb')));
       await tester.pump();
       expect(find.byKey(const ValueKey('decoderPanel-adsb')), findsOneWidget);
@@ -271,6 +279,8 @@ void main() {
       );
       await tester.tap(find.byKey(const ValueKey('tab-3')));
       await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('decoderSelector')));
+      await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('decoderSelect-sstv')));
       await tester.pump();
       expect(
@@ -284,6 +294,8 @@ void main() {
       expect(backend.selected.last, 'sstv');
       // rtl_433 was never reported available: still gated even after
       // a different decoder became selectable.
+      await tester.tap(find.byKey(const ValueKey('decoderSelector')));
+      await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('decoderSelect-rtl_433')));
       await tester.pump();
       expect(backend.selected.last, isNull);
@@ -357,6 +369,10 @@ void main() {
         );
         await tester.tap(find.byKey(const ValueKey('tab-3')));
         await tester.pump();
+        await tester.tap(find.byKey(const ValueKey('decoderSelector')));
+        await tester.pumpAndSettle();
+        await tester.ensureVisible(find.byKey(ValueKey('decoderSelect-$id')));
+        await tester.pumpAndSettle();
         await tester.tap(find.byKey(ValueKey('decoderSelect-$id')));
         await tester.pump();
         expect(find.byKey(ValueKey('decoderPanel-$id')), findsOneWidget);

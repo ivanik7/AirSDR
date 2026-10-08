@@ -58,8 +58,10 @@ void main() {
 
       await tester.tap(find.byKey(const ValueKey('tab-3')));
       await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('decoderSelector')));
+      await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('decoderSelect-rtl_433')));
-      await tester.pump();
+      await tester.pumpAndSettle();
       expect(
         backend.selected.last,
         isNull,
@@ -156,8 +158,10 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey('tab-3')));
     await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('decoderSelector')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('decoderSelect-sstv')));
-    await tester.pump();
+    await tester.pumpAndSettle();
 
     await tester.tap(find.byKey(const ValueKey('tab-0')));
     await tester.pump();

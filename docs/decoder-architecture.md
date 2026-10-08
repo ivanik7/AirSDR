@@ -6,7 +6,35 @@ null (`sstv`, `rtl_433`, `adsb`), so all show as unavailable. This document
 describes the Dart-side pieces added for decoder preview/settings/favorites
 support, how to extend the catalog, and what is deliberately out of scope.
 
-## Why a separate preview layer
+## One decoder list (UI contract)
+
+The Decoder tab and the preset editor show ONE flat list,
+`decoderCatalog`: NFM, WFM, AM, USB, LSB, DSB, CW, RAW, then SSTV,
+rtl_433, ADS-B and any later data decoder. There is no generic "Audio"
+entry and no second mode picker.
+
+- Demodulator rows have stable IDs `demod:<DemodMode.id>` (`demod:0` NFM,
+  `demod:1` WFM, `demod:2` AM, `demod:3` DSB, `demod:4` USB, `demod:5` CW,
+  `demod:6` LSB, `demod:7` RAW), built by `decoderIdForMode`. They are
+  adapters over the existing native v3 demodulator (`sdr_v3_set_mode`):
+  `DecoderDescriptor.demodMode` is set, `voice` is true, and selecting one
+  calls `CenteredReceiver.changeMode` (one retune, recentered VFO). They are
+  always available because v3 implements them; they never go through the
+  optional decoder extension and have no decoder factory.
+- Data rows (`sstv`, `rtl_433`, `adsb`) are optional native decoder
+  extension engines. Their availability comes only from
+  `DecoderBackend.availableIds`; today all are unavailable previews.
+- `DecoderSession.selectedId` follows external mode changes (Receive tab,
+  bands, channels) while a demodulator row is selected; while a data row is
+  selected it stays put, so another surface cannot silently replace the
+  preview.
+
+The native decoder C ABI (`sdrcore_decoder_v1.h`) is unchanged: it lists
+only data engines and never claimed demodulators were unavailable, so
+there is no need to duplicate v3 modes there. The "voice vs data" split is
+an internal implementation detail of the descriptor.
+
+## Why a separate preview layer for data decoders
 
 The receiver (`RadioController`) is the single source of truth for the one
 real VFO/audio stream (see `AGENTS.md` UI invariants). Decoders are an
@@ -19,11 +47,11 @@ radio is actually doing".
 Three invariants are enforced in `lib/ui/decoders/decoder_session.dart` and
 covered by `test/ui/decoder_session_test.dart`:
 
-1. **Preview never touches the radio.** Selecting any decoder, including
-   switching between decoders repeatedly, never changes
-   `RadioController.tunedFrequency`/`mode`/`muted`/`running`. The voice/audio
-   receive path (`DecoderSession.voiceId`) keeps running in the normal
-   receive path regardless of what is previewed.
+1. **Data preview never touches the radio.** Selecting any data decoder,
+   including switching between them repeatedly, never changes
+   `RadioController.tunedFrequency`/`mode`/`muted`/`running`. The current
+   demodulator keeps receiving regardless of what is previewed. (Choosing a
+   demodulator row is a real mode change, by design.)
 2. **Backend `availableIds` is the only truth for availability.** An id is
    only ever handed to `DecoderBackend.select` if the backend currently
    reports it in `availableIds`, the radio is running in a compatible demod
@@ -45,10 +73,11 @@ covered by `test/ui/decoder_session_test.dart`:
   `ChangeNotifier` constructed once per shell (`LegacyAppShell`), wrapping a
   `RadioController`. Holds the current preview id and per-decoder settings
   (defaulted/validated against `DecoderSetting.allowed`).
-- `lib/ui/decoders/decoder_panels.dart` — `DecoderSelector` (segmented
-  catalog picker) and the two per-id UI building blocks:
-  `VoiceDecoderPanel` (the pre-existing mode/bandwidth/squelch/stereo
-  receiver controls, unchanged) and `DecoderPlaceholderPanel` (selected-only
+- `lib/ui/decoders/decoder_panels.dart` — `DecoderSelector` (one scrollable
+  dropdown over `decoderCatalog`, data rows marked "Недоступен" unless the
+  backend reports them) and the two per-id UI building blocks:
+  `VoiceDecoderPanel` (bandwidth/squelch/demod options such as WFM stereo
+  for the selected demodulator) and `DecoderPlaceholderPanel` (selected-only
   SSTV image area, rtl_433 message log or ADS-B list, with truthful empty
   states; disabled ineffective settings and an exclusive-receiver note).
 - `lib/ui/legacy/decoder_screen.dart` — the Decoder tab: selector + exactly
@@ -86,7 +115,15 @@ round-trips on its *next* load even if it predates decoders:
 Normalization on load, in order — a preset is **never dropped** because of
 anything decoder-related, only its decoder attachment is cleared:
 
-- v1/v2 entries (no `decoderId` key at all) load with `decoderId: null`.
+- v1/v2 entries (no `decoderId` key at all) and the obsolete literal
+  `'voice'` load with `decoderId: null`; the list shows them as the
+  demodulator row of their stored `mode` (`Favorite.decoderChoice`).
+- `decoderId: 'demod:<n>'` is an explicit demodulator choice; the loader
+  and `add`/`edit` force `mode` to match it, so ID and mode cannot
+  contradict. A data decoder ID keeps its own underlying `mode`.
+  Applying a preset retunes to its frequency/mode, then calls
+  `DecoderSession.applyStored(decoderId, settings, mode: mode)`, which
+  selects that row without starting an unavailable or exclusive engine.
 - `decoderId` present but not in `decoderCatalog` (removed/renamed/future
   decoder) → cleared to `null`.
 - `decoderSettingsVersion` present but not equal to
@@ -110,8 +147,10 @@ never alias each other's settings. See
 
 ## Adding a new decoder (recipe)
 
-1. Add a `DecoderDescriptor` to `decoder_contract.dart`'s `decoderCatalog`
-   and a matching native registry descriptor. Give it a stable `id`
+1. Add a data `DecoderDescriptor` after the demodulator rows in
+   `decoder_contract.dart`'s `decoderCatalog` and a matching native
+   registry descriptor (`native/src/decoder/registry.cpp`); it appears in
+   the same single list automatically. Give it a stable `id`
    (never reused/renamed later — storage normalization keys on it), its
    `DecoderInput`/`DecoderResult`, and any `DecoderSetting`s with an
    `allowed` list if the value space should be restricted.
@@ -137,7 +176,11 @@ never alias each other's settings. See
    behaviour), `test/ui/decoder_screen_test.dart` (panel UI, including a
    344dp-width fit/no-overflow case — the Fold cover-screen reference
    width used elsewhere in this app, see `AGENTS.md`), and
-   `test/ui/favorites_decoder_test.dart` (storage round trip/migration).
+   `test/ui/favorites_decoder_test.dart` (storage round trip/migration);
+   `test/ui/unified_decoder_selection_test.dart` covers the one-list rules.
+
+A new demodulator is a v3 `DemodMode` change (C ABI task), not a catalog
+edit: its row is generated from `DemodMode` order in `decoderCatalog`.
 
 ## Known limitations (by design, today)
 

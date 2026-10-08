@@ -80,7 +80,7 @@ class _LegacyAppShellState extends State<LegacyAppShell> {
     scanner = ChannelScanner(controller: channels);
     scanner.addListener(_scannerChanged);
     meter = SignalMeter(widget.controller);
-    decoderSession = DecoderSession(widget.controller);
+    decoderSession = DecoderSession(widget.controller, receiver: receiver);
     final radio = widget.controller;
     final slots = channelSlots;
     final bound = channels;

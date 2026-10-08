@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
-// DecoderSession: preview/settings selection, backend availability gating,
-// and the conservative "never touch the radio" invariants.
+// DecoderSession: real v3 mode choices and conservative data previews.
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sdr_flutter/ui/decoders/decoder_contract.dart';
 import 'package:sdr_flutter/ui/decoders/decoder_session.dart';
@@ -34,11 +33,13 @@ class _BackedRadio extends DemoRadioController {
 }
 
 void main() {
-  test('default session previews voice with no backend wired', () {
+  test('default session selects the current v3 mode with no backend wired', () {
     final radio = DemoRadioController();
     final session = DecoderSession(radio);
-    expect(session.selectedId, DecoderSession.voiceId);
-    expect(session.availableIds, {DecoderSession.voiceId});
+    expect(session.selectedId, decoderIdForMode(radio.mode));
+    expect(session.availableIds, {
+      for (final m in DemodMode.values) decoderIdForMode(m),
+    });
     expect(session.isAvailable('sstv'), isFalse);
     expect(session.isAvailable('rtl_433'), isFalse);
     expect(session.isAvailable('adsb'), isFalse);
@@ -46,12 +47,15 @@ void main() {
   });
 
   test(
-    'availableIds always includes voice and mirrors the real backend only',
+    'availableIds includes all v3 modes and mirrors the data backend only',
     () {
       final backend = _FakeBackend({'sstv'});
       final radio = _BackedRadio(backend);
       final session = DecoderSession(radio);
-      expect(session.availableIds, {DecoderSession.voiceId, 'sstv'});
+      expect(session.availableIds, {
+        for (final m in DemodMode.values) decoderIdForMode(m),
+        'sstv',
+      });
       expect(session.isAvailable('sstv'), isTrue);
       expect(session.isAvailable('rtl_433'), isFalse, reason: 'not reported');
       radio.dispose();
@@ -109,14 +113,14 @@ void main() {
     final radio = _BackedRadio(backend);
     final session = DecoderSession(radio);
     session.selectPreview('rtl_433');
-    session.selectPreview(DecoderSession.voiceId);
-    expect(session.selectedId, DecoderSession.voiceId);
+    session.selectPreview(decoderIdForMode(DemodMode.wfm));
+    expect(session.selectedId, decoderIdForMode(DemodMode.wfm));
     expect(backend.selectCalls.last.$1, isNull);
     expect(backend.selectCalls.last.$2, isEmpty);
     radio.dispose();
   });
 
-  test('previewing a decoder never changes radio tuning/mode or mutes/'
+  test('previewing a data decoder never changes radio tuning/mode or mutes/'
       'starts it', () {
     final radio = DemoRadioController();
     final beforeFreq = radio.tunedFrequency;
@@ -124,7 +128,7 @@ void main() {
     final beforeMuted = radio.muted;
     final beforeRunning = radio.running;
     final session = DecoderSession(radio);
-    for (final id in ['sstv', 'rtl_433', 'adsb', DecoderSession.voiceId]) {
+    for (final id in ['sstv', 'rtl_433', 'adsb']) {
       session.selectPreview(id);
     }
     expect(radio.tunedFrequency, beforeFreq);
@@ -186,7 +190,7 @@ void main() {
     expect(backend.selectCalls.last.$1, isNull, reason: 'no running USB demod');
 
     session.applyStored('no-such-decoder', {'x': 1});
-    expect(session.selectedId, DecoderSession.voiceId);
+    expect(session.selectedId, decoderIdForMode(radio.mode));
     expect(backend.selectCalls.last.$1, isNull);
     expect(backend.selectCalls.last.$2, isEmpty);
     radio.dispose();

@@ -15,26 +15,40 @@
 import 'package:flutter/foundation.dart';
 
 import '../radio_controller.dart';
+import '../legacy/centered_receiver.dart';
 import 'decoder_contract.dart';
 
 class DecoderSession extends ChangeNotifier {
-  DecoderSession(this.radio);
+  DecoderSession(this.radio, {CenteredReceiver? receiver})
+    : _receiver = receiver ?? CenteredReceiver(radio) {
+    radio.addListener(_radioChanged);
+  }
   final RadioController radio;
+  final CenteredReceiver _receiver;
 
-  static const String voiceId = 'voice';
-
-  String _selectedId = voiceId;
+  late String _selectedId = decoderIdForMode(radio.mode);
   final Map<String, Map<String, Object>> _settings = {};
 
-  /// Currently previewed decoder id. Always valid (defaults to [voiceId],
-  /// the plain audio/demod path, which is not a backend decoder).
+  void _radioChanged() {
+    if (decoderById(_selectedId)?.voice != true) return;
+    final next = decoderIdForMode(radio.mode);
+    if (_selectedId == next) return;
+    _selectedId = next;
+    notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    radio.removeListener(_radioChanged);
+    super.dispose();
+  }
+
+  /// The concrete demodulator or data preview currently selected.
   String get selectedId => _selectedId;
 
-  /// Ids the real backend reports as installed right now, plus [voiceId]
-  /// (always available: it is the existing receive path, not a decoder
-  /// engine). Empty backend availability never implies a fake capability.
+  /// v3 modes are available without the optional decoder extension.
   Set<String> get availableIds => <String>{
-    voiceId,
+    for (final mode in DemodMode.values) decoderIdForMode(mode),
     ...(radio.decoderBackend?.availableIds ?? const <String>{}),
   };
 
@@ -77,17 +91,19 @@ class DecoderSession extends ChangeNotifier {
   /// Settings of the currently previewed decoder.
   Map<String, Object> get currentSettings => settingsFor(_selectedId);
 
-  /// Switches the preview. An unknown id is ignored. Only a real, available
-  /// id is ever handed to [DecoderBackend.select] — switching to an
-  /// unavailable id (or back to [voiceId]) only updates local preview state
-  /// and tells the backend (if any) to stop any previous data decoder.
+  /// Voice choices use the existing centered v3 mode path. Data choices
+  /// preview independently of the continuing voice receive path.
   void selectPreview(String id) {
-    if (decoderById(id) == null) return;
+    final descriptor = decoderById(id);
+    if (descriptor == null) return;
     if (id == _selectedId) return;
     _selectedId = id;
+    if (descriptor.demodMode != null) {
+      _receiver.changeMode(descriptor.demodMode!);
+    }
     final backend = radio.decoderBackend;
     if (backend != null) {
-      if (id != voiceId && _canAttach(id)) {
+      if (!descriptor.voice && _canAttach(id)) {
         backend.select(id, _config(id));
       } else {
         backend.select(null, const <String, Object>{});
@@ -111,7 +127,7 @@ class DecoderSession extends ChangeNotifier {
     final backend = radio.decoderBackend;
     if (backend != null &&
         id == _selectedId &&
-        id != voiceId &&
+        descriptor?.voice != true &&
         _canAttach(id)) {
       backend.select(id, _config(id));
     }
@@ -123,8 +139,14 @@ class DecoderSession extends ChangeNotifier {
   /// reflects what was saved with it. Still never starts an unavailable
   /// decoder; an unknown [id] or disallowed setting values fall back
   /// exactly like the favorites-storage normalization.
-  void applyStored(String? id, Map<String, Object> settings) {
-    final resolvedId = (id != null && decoderById(id) != null) ? id : voiceId;
+  void applyStored(
+    String? id,
+    Map<String, Object> settings, {
+    DemodMode? mode,
+  }) {
+    final resolvedId = (id != null && decoderById(id) != null)
+        ? id
+        : decoderIdForMode(mode ?? radio.mode);
     final descriptor = decoderById(resolvedId);
     final normalized = <String, Object>{
       for (final spec in descriptor?.settings ?? const <DecoderSetting>[])
@@ -139,7 +161,7 @@ class DecoderSession extends ChangeNotifier {
     _selectedId = resolvedId;
     final backend = radio.decoderBackend;
     if (backend != null) {
-      if (resolvedId != voiceId && _canAttach(resolvedId)) {
+      if (descriptor?.voice != true && _canAttach(resolvedId)) {
         backend.select(resolvedId, _config(resolvedId));
       } else {
         backend.select(null, const <String, Object>{});

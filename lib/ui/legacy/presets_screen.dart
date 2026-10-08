@@ -21,6 +21,11 @@ String favoriteErrorText(ArgumentError e) => switch (e.name) {
   _ => '${e.message ?? e.invalidValue ?? 'неверные данные'}',
 };
 
+/// The preset editor uses the same flat [decoderCatalog] as the Decoder
+/// tab: a v3 mode choice also sets the preset's saved mode, while a data
+/// decoder choice keeps the underlying mode unchanged.
+List<DecoderDescriptor> _decoderChoices() => decoderCatalog;
+
 class PresetsScreen extends StatefulWidget {
   const PresetsScreen({
     super.key,
@@ -58,11 +63,15 @@ class _PresetsScreenState extends State<PresetsScreen> {
     var name = existing?.name ?? '';
     var mode = existing?.mode ?? widget.controller.mode;
     final session = widget.decoderSession;
-    var decoderId =
-        existing?.decoderId ??
-        (existing == null
-            ? session?.selectedId ?? DecoderSession.voiceId
-            : DecoderSession.voiceId);
+    // One unified decoder choice drives both the preview/data-decoder
+    // selection and (for a voice/demod-mode choice) the saved mode — see
+    // _decoderChoices. An existing preset's choice is always resolvable
+    // ([Favorite.decoderChoice]); a brand-new preset defaults to whatever
+    // is currently previewed on the Decoder tab, or plain voice at the
+    // dialog's starting mode.
+    var decoderChoice = existing != null
+        ? existing.decoderChoice
+        : (session?.selectedId ?? decoderIdForMode(mode));
     final result = await showDialog<bool>(
       context: context,
       builder: (context) => StatefulBuilder(
@@ -83,36 +92,34 @@ class _PresetsScreenState extends State<PresetsScreen> {
                   maxLength: 60,
                   decoration: const InputDecoration(labelText: 'Название'),
                 ),
-                DropdownButton<DemodMode>(
-                  value: mode,
-                  items: [
-                    for (final m in DemodMode.values)
-                      DropdownMenuItem(value: m, child: Text(m.label)),
-                  ],
-                  onChanged: (m) {
-                    if (m != null) update(() => mode = m);
-                  },
-                ),
                 DropdownButton<String>(
                   key: const ValueKey('favoriteDecoder'),
                   isExpanded: true,
-                  value: decoderId,
+                  value: decoderChoice,
                   items: [
-                    for (final decoder in decoderCatalog)
+                    for (final choice in _decoderChoices())
                       DropdownMenuItem(
-                        value: decoder.id,
+                        value: choice.id,
                         child: Text(
-                          decoder.label,
+                          choice.label,
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
                   ],
                   onChanged: (value) {
-                    if (value != null) update(() => decoderId = value);
+                    if (value == null) return;
+                    update(() {
+                      decoderChoice = value;
+                      // Choosing an explicit voice/demod-mode option also
+                      // sets the preset's underlying saved mode; choosing
+                      // a data decoder leaves the current mode untouched.
+                      final asMode = demodModeFromDecoderId(value);
+                      if (asMode != null) mode = asMode;
+                    });
                   },
                 ),
-                if (decoderId != DecoderSession.voiceId &&
-                    !(session?.isAvailable(decoderId) ?? false))
+                if (demodModeFromDecoderId(decoderChoice) == null &&
+                    !(session?.isAvailable(decoderChoice) ?? false))
                   const Text(
                     'Декодер недоступен: настройки сохраняются для будущей версии, но приём не запускается.',
                   ),
@@ -135,11 +142,16 @@ class _PresetsScreenState extends State<PresetsScreen> {
     );
     if (result == true) {
       try {
+        // The unified choice is stored as-is: an explicit voice/demod-mode
+        // pick persists its `demod:` id (so the editor can show exactly
+        // what was chosen next time, via [Favorite.decoderChoice]); a
+        // real data decoder persists its own id. Neither ever needs
+        // settings for the voice case — [decoderCatalog]'s per-mode
+        // identity has none.
+        final storedId = decoderChoice;
+        final isVoiceChoice = demodModeFromDecoderId(storedId) != null;
         if (existing == null) {
           final hz = widget.controller.tunedFrequency.round();
-          final storedId = decoderId == DecoderSession.voiceId
-              ? null
-              : decoderId;
           widget.favorites.add(
             frequencyHz: hz,
             name: name,
@@ -154,7 +166,7 @@ class _PresetsScreenState extends State<PresetsScreen> {
             // Carries over whatever is currently previewed on the Decoder
             // tab, same as the channel "save as preset" menu.
             decoderId: storedId,
-            decoderSettings: storedId == null
+            decoderSettings: isVoiceChoice
                 ? null
                 : session?.settingsFor(storedId),
           );
@@ -164,12 +176,12 @@ class _PresetsScreenState extends State<PresetsScreen> {
             name: name,
             mode: mode,
             category: existing.category,
-            decoderId: decoderId == DecoderSession.voiceId ? null : decoderId,
-            decoderSettings: decoderId == DecoderSession.voiceId
+            decoderId: storedId,
+            decoderSettings: isVoiceChoice
                 ? null
-                : decoderId == existing.decoderId
+                : storedId == existing.decoderId
                 ? existing.decoderSettings
-                : session?.settingsFor(decoderId),
+                : session?.settingsFor(storedId),
           );
         }
         if (mounted) setState(() => message = null);
@@ -216,7 +228,11 @@ class _PresetsScreenState extends State<PresetsScreen> {
       // Restores the preset's own decoder preview (plain voice/audio when
       // it has none) — never starts a backend decoder by itself; see
       // DecoderSession.applyStored.
-      widget.decoderSession?.applyStored(f.decoderId, f.decoderSettings);
+      widget.decoderSession?.applyStored(
+        f.decoderId,
+        f.decoderSettings,
+        mode: f.mode,
+      );
       setState(() => message = null);
       widget.onApplied();
     } on ArgumentError {

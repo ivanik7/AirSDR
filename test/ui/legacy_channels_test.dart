@@ -305,9 +305,9 @@ void main() {
     // The Decoder mode control changes only the active channel.
     await tester.tap(find.byKey(const ValueKey('tab-3')));
     await tester.pump();
-    await tester.tap(find.byKey(const ValueKey('legacyModeSelect')));
+    await tester.tap(find.byKey(const ValueKey('decoderSelector')));
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('legacyMode-NFM')));
+    await tester.tap(find.byKey(const ValueKey('decoderSelect-demod:0')));
     await tester.pump();
     expect(env.channels.channels[0].mode, DemodMode.nfm);
     expect(env.channels.channels[1].mode, DemodMode.am);

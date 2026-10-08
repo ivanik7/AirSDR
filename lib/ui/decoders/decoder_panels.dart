@@ -1,9 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
-// Decoder tab building blocks: the backend/catalog-aware selector plus one
-// panel per decoder. Exactly one panel is visible at a time (see
-// legacy/decoder_screen.dart) — selecting a decoder here only changes what
-// is displayed; see decoder_session.dart for why it never touches the radio.
+// One choice list for native v3 modes and optional data decoder previews.
 import 'package:flutter/material.dart';
 
 import 'decoder_contract.dart';
@@ -19,42 +16,54 @@ const _demodOptionLabels = <String, String>{
   'carrierAgc': 'АРУ несущей',
 };
 
-/// Row of decoder choices (decoder_contract.dart `decoderCatalog`). Every
-/// entry is always selectable for *preview* — including a decoder the real
-/// backend does not report as installed — so its "unavailable" panel can
-/// be inspected; only the panel's own settings controls (and any backend
-/// `select` call) are gated on [DecoderSession.isAvailable].
+/// Scrollable menu keeps every choice accessible on the 344dp cover screen.
 class DecoderSelector extends StatelessWidget {
   const DecoderSelector({super.key, required this.session});
   final DecoderSession session;
 
   @override
-  Widget build(BuildContext context) => SegmentedButton<String>(
+  Widget build(BuildContext context) => PopupMenuButton<String>(
     key: const ValueKey('decoderSelector'),
-    showSelectedIcon: false,
-    expandedInsets: EdgeInsets.zero,
-    style: const ButtonStyle(visualDensity: VisualDensity.compact),
-    segments: [
+    tooltip: 'Декодер',
+    initialValue: session.selectedId,
+    onSelected: session.selectPreview,
+    itemBuilder: (context) => [
       for (final d in decoderCatalog)
-        ButtonSegment(
+        PopupMenuItem<String>(
           value: d.id,
-          label: Text(
-            d.label,
-            key: ValueKey('decoderSelect-${d.id}'),
-            style: plex(size: 11),
+          key: ValueKey('decoderSelect-${d.id}'),
+          child: Row(
+            children: [
+              Expanded(child: Text(d.label, style: plex(size: 14))),
+              if (!session.isAvailable(d.id))
+                Text(
+                  'Недоступен',
+                  style: plex(size: 11, color: LegacyColors.muted),
+                ),
+            ],
           ),
         ),
     ],
-    selected: <String>{session.selectedId},
-    onSelectionChanged: (s) => session.selectPreview(s.first),
+    child: legacyCard(
+      child: SizedBox(
+        height: 44,
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                decoderById(session.selectedId)?.label ?? '',
+                style: plex(size: 16, color: LegacyColors.accent),
+              ),
+            ),
+            const Icon(Icons.arrow_drop_down, color: LegacyColors.accent),
+          ],
+        ),
+      ),
+    ),
   );
 }
 
-/// The plain voice/audio receive path: demodulator mode, bandwidth,
-/// squelch and demod options (e.g. WFM stereo). Identical to the receiver
-/// controls that existed before decoders were added — [DecoderSession]
-/// defaults to this panel and it is never gated on backend availability
-/// (voice is not a decoder engine, it IS the existing receive path).
+/// Existing v3 bandwidth, squelch and demod options for the selected mode.
 class VoiceDecoderPanel extends StatelessWidget {
   const VoiceDecoderPanel({
     super.key,
@@ -74,45 +83,11 @@ class VoiceDecoderPanel extends StatelessWidget {
       key: const ValueKey('decoderPanel-voice'),
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _heading('АУДИО · ДЕМОДУЛЯТОР'),
+        _heading('ДЕМОДУЛЯТОР · ${mode.label}'),
         legacyCard(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Режим приёма', style: plex(size: 14)),
-              const SizedBox(height: 6),
-              PopupMenuButton<DemodMode>(
-                key: const ValueKey('legacyModeSelect'),
-                tooltip: 'Модуляция',
-                initialValue: mode,
-                onSelected: receiver.changeMode,
-                itemBuilder: (context) => [
-                  for (final choice in DemodMode.values)
-                    PopupMenuItem(
-                      key: ValueKey('legacyMode-${choice.label}'),
-                      value: choice,
-                      child: Text(choice.label),
-                    ),
-                ],
-                child: SizedBox(
-                  height: 44,
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          mode.label,
-                          style: plex(size: 16, color: LegacyColors.accent),
-                        ),
-                      ),
-                      const Icon(
-                        Icons.arrow_drop_down,
-                        color: LegacyColors.accent,
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              const Divider(color: LegacyColors.key),
               Row(
                 children: [
                   Expanded(child: Text('Полоса канала', style: plex(size: 14))),
