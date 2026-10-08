@@ -3,12 +3,33 @@ project(sdrcore VERSION 1.0.0 LANGUAGES C CXX)
 
 add_subdirectory(third_party)
 
+# rtl_433 upstream sources are embedded, not run as a subprocess. Preserve
+# upstream source verbatim; link only the engine/API and protocol decoders.
+set(RTL433_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/third_party/rtl_433)
+file(GLOB RTL433_DEVICE_SOURCES CONFIGURE_DEPENDS ${RTL433_ROOT}/src/devices/*.c)
+set(RTL433_ENGINE_SOURCES
+    abuf am_analyze baseband bit_util bitbuffer compat_time data data_tag
+    decoder_util fileformat jsmn list logger optparse pulse_analyzer pulse_data
+    pulse_detect pulse_detect_fsk pulse_slicer r_api r_flow r_util raw_output
+    samp_grab sigmf microtar string_expand)
+set(RTL433_SOURCES ${RTL433_DEVICE_SOURCES})
+foreach(name IN LISTS RTL433_ENGINE_SOURCES)
+    list(APPEND RTL433_SOURCES ${RTL433_ROOT}/src/${name}.c)
+endforeach()
+add_library(sdrcore_rtl433 STATIC ${RTL433_SOURCES})
+set_target_properties(sdrcore_rtl433 PROPERTIES POSITION_INDEPENDENT_CODE ON
+    C_STANDARD 99 C_EXTENSIONS ON)
+target_compile_definitions(sdrcore_rtl433 PRIVATE _GNU_SOURCE)
+target_compile_options(sdrcore_rtl433 PRIVATE -O2 -ffunction-sections -fdata-sections -w)
+target_include_directories(sdrcore_rtl433 PUBLIC ${RTL433_ROOT}/include)
+
 add_library(sdrcore SHARED
     src/sdrcore.cpp
     src/dsp/receiver.cpp
     src/usb_rtlsdr_adapter.cpp
     src/usb_hackrf_adapter.cpp
     src/decoder/registry.cpp
+    src/decoder/rtl433.cpp
     src/decoder/decoder_abi.cpp
 )
 if(ANDROID)
@@ -20,7 +41,13 @@ else()
 endif()
 target_compile_features(sdrcore PRIVATE cxx_std_17)
 find_package(Threads REQUIRED)
-target_link_libraries(sdrcore PRIVATE Threads::Threads sdrcore_rtlsdr sdrcore_hackrf)
+target_link_libraries(sdrcore PRIVATE Threads::Threads sdrcore_rtlsdr sdrcore_hackrf sdrcore_rtl433 m)
+if(UNIX AND NOT APPLE)
+    # Do not export upstream's API from libsdrcore: otherwise exported but
+    # unused CLI/network sections keep unresolved CLI dependencies alive.
+    target_link_options(sdrcore PRIVATE -Wl,--exclude-libs,libsdrcore_rtl433.a
+        -Wl,--gc-sections)
+endif()
 set_target_properties(sdrcore PROPERTIES
     CXX_EXTENSIONS OFF
     CXX_VISIBILITY_PRESET hidden
@@ -49,6 +76,24 @@ if(NOT ANDROID AND PROJECT_IS_TOP_LEVEL)
     target_include_directories(sdrcore_v3_contract_compile PRIVATE include)
     add_library(sdrcore_decoder_contract_compile OBJECT tests/decoder_contract_compile.c)
     target_include_directories(sdrcore_decoder_contract_compile PRIVATE include)
+    add_executable(sdrcore_rtl433_engine_test tests/rtl433_engine_test.cpp)
+    target_link_libraries(sdrcore_rtl433_engine_test PRIVATE sdrcore_rtl433)
+    target_sources(sdrcore_rtl433_engine_test PRIVATE
+        src/decoder/rtl433.cpp src/decoder/registry.cpp)
+    target_include_directories(sdrcore_rtl433_engine_test PRIVATE include)
+    target_compile_features(sdrcore_rtl433_engine_test PRIVATE cxx_std_17)
+    target_compile_options(sdrcore_rtl433_engine_test PRIVATE -UNDEBUG)
+    target_link_options(sdrcore_rtl433_engine_test PRIVATE -Wl,--gc-sections)
+    target_link_libraries(sdrcore_rtl433_engine_test PRIVATE m)
+    add_test(NAME sdrcore_rtl433_engine COMMAND sdrcore_rtl433_engine_test)
+    add_executable(sdrcore_rtl433_tap_oracle
+        tests/rtl433_tap_oracle.cpp src/dsp/receiver.cpp
+        src/decoder/rtl433.cpp src/decoder/registry.cpp)
+    target_include_directories(sdrcore_rtl433_tap_oracle PRIVATE include)
+    target_compile_features(sdrcore_rtl433_tap_oracle PRIVATE cxx_std_17)
+    target_compile_options(sdrcore_rtl433_tap_oracle PRIVATE -O2)
+    target_link_libraries(sdrcore_rtl433_tap_oracle PRIVATE sdrcore_rtl433 m)
+    target_link_options(sdrcore_rtl433_tap_oracle PRIVATE -Wl,--gc-sections)
     add_executable(sdrcore_abi_test tests/abi_test.c)
     target_link_libraries(sdrcore_abi_test PRIVATE sdrcore)
     add_test(NAME sdrcore_abi COMMAND sdrcore_abi_test)
@@ -69,6 +114,7 @@ if(NOT ANDROID AND PROJECT_IS_TOP_LEVEL)
     add_test(NAME sdrcore_checksum_oracle COMMAND sdrcore_checksum_oracle_test)
     add_executable(sdrcore_ring_boundary_test
         tests/ring_boundary_test.cpp
+        tests/decoder_registry_stub.cpp
         src/dsp/receiver.cpp
         src/usb_rtlsdr_adapter.cpp
         src/usb_hackrf_adapter.cpp)
@@ -88,6 +134,7 @@ if(NOT ANDROID AND PROJECT_IS_TOP_LEVEL)
     add_test(NAME sdrcore_host_usb COMMAND sdrcore_host_usb_test)
     add_executable(sdrcore_rtl_gain_list_test
         tests/rtl_gain_list_test.cpp
+        tests/decoder_registry_stub.cpp
         src/dsp/receiver.cpp
         src/usb_rtlsdr_adapter.cpp
         src/usb_hackrf_adapter.cpp)
@@ -97,6 +144,7 @@ if(NOT ANDROID AND PROJECT_IS_TOP_LEVEL)
     add_test(NAME sdrcore_rtl_gain_list COMMAND sdrcore_rtl_gain_list_test)
     add_executable(sdrcore_live_retune_test
         tests/live_retune_test.cpp
+        tests/decoder_registry_stub.cpp
         src/dsp/receiver.cpp
         src/usb_rtlsdr_adapter.cpp
         src/usb_hackrf_adapter.cpp)
@@ -141,4 +189,16 @@ if(NOT ANDROID AND PROJECT_IS_TOP_LEVEL)
     target_compile_features(sdrcore_retune_audio_continuity_test PRIVATE cxx_std_17)
     target_compile_options(sdrcore_retune_audio_continuity_test PRIVATE -O2)
     add_test(NAME sdrcore_retune_audio_continuity COMMAND sdrcore_retune_audio_continuity_test)
+    add_executable(sdrcore_baseband_tap_test tests/baseband_tap_test.cpp src/dsp/receiver.cpp)
+    target_include_directories(sdrcore_baseband_tap_test PRIVATE include)
+    target_compile_features(sdrcore_baseband_tap_test PRIVATE cxx_std_17)
+    add_test(NAME sdrcore_baseband_tap COMMAND sdrcore_baseband_tap_test)
+    add_executable(sdrcore_baseband_tap_abi_test
+        tests/baseband_tap_abi_test.cpp src/dsp/receiver.cpp
+        src/usb_rtlsdr_adapter.cpp src/usb_hackrf_adapter.cpp)
+    target_include_directories(sdrcore_baseband_tap_abi_test PRIVATE include)
+    target_compile_features(sdrcore_baseband_tap_abi_test PRIVATE cxx_std_17)
+    target_link_libraries(sdrcore_baseband_tap_abi_test PRIVATE
+        sdrcore_rtlsdr sdrcore_hackrf sdrcore_audio Threads::Threads)
+    add_test(NAME sdrcore_baseband_tap_abi COMMAND sdrcore_baseband_tap_abi_test)
 endif()

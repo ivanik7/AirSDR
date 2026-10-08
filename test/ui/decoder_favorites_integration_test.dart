@@ -87,7 +87,8 @@ void main() {
         reason:
             'the preview previewed when the preset was created carries over',
       );
-      expect(saved.decoderSettings['frequency_hz'], 433920000);
+      expect(saved.decoderSettings, isEmpty);
+      expect(saved.frequencyHz, radio.tunedFrequency);
 
       await tester.pumpWidget(const SizedBox());
       radio.dispose();
@@ -127,7 +128,7 @@ void main() {
     await tester.pump();
     expect(find.byKey(const ValueKey('decoderPanel-rtl_433')), findsOneWidget);
     expect(
-      find.byKey(const ValueKey('decoderUnavailable-rtl_433')),
+      find.text('Недоступен в текущей нативной сборке'),
       findsOneWidget,
       reason: 'unavailable in this backend: preview only, never started',
     );
@@ -235,7 +236,7 @@ void main() {
       'rtl_433',
       reason: 'edit dialog does not touch it',
     );
-    expect(renamed.decoderSettings['frequency_hz'], 433920000);
+    expect(renamed.decoderSettings, isEmpty);
 
     await tester.pumpWidget(const SizedBox());
     radio.dispose();
@@ -294,16 +295,16 @@ void main() {
       name: 'A',
       mode: DemodMode.am,
       category: 'UHF',
-      decoderId: 'rtl_433',
-      decoderSettings: const {'frequency_hz': 433920000},
+      decoderId: 'sstv',
+      decoderSettings: const {'mode': 'martin_m1'},
     );
     repo.add(
       frequencyHz: 868000000,
       name: 'B',
       mode: DemodMode.am,
       category: 'UHF',
-      decoderId: 'rtl_433',
-      decoderSettings: const {'frequency_hz': 868000000},
+      decoderId: 'sstv',
+      decoderSettings: const {'mode': 'scottie_s1'},
     );
     await repo.flush();
 
@@ -311,7 +312,9 @@ void main() {
     await reopened.load();
     final a = reopened.entries.firstWhere((e) => e.name == 'A');
     final b = reopened.entries.firstWhere((e) => e.name == 'B');
-    expect(a.decoderSettings['frequency_hz'], 433920000);
-    expect(b.decoderSettings['frequency_hz'], 868000000);
+    expect(a.decoderSettings, {'mode': 'martin_m1'});
+    expect(b.decoderSettings, {'mode': 'scottie_s1'});
+    expect(a.frequencyHz, 433920000);
+    expect(b.frequencyHz, 868000000);
   });
 }

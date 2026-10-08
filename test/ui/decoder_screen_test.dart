@@ -1,4 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
+import 'dart:convert';
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -31,6 +34,7 @@ class _FakeBackend implements DecoderBackend {
   _FakeBackend(this._available);
   final Set<String> _available;
   final List<String?> selected = [];
+  final List<DecoderEvent> events = [];
   @override
   Set<String> get availableIds => _available;
   @override
@@ -40,7 +44,12 @@ class _FakeBackend implements DecoderBackend {
   }
 
   @override
-  DecoderEvent? poll(int afterSequence) => null;
+  DecoderEvent? poll(int afterSequence) {
+    for (final event in events) {
+      if (event.sequence > afterSequence) return event;
+    }
+    return null;
+  }
 }
 
 class _BackedRadio extends DemoRadioController {
@@ -200,8 +209,7 @@ void main() {
   });
 
   testWidgets(
-    'Unavailable rtl_433 panel is an exclusive-receiver decoder with a '
-    'disabled frequency choice',
+    'Unavailable rtl_433 panel shows an honest empty log and VFO tuning',
     (tester) async {
       final radio = DemoRadioController();
       await tester.pumpWidget(
@@ -222,15 +230,12 @@ void main() {
         findsOneWidget,
       );
       expect(find.byKey(const ValueKey('decoderResult-sstv')), findsNothing);
+      expect(find.text('Недоступен в текущей нативной сборке'), findsOneWidget);
       expect(
-        find.byKey(const ValueKey('decoderUnavailable-rtl_433')),
-        findsOneWidget,
-      );
-      final freqDropdown = tester.widget<DropdownButton<Object>>(
         find.byKey(const ValueKey('decoderSetting-rtl_433-frequency_hz')),
+        findsNothing,
       );
-      expect(freqDropdown.onChanged, isNull);
-      expect(find.textContaining('единственный приёмник'), findsOneWidget);
+      expect(find.textContaining('VFO'), findsOneWidget);
       expect(radio.running, isFalse, reason: 'selecting never starts anything');
       await tester.pumpWidget(const SizedBox());
       radio.dispose();
@@ -304,6 +309,51 @@ void main() {
       radio.dispose();
     },
   );
+
+  testWidgets('rtl_433 shows real JSON, drops and clear at 344dp', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(344, 690) * 2.625;
+    tester.view.devicePixelRatio = 2.625;
+    addTearDown(tester.view.reset);
+    final backend = _FakeBackend({'rtl_433'});
+    final radio = _BackedRadio(backend);
+    await radio.start();
+    await tester.pumpWidget(
+      MaterialApp(home: LegacyAppShell(controller: radio)),
+    );
+    await tester.tap(find.byKey(const ValueKey('tab-3')));
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('decoderSelector')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('decoderSelect-rtl_433')));
+    await tester.pump();
+    expect(backend.selected.last, 'rtl_433');
+    backend.events.add(
+      DecoderEvent(
+        1,
+        1,
+        DecoderResult.message,
+        Uint8List.fromList(
+          utf8.encode('{"model":"Weather","id":17,"temperature_C":21.5}'),
+        ),
+        droppedEvents: 2,
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 120));
+    expect(find.text('Weather · ID 17 · temperature_C: 21.5'), findsOneWidget);
+    expect(find.textContaining('Потеряно событий: 2'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('rtl433Message-1')));
+    await tester.pump();
+    expect(find.byKey(const ValueKey('rtl433Json-1')), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await tester.tap(find.byKey(const ValueKey('rtl433Clear')));
+    await tester.pump();
+    expect(find.text('Сообщений пока нет'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+    await radio.stop();
+    radio.dispose();
+  });
 
   testWidgets('RAW channel bandwidth is locked and squelch unavailable', (
     tester,

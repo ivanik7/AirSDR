@@ -1,66 +1,97 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-//
-// Shell-scoped preview/session state for the optional decoder backends
-// (decoder_contract.dart). This class is UI-only and deliberately
-// conservative:
-//   * previewing a decoder NEVER changes the radio's frequency/mode, mutes
-//     or starts audio — the voice path (normal demodulation + audio) keeps
-//     running exactly as before regardless of what is previewed here;
-//   * [RadioController.decoderBackend] is the only source of truth for real
-//     availability ([availableIds]); an id the backend does not report is
-//     never sent to [DecoderBackend.select], so a missing/placeholder
-//     backend can never be "started";
-//   * no event polling happens here — this session never synthesizes a fake
-//     [DecoderEvent]; reading real decode results is future backend work.
+// One shell-scoped selection over the single native receiver. Only real
+// backend events enter the bounded UI log; no IQ or PCM enters Dart.
+import 'dart:async';
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 
 import '../radio_controller.dart';
 import '../legacy/centered_receiver.dart';
 import 'decoder_contract.dart';
 
+class DecoderMessage {
+  const DecoderMessage(
+    this.sequence,
+    this.streamGeneration,
+    this.json, {
+    required this.receivedAt,
+  });
+  final int sequence, streamGeneration;
+  final Map<String, Object?> json;
+  final DateTime receivedAt;
+
+  String get summary {
+    final model = json['model'] ?? json['type'] ?? 'rtl_433';
+    final id = json['id'];
+    final channel = json['channel'];
+    final measurements = <String>[
+      for (final entry in json.entries)
+        if (entry.value != null &&
+            (entry.key.startsWith('temperature') ||
+                entry.key.startsWith('humidity') ||
+                entry.key.startsWith('pressure') ||
+                entry.key.startsWith('wind') ||
+                entry.key.startsWith('rain') ||
+                entry.key == 'battery_ok' ||
+                entry.key == 'battery'))
+          '${entry.key}: ${entry.value}',
+    ];
+    final identity = [
+      model,
+      if (id != null) 'ID $id',
+      if (channel != null) 'CH $channel',
+    ].join(' · ');
+    return [identity, ...measurements].join(' · ');
+  }
+
+  String get formattedJson => const JsonEncoder.withIndent('  ').convert(json);
+}
+
 class DecoderSession extends ChangeNotifier {
   DecoderSession(this.radio, {CenteredReceiver? receiver})
     : _receiver = receiver ?? CenteredReceiver(radio) {
+    _wasRunning = radio.running;
+    _lastTunedFrequency = radio.tunedFrequency;
+    _lastSampleRate = radio.sampleRate.round();
     radio.addListener(_radioChanged);
   }
   final RadioController radio;
   final CenteredReceiver _receiver;
-
   late String _selectedId = decoderIdForMode(radio.mode);
   final Map<String, Map<String, Object>> _settings = {};
+  final List<DecoderMessage> _messages = [];
+  Timer? _pollTimer;
+  bool _attached = false;
+  bool _wasRunning = false;
+  late double _lastTunedFrequency;
+  late int _lastSampleRate;
+  int _afterSequence = 0;
+  int? _streamGeneration;
+  int _droppedEvents = 0;
+  String? _failure;
 
-  void _radioChanged() {
-    if (decoderById(_selectedId)?.voice != true) return;
-    final next = decoderIdForMode(radio.mode);
-    if (_selectedId == next) return;
-    _selectedId = next;
-    notifyListeners();
-  }
-
-  @override
-  void dispose() {
-    radio.removeListener(_radioChanged);
-    super.dispose();
-  }
-
-  /// The concrete demodulator or data preview currently selected.
   String get selectedId => _selectedId;
+  bool get active => _attached && radio.running;
+  String? get failureReason => _failure;
+  int get droppedEvents => _droppedEvents;
+  List<DecoderMessage> get messages => List.unmodifiable(_messages);
+  int get inputRateHz => radio.sampleRate.round();
+  int get decoderRateHz {
+    final rate = inputRateHz;
+    if (rate < 200000) return 0;
+    final factor = (rate + 125000) ~/ 250000;
+    final output = rate ~/ factor;
+    return output >= 200000 && output <= 300000 ? output : 0;
+  }
 
-  /// v3 modes are available without the optional decoder extension.
   Set<String> get availableIds => <String>{
     for (final mode in DemodMode.values) decoderIdForMode(mode),
     ...(radio.decoderBackend?.availableIds ?? const <String>{}),
   };
-
   bool isAvailable(String id) => availableIds.contains(id);
-
-  /// A real backend with a compatible live audio input can accept settings.
-  /// Installed full-band engines remain preview-only until explicit handoff.
   bool canConfigure(String id) => _canAttach(id);
 
-  // Preview is never permission to displace the sole listening receiver.
-  // Audio decoders may attach only to the matching already-running demod.
-  // Exclusive decoders need an explicit receiver handoff (not implemented).
   bool _canAttach(String id) {
     final descriptor = decoderById(id);
     return descriptor != null &&
@@ -71,13 +102,151 @@ class DecoderSession extends ChangeNotifier {
         isAvailable(id);
   }
 
+  void _radioChanged() {
+    final running = radio.running;
+    final frequency = radio.tunedFrequency;
+    final rate = radio.sampleRate.round();
+    if (frequency != _lastTunedFrequency || rate != _lastSampleRate) {
+      _lastTunedFrequency = frequency;
+      _lastSampleRate = rate;
+      if (decoderById(_selectedId)?.voice != true) {
+        _resetEvents();
+        if (rate != 0 && decoderRateHz == 0 && _selectedId == 'rtl_433') {
+          _attached = false;
+          _stopPolling();
+          _failure =
+              'Недостаточная частота выборки IQ: выберите не менее 200 кГц';
+          radio.decoderBackend?.select(null, const <String, Object>{});
+        } else if (running && !_attached) {
+          _attachSelected();
+        }
+      }
+    }
+    if (!running && _wasRunning) {
+      _stopPolling();
+      _attached = false;
+      _resetEvents();
+    }
+    if (running && !_wasRunning && decoderById(_selectedId)?.voice != true) {
+      _attachSelected();
+    }
+    _wasRunning = running;
+    if (decoderById(_selectedId)?.voice == true) {
+      final next = decoderIdForMode(radio.mode);
+      if (_selectedId != next) _selectedId = next;
+    }
+    notifyListeners();
+  }
+
+  void _stopPolling() {
+    _pollTimer?.cancel();
+    _pollTimer = null;
+  }
+
+  void _resetEvents() {
+    _afterSequence = 0;
+    _streamGeneration = null;
+    _droppedEvents = 0;
+    _messages.clear();
+  }
+
+  void _attachSelected() {
+    _stopPolling();
+    _attached = false;
+    _failure = null;
+    final id = _selectedId;
+    final backend = radio.decoderBackend;
+    if (decoderById(id)?.voice == true) {
+      backend?.select(null, const <String, Object>{});
+      return;
+    }
+    if (!_canAttach(id) || backend == null) {
+      if (isAvailable(id) && radio.running) {
+        _failure = 'Несовместимый режим приёма';
+      }
+      backend?.select(null, const <String, Object>{});
+      return;
+    }
+    if (id == 'rtl_433' && decoderRateHz == 0) {
+      _failure = 'Недостаточная частота выборки IQ: выберите не менее 200 кГц';
+      backend.select(null, const <String, Object>{});
+      return;
+    }
+    final ok = backend.select(id, _config(id));
+    if (!ok) {
+      backend.select(null, const <String, Object>{});
+      _failure = 'Нативный декодер отклонил выбор';
+      return;
+    }
+    _attached = true;
+    _resetEvents();
+    if (id == 'rtl_433') {
+      _pollTimer = Timer.periodic(
+        const Duration(milliseconds: 100),
+        (_) => _drainEvents(),
+      );
+    }
+  }
+
+  void _drainEvents() {
+    if (!active || _selectedId != 'rtl_433') return;
+    final backend = radio.decoderBackend;
+    if (backend == null) return;
+    var changed = false;
+    // Bounded per tick: avoids holding the UI thread if a producer outruns it.
+    for (var i = 0; i < 1024; i++) {
+      final event = backend.poll(_afterSequence);
+      if (event == null || event.sequence <= _afterSequence) break;
+      _afterSequence = event.sequence;
+      if (_droppedEvents != event.droppedEvents) changed = true;
+      _droppedEvents = event.droppedEvents;
+      if (_streamGeneration != null &&
+          event.streamGeneration != _streamGeneration) {
+        _messages.clear();
+        changed = true;
+      }
+      _streamGeneration = event.streamGeneration;
+      if (event.kind != DecoderResult.message || event.payload.length > 65536) {
+        continue;
+      }
+      try {
+        final data = jsonDecode(utf8.decode(event.payload));
+        if (data is! Map<String, dynamic>) continue;
+        _messages.insert(
+          0,
+          DecoderMessage(
+            event.sequence,
+            event.streamGeneration,
+            data,
+            receivedAt: DateTime.now(),
+          ),
+        );
+        if (_messages.length > 500) _messages.removeLast();
+        changed = true;
+      } on FormatException {
+        // A malformed native payload is not a message.
+      }
+    }
+    if (changed) notifyListeners();
+  }
+
+  void clearMessages() {
+    _messages.clear();
+    notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _stopPolling();
+    radio.removeListener(_radioChanged);
+    super.dispose();
+  }
+
   Map<String, Object> _config(String id) => {
     'version': 1,
     'settings': settingsFor(id),
   };
 
-  /// Fully resolved (defaulted) settings of decoder [id]; empty for an
-  /// unknown id.
   Map<String, Object> settingsFor(String id) {
     final descriptor = decoderById(id);
     if (descriptor == null) return const <String, Object>{};
@@ -88,57 +257,34 @@ class DecoderSession extends ChangeNotifier {
     };
   }
 
-  /// Settings of the currently previewed decoder.
   Map<String, Object> get currentSettings => settingsFor(_selectedId);
 
-  /// Voice choices use the existing centered v3 mode path. Data choices
-  /// preview independently of the continuing voice receive path.
   void selectPreview(String id) {
     final descriptor = decoderById(id);
-    if (descriptor == null) return;
-    if (id == _selectedId) return;
+    if (descriptor == null || id == _selectedId) return;
     _selectedId = id;
+    _resetEvents();
     if (descriptor.demodMode != null) {
       _receiver.changeMode(descriptor.demodMode!);
     }
-    final backend = radio.decoderBackend;
-    if (backend != null) {
-      if (!descriptor.voice && _canAttach(id)) {
-        backend.select(id, _config(id));
-      } else {
-        backend.select(null, const <String, Object>{});
-      }
-    }
+    _attachSelected();
     notifyListeners();
   }
 
-  /// Updates one setting of [id]'s preview; out-of-range values (per
-  /// [DecoderSetting.allowed]) and unknown keys are ignored rather than
-  /// stored invalid. Re-selects the backend only if [id] is both the
-  /// current preview and actually available (never "starts" an
-  /// unavailable decoder just because a setting changed).
   void setSetting(String id, String key, Object value) {
     final descriptor = decoderById(id);
     final spec = descriptor?.settings.where((s) => s.key == key).firstOrNull;
-    if (spec == null) return;
-    if (spec.allowed.isNotEmpty && !spec.allowed.contains(value)) return;
-    final map = _settings.putIfAbsent(id, () => <String, Object>{});
-    map[key] = value;
-    final backend = radio.decoderBackend;
-    if (backend != null &&
-        id == _selectedId &&
-        descriptor?.voice != true &&
-        _canAttach(id)) {
-      backend.select(id, _config(id));
+    if (spec == null ||
+        (spec.allowed.isNotEmpty && !spec.allowed.contains(value))) {
+      return;
+    }
+    _settings.putIfAbsent(id, () => <String, Object>{})[key] = value;
+    if (id == _selectedId && descriptor?.voice != true && _canAttach(id)) {
+      _attachSelected();
     }
     notifyListeners();
   }
 
-  /// Adopts a stored selection (e.g. a favorite/channel's saved decoder) as
-  /// the new preview — used when applying a preset so the Decoder tab
-  /// reflects what was saved with it. Still never starts an unavailable
-  /// decoder; an unknown [id] or disallowed setting values fall back
-  /// exactly like the favorites-storage normalization.
   void applyStored(
     String? id,
     Map<String, Object> settings, {
@@ -148,7 +294,7 @@ class DecoderSession extends ChangeNotifier {
         ? id
         : decoderIdForMode(mode ?? radio.mode);
     final descriptor = decoderById(resolvedId);
-    final normalized = <String, Object>{
+    _settings[resolvedId] = <String, Object>{
       for (final spec in descriptor?.settings ?? const <DecoderSetting>[])
         spec.key:
             (settings[spec.key] != null &&
@@ -157,16 +303,9 @@ class DecoderSession extends ChangeNotifier {
             ? settings[spec.key]!
             : spec.defaultValue,
     };
-    _settings[resolvedId] = normalized;
     _selectedId = resolvedId;
-    final backend = radio.decoderBackend;
-    if (backend != null) {
-      if (descriptor?.voice != true && _canAttach(resolvedId)) {
-        backend.select(resolvedId, _config(resolvedId));
-      } else {
-        backend.select(null, const <String, Object>{});
-      }
-    }
+    _resetEvents();
+    _attachSelected();
     notifyListeners();
   }
 }

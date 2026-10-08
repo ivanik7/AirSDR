@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "receiver.h"
+#include "decoder.hpp"
 
 #include <algorithm>
 #include <array>
@@ -139,6 +140,9 @@ class ReceiverImpl final : public Receiver {
          controls.center_frequency_hz != controls_.center_frequency_hz);
     const bool lo_change = !initial &&
         controls.center_frequency_hz != controls_.center_frequency_hz;
+    const bool decoder_tune_change = initial || controls.sample_rate != controls_.sample_rate ||
+        controls.vfo_offset_hz != controls_.vfo_offset_hz ||
+        controls.center_frequency_hz != controls_.center_frequency_hz;
     // A move by more than half the channel puts another signal into it:
     // the squelch and stereo pilot state of the old one no longer apply.
     const double tuned_delta = std::fabs(
@@ -222,6 +226,10 @@ class ReceiverImpl final : public Receiver {
     }
     if (squelch_change && !channel_change) reset_squelch();
     if (display_change) fft_count_ = 0;
+    if (decoder_ && decoder_tune_change) {
+      configure_decoder_branch();
+      decoder_->reset();
+    }
   }
 
   // Preference only; separation additionally requires a locked 19 kHz pilot
@@ -240,7 +248,20 @@ class ReceiverImpl final : public Receiver {
     reacquire_pilot();
   }
 
+  uint32_t set_decoder(sdrcore::decoder::Decoder* decoder) override {
+    if (decoder_ == decoder) return decoder_rate_hz();
+    decoder_ = decoder;
+    configure_decoder_branch();
+    if (decoder_) decoder_->reset();
+    return decoder_rate_hz();
+  }
+
+  uint32_t decoder_rate_hz() const override { return decoder_ ? decoder_rate_ : 0; }
+
   void reset() override {
+    decoder_decimator_.reset();
+    decoder_oscillator_ = {1, 0};
+    if (decoder_) decoder_->reset();
     first_.reset();
     second_.reset();
     oscillator_ = {1, 0};
@@ -253,6 +274,9 @@ class ReceiverImpl final : public Receiver {
   }
 
   void retune() override {
+    decoder_decimator_.reset();
+    decoder_oscillator_ = {1, 0};
+    if (decoder_) decoder_->reset();
     fft_count_ = 0;
     fft_since_row_ = 0;
     // Same station under a new LO (drag recenter): nothing else changes.
@@ -274,6 +298,7 @@ class ReceiverImpl final : public Receiver {
     // One allocation at most per call, never in the per-sample loop.
     const size_t estimate = static_cast<size_t>(std::ceil(pairs * 48000.0 / controls_.sample_rate)) + 4;
     result.audio.reserve(2 * estimate);
+    if (decoder_ && decoder_rate_) process_decoder(cu8, pairs);
     const size_t row_period = std::max<size_t>(fft_n_, (controls_.sample_rate + 29u) / 30u);
     for (size_t i = 0; i < pairs; ++i) {
       const Complex iq{(static_cast<float>(cu8[2 * i]) - 127.5f) / 127.5f,
@@ -310,6 +335,41 @@ class ReceiverImpl final : public Receiver {
   }
 
  private:
+  void process_decoder(const uint8_t* cu8, size_t pairs) {
+    decoder_samples_.clear();
+    decoder_samples_.reserve(2 * (pairs * static_cast<size_t>(decoder_rate_) /
+        controls_.sample_rate + 2));
+    for (size_t i = 0; i < pairs; ++i) {
+      const Complex iq{(static_cast<float>(cu8[2*i]) - 127.5f) / 127.5f,
+                       (static_cast<float>(cu8[2*i+1]) - 127.5f) / 127.5f};
+      Complex filtered;
+      if (decoder_decimator_.put(iq * decoder_oscillator_, filtered)) {
+        decoder_samples_.push_back(filtered.real());
+        decoder_samples_.push_back(filtered.imag());
+      }
+      decoder_oscillator_ *= decoder_step_;
+      if ((i & 4095u) == 4095u) {
+        const float mag = std::abs(decoder_oscillator_);
+        if (mag > 0) decoder_oscillator_ /= mag;
+      }
+    }
+    if (!decoder_samples_.empty())
+      decoder_->process(decoder_samples_.data(), decoder_samples_.size()/2, decoder_rate_);
+  }
+  void configure_decoder_branch() {
+    decoder_rate_ = 0;
+    decoder_samples_.clear();
+    if (!decoder_ || controls_.sample_rate < 200000) return;
+    // Choose the integer ratio nearest rtl_433's 250 kS/s reference rate.
+    const unsigned factor = std::max(1u, (controls_.sample_rate + 125000u) / 250000u);
+    const uint32_t rate = controls_.sample_rate / factor;
+    if (rate < 200000 || rate > 300000) return;
+    decoder_rate_ = rate;
+    decoder_decimator_.configure(controls_.sample_rate, rate * 0.40, factor);
+    decoder_step_ = std::polar(1.0f, static_cast<float>(
+        -2 * kPi * controls_.vfo_offset_hz / controls_.sample_rate));
+    decoder_oscillator_ = {1, 0};
+  }
   static constexpr size_t kAudioTaps = 32, kPhases = 64;
   // NCO frequency: SSB offsets name the lower/upper passband edge.
   static double channel_offset_hz(const SdrV3Controls& c) {
@@ -703,6 +763,11 @@ class ReceiverImpl final : public Receiver {
   // (first block of the new LO) resets squelch learning and pilot lock.
   bool station_change_pending_ = false;
   ComplexDecimator first_, second_;
+  sdrcore::decoder::Decoder* decoder_ = nullptr;
+  ComplexDecimator decoder_decimator_;
+  uint32_t decoder_rate_ = 0;
+  Complex decoder_oscillator_{1, 0}, decoder_step_{1, 0};
+  std::vector<float> decoder_samples_;
   unsigned first_factor_ = 1, second_factor_ = 1;
   double if_rate_ = 48000, audio_cutoff_ = 15000;
   Complex oscillator_{1, 0}, oscillator_step_{1, 0}, previous_{};

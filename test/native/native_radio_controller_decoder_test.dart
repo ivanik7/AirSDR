@@ -6,6 +6,7 @@
 // fabricates availability of its own accord.
 import 'dart:async';
 import 'dart:ffi';
+import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sdr_flutter/native/native_decoder_api.dart';
@@ -104,6 +105,7 @@ class _StubApi implements NativeRadioApi {
 class _FakeDecoderApi implements NativeDecoderApi {
   final selectCalls = <Pointer<SdrHandle>>[];
   final pollCalls = <Pointer<SdrHandle>>[];
+  NativeDecoderEvent? nextEvent;
   List<NativeDecoderDescriptor> list = const [
     NativeDecoderDescriptor(
       id: 'sstv',
@@ -126,7 +128,7 @@ class _FakeDecoderApi implements NativeDecoderApi {
   @override
   NativeDecoderEvent? poll(Pointer<SdrHandle> handle, int afterSequence) {
     pollCalls.add(handle);
-    return null;
+    return nextEvent;
   }
 }
 
@@ -140,49 +142,43 @@ Future<void> until(bool Function() check) async {
 
 void main() {
   group('NativeRadioController.decoderBackend', () {
-    test(
-      'defaults to no available decoder ids when no NativeDecoderApi is '
-      'supplied (optional extension absent, no fabricated availability)',
-      () {
-        final controller = NativeRadioController(
-          api: _StubApi(),
-          source: _StubSource(),
-          autoStart: false,
-        );
-        try {
-          expect(controller.decoderBackend.availableIds, isEmpty);
-          expect(controller.decoderBackend.select(null, const {}), isTrue);
-          expect(controller.decoderBackend.select('sstv', const {}), isFalse);
-          expect(controller.decoderBackend.poll(0), isNull);
-        } finally {
-          controller.dispose();
-        }
-      },
-    );
+    test('defaults to no available decoder ids when no NativeDecoderApi is '
+        'supplied (optional extension absent, no fabricated availability)', () {
+      final controller = NativeRadioController(
+        api: _StubApi(),
+        source: _StubSource(),
+        autoStart: false,
+      );
+      try {
+        expect(controller.decoderBackend.availableIds, isEmpty);
+        expect(controller.decoderBackend.select(null, const {}), isTrue);
+        expect(controller.decoderBackend.select('sstv', const {}), isFalse);
+        expect(controller.decoderBackend.poll(0), isNull);
+      } finally {
+        controller.dispose();
+      }
+    });
 
-    test(
-      'with a decoder API injected but no open native handle, select/poll '
-      'are safe and never touch native (controller not started)',
-      () {
-        final decoderApi = _FakeDecoderApi();
-        final controller = NativeRadioController(
-          api: _StubApi(),
-          source: _StubSource(),
-          autoStart: false,
-          decoderApi: decoderApi,
-        );
-        try {
-          expect(controller.decoderBackend.availableIds, {'sstv'});
-          expect(controller.decoderBackend.select(null, const {}), isTrue);
-          expect(controller.decoderBackend.select('sstv', const {}), isFalse);
-          expect(decoderApi.selectCalls, isEmpty);
-          expect(controller.decoderBackend.poll(0), isNull);
-          expect(decoderApi.pollCalls, isEmpty);
-        } finally {
-          controller.dispose();
-        }
-      },
-    );
+    test('with a decoder API injected but no open native handle, select/poll '
+        'are safe and never touch native (controller not started)', () {
+      final decoderApi = _FakeDecoderApi();
+      final controller = NativeRadioController(
+        api: _StubApi(),
+        source: _StubSource(),
+        autoStart: false,
+        decoderApi: decoderApi,
+      );
+      try {
+        expect(controller.decoderBackend.availableIds, {'sstv'});
+        expect(controller.decoderBackend.select(null, const {}), isTrue);
+        expect(controller.decoderBackend.select('sstv', const {}), isFalse);
+        expect(decoderApi.selectCalls, isEmpty);
+        expect(controller.decoderBackend.poll(0), isNull);
+        expect(decoderApi.pollCalls, isEmpty);
+      } finally {
+        controller.dispose();
+      }
+    });
 
     test(
       'with an open native handle (running), select forwards to native',
@@ -203,58 +199,62 @@ void main() {
           expect(decoderApi.selectCalls, hasLength(1));
           controller.decoderBackend.poll(0);
           expect(decoderApi.pollCalls, hasLength(1));
+          decoderApi.nextEvent = NativeDecoderEvent(
+            sequence: 12,
+            streamGeneration: 1,
+            kind: 1,
+            payload: Uint8List.fromList([123, 125]),
+            droppedEvents: 7,
+          );
+          final event = controller.decoderBackend.poll(11);
+          expect(event?.sequence, 12);
+          expect(event?.droppedEvents, 7);
         } finally {
           controller.dispose();
         }
       },
     );
 
-    test(
-      'after stop(), the handle is released and decoderBackend reverts to '
-      'the safe no-handle behavior (no crash, no native calls)',
-      () async {
-        final decoderApi = _FakeDecoderApi();
-        final controller = NativeRadioController(
-          api: _StubApi(),
-          source: _StubSource(),
-          autoStart: true,
-          decoderApi: decoderApi,
-        );
-        try {
-          await until(() => controller.running);
-          await controller.stop();
-          decoderApi.selectCalls.clear();
-          decoderApi.pollCalls.clear();
-          expect(controller.decoderBackend.select('sstv', const {}), isFalse);
-          expect(decoderApi.selectCalls, isEmpty);
-          expect(controller.decoderBackend.poll(0), isNull);
-          expect(decoderApi.pollCalls, isEmpty);
-        } finally {
-          controller.dispose();
-        }
-      },
-    );
-
-    test(
-      'dispose() releases the handle; decoderBackend calls afterward are '
-      'safe no-ops, never touching native',
-      () async {
-        final decoderApi = _FakeDecoderApi();
-        final controller = NativeRadioController(
-          api: _StubApi(),
-          source: _StubSource(),
-          autoStart: true,
-          decoderApi: decoderApi,
-        );
+    test('after stop(), the handle is released and decoderBackend reverts to '
+        'the safe no-handle behavior (no crash, no native calls)', () async {
+      final decoderApi = _FakeDecoderApi();
+      final controller = NativeRadioController(
+        api: _StubApi(),
+        source: _StubSource(),
+        autoStart: true,
+        decoderApi: decoderApi,
+      );
+      try {
         await until(() => controller.running);
-        controller.dispose();
+        await controller.stop();
         decoderApi.selectCalls.clear();
         decoderApi.pollCalls.clear();
         expect(controller.decoderBackend.select('sstv', const {}), isFalse);
-        expect(controller.decoderBackend.poll(0), isNull);
         expect(decoderApi.selectCalls, isEmpty);
+        expect(controller.decoderBackend.poll(0), isNull);
         expect(decoderApi.pollCalls, isEmpty);
-      },
-    );
+      } finally {
+        controller.dispose();
+      }
+    });
+
+    test('dispose() releases the handle; decoderBackend calls afterward are '
+        'safe no-ops, never touching native', () async {
+      final decoderApi = _FakeDecoderApi();
+      final controller = NativeRadioController(
+        api: _StubApi(),
+        source: _StubSource(),
+        autoStart: true,
+        decoderApi: decoderApi,
+      );
+      await until(() => controller.running);
+      controller.dispose();
+      decoderApi.selectCalls.clear();
+      decoderApi.pollCalls.clear();
+      expect(controller.decoderBackend.select('sstv', const {}), isFalse);
+      expect(controller.decoderBackend.poll(0), isNull);
+      expect(decoderApi.selectCalls, isEmpty);
+      expect(decoderApi.pollCalls, isEmpty);
+    });
   });
 }

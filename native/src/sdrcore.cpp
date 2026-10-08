@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "sdrcore_v3.h"
+#include "sdrcore_decoder_v1.h"
+#include "decoder.hpp"
 
 #include "audio/audio_sink.h"
 #include "dsp/receiver.h"
@@ -13,6 +15,7 @@
 #include <cerrno>
 #include <chrono>
 #include <condition_variable>
+#include <deque>
 #include <cstring>
 #include <cmath>
 #include <memory>
@@ -73,6 +76,42 @@ bool valid_display(const SdrV3Display& d, uint32_t rate) {
 }  // namespace
 
 struct SdrHandle {
+  struct QueuedDecoderEvent {
+    SdrDecoderEvent header{};
+    std::vector<uint8_t> payload;
+  };
+  std::unique_ptr<sdrcore::decoder::Decoder> decoder;
+  sdrcore::decoder::Input decoder_input = sdrcore::decoder::Input::audio;
+  std::deque<QueuedDecoderEvent> decoder_events;
+  uint64_t decoder_sequence = 0;
+  uint64_t decoder_dropped = 0;
+  bool decoder_attached = false;
+  void invalidate_decoder_events() { decoder_events.clear(); }
+  void drain_decoder_events() {
+    if (!decoder) return;
+    sdrcore::decoder::Event event;
+    for (size_t i = 0; i < SDR_DECODER_QUEUE_CAPACITY && decoder->take_event(event); ++i) {
+      if (event.payload.size() > SDR_DECODER_MAX_PAYLOAD) {
+        ++decoder_dropped;
+        continue;
+      }
+      if (decoder_events.size() == SDR_DECODER_QUEUE_CAPACITY) {
+        decoder_events.pop_front();
+        ++decoder_dropped;
+      }
+      QueuedDecoderEvent queued_event;
+      queued_event.header.size = sizeof(SdrDecoderEvent);
+      queued_event.header.revision = SDR_DECODER_REVISION;
+      queued_event.header.sequence = ++decoder_sequence;
+      queued_event.header.stream_generation = snapshot.stream_generation;
+      queued_event.header.kind = static_cast<uint32_t>(event.kind);
+      queued_event.header.payload_bytes = static_cast<uint32_t>(event.payload.size());
+      queued_event.payload = std::move(event.payload);
+      decoder_events.push_back(std::move(queued_event));
+      event = {};
+    }
+    decoder_dropped += decoder->take_dropped_count();
+  }
   std::mutex mutex;
   std::mutex dsp_mutex;
   std::condition_variable ready;
@@ -140,6 +179,7 @@ struct SdrHandle {
   }
 
   void reset_v3_open() {
+    invalidate_decoder_events();
     snapshot = SdrV3Snapshot{};
     snapshot.size = sizeof(snapshot);
     snapshot.revision = SDR_V3_REVISION;
@@ -329,6 +369,7 @@ struct SdrHandle {
       if (stats.state != SDR_RUNNING) continue;
       try {
         if (retune_freq) {
+          invalidate_decoder_events();
           // IQ queued in the ring and the driver's in-flight transfers that
           // will still be delivered were captured before the new tune.
           for (size_t i = 0, s = head; i < queued; ++i, s = (s + 1) % kSlots)
@@ -400,7 +441,25 @@ struct SdrHandle {
       try {
         std::lock_guard<std::mutex> dsp_lock(dsp_mutex);
         if (new_station) receiver->retune();
+        // Stale ring/USB transfers must never enter the decoder. Detach
+        // during the gap and reattach only on a clean block of the new tune.
+        if (decoder && (stale || !decoder_attached)) {
+          receiver->set_decoder(stale ? nullptr : decoder.get());
+          decoder_attached = !stale;
+        }
         receiver->process(block.data(), length, result);
+        if (decoder && decoder_attached) {
+          std::lock_guard<std::mutex> state_lock(mutex);
+          if (!stale && dequeued_sequence == snapshot.control_sequence &&
+              !tune_in_progress() && snapshot.state == SDR_RUNNING)
+            drain_decoder_events();
+          else {
+            sdrcore::decoder::Event discarded;
+            for (size_t i = 0; i < SDR_DECODER_QUEUE_CAPACITY &&
+                 decoder->take_event(discarded); ++i) discarded = {};
+          }
+        }
+        if (decoder) std::fill(result.audio.begin(), result.audio.end(), 0.0f);
         if (!result.audio.empty())
           audio_sink->write(result.audio.data(), result.audio.size() / 2);
         audio_stats = audio_sink->stats();
@@ -480,6 +539,7 @@ extern "C" SdrHandle* sdr_create(void) {
 extern "C" void sdr_destroy(SdrHandle* handle) {
   if (!handle) return;
   handle->join();
+  if (handle->receiver) handle->receiver->set_decoder(nullptr);
   if (handle->usb_adapter) handle->usb_adapter->close();
   if (handle->owns_usb_claim) g_native_usb_claim = false;
   if (handle->fd >= 0) close(handle->fd);
@@ -635,6 +695,10 @@ extern "C" int32_t sdr_v2_close(SdrHandle* h) {
   h->stats.source = SDR_NONE;
   h->v3_active = false;
   h->v3_configured = false;
+  if (h->receiver) h->receiver->set_decoder(nullptr);
+  h->decoder_attached = false;
+  h->decoder.reset();
+  h->invalidate_decoder_events();
   h->receiver.reset();
   h->snapshot.state = SDR_IDLE;
   h->snapshot.source = SDR_NONE;
@@ -661,6 +725,10 @@ extern "C" int32_t sdr_v3_set_controls(SdrHandle* h, const SdrV3Controls* in) {
     if (h->stats.state == SDR_RUNNING && !h->v3_active) return SDR_INVALID_STATE;
     if (h->stats.source == SDR_RTLSDR && in->center_frequency_hz > UINT32_MAX)
       return SDR_UNSUPPORTED;
+    if (h->decoder && h->decoder_input == sdrcore::decoder::Input::baseband &&
+        (in->sample_rate < 200000 ||
+         in->sample_rate / std::max(1u, (in->sample_rate + 299999u) / 300000u) < 200000))
+      return SDR_UNSUPPORTED; // Existing baseband decoder cannot run at this rate.
     // LO/gain changes on a device that tunes while streaming are applied in
     // place (as SDR++ does): a full restart cancels USB transfers, joins both
     // threads and closes/reopens the audio device, which took ~420 ms per
@@ -676,6 +744,9 @@ extern "C" int32_t sdr_v3_set_controls(SdrHandle* h, const SdrV3Controls* in) {
         h->controls.center_frequency_hz != in->center_frequency_hz ||
         h->controls.gain_tenths_db != in->gain_tenths_db)) {
       h->controls = *in;
+      if (h->dsp_controls.center_frequency_hz != in->center_frequency_hz ||
+          h->dsp_controls.vfo_offset_hz != in->vfo_offset_hz)
+        h->invalidate_decoder_events();
       h->tune_request = *in;
       h->tune_pending = true;
       // The epoch advances now: rows and squelch decisions of the previous
@@ -725,6 +796,10 @@ extern "C" int32_t sdr_v3_set_controls(SdrHandle* h, const SdrV3Controls* in) {
       display.width = 512;
     }
     h->receiver->configure(*in, display);
+    if (h->decoder && (h->dsp_controls.center_frequency_hz != in->center_frequency_hz ||
+                       h->dsp_controls.vfo_offset_hz != in->vfo_offset_hz ||
+                       h->dsp_controls.sample_rate != in->sample_rate))
+      h->invalidate_decoder_events();
     h->controls = *in;
     h->dsp_controls = *in;
     h->display = display;
@@ -835,6 +910,7 @@ extern "C" int32_t sdr_v3_start(SdrHandle* h) {
       h->stats.state = SDR_RUNNING;
       h->snapshot.state = SDR_RUNNING;
       ++h->snapshot.stream_generation;
+      h->invalidate_decoder_events();
       h->snapshot.squelch_ready = 0;
       h->snapshot.squelch_open = 0;
       h->fft_unread = false;
@@ -870,6 +946,7 @@ extern "C" int32_t sdr_v3_stop(SdrHandle* h) {
   std::lock_guard<std::mutex> lock(h->mutex);
   h->stats.state = SDR_OPEN;
   h->snapshot.state = SDR_OPEN;
+  h->invalidate_decoder_events();
   h->snapshot.squelch_ready = 0;
   h->snapshot.squelch_open = 0;
   h->fft_unread = false;
@@ -905,6 +982,84 @@ extern "C" int32_t sdr_v3_read_fft(SdrHandle* h, uint64_t after_sequence,
   *out = h->fft;
   std::copy(h->fft_bins.begin(), h->fft_bins.end(), bins);
   h->fft_unread = false;
+  return SDR_OK;
+}
+
+extern "C" int32_t sdr_decoder_select(SdrHandle* h, const char* id,
+                                       uint32_t id_bytes, const char* config,
+                                       uint32_t config_bytes) {
+  if (!h || (id_bytes && !id) || (config_bytes && !config) ||
+      id_bytes > 31 || config_bytes > 4096 ||
+      (id_bytes && std::memchr(id, 0, id_bytes))) return SDR_INVALID_ARGUMENT;
+  try {
+    std::lock_guard<std::mutex> dsp_lock(h->dsp_mutex);
+    std::lock_guard<std::mutex> lock(h->mutex);
+    if (!h->v3_configured || !h->receiver ||
+        (h->stats.state != SDR_OPEN && h->stats.state != SDR_RUNNING) ||
+        (h->stats.state == SDR_RUNNING && !h->v3_active)) return SDR_INVALID_STATE;
+    if (!id_bytes) {
+      h->receiver->set_decoder(nullptr);
+      h->decoder_attached = false;
+      h->decoder.reset();
+      h->invalidate_decoder_events();
+      h->decoder_dropped = 0;
+      return SDR_OK;
+    }
+    const std::string requested(id, id_bytes);
+    for (const auto& reg : sdrcore::decoder::registry()) {
+      if (requested != reg.descriptor.id) continue;
+      if (!reg.create) return SDR_UNSUPPORTED;
+      if (reg.descriptor.exclusive_receiver && h->stats.state == SDR_RUNNING)
+        return SDR_INVALID_STATE;
+      if (reg.descriptor.required_mode != UINT32_MAX &&
+          reg.descriptor.required_mode != h->controls.mode) return SDR_UNSUPPORTED;
+      const uint32_t sample_rate = h->controls.sample_rate;
+      if (reg.descriptor.input == sdrcore::decoder::Input::baseband &&
+          (sample_rate < 200000 ||
+           sample_rate / std::max(1u, (sample_rate + 125000u) / 250000u) < 200000))
+        return SDR_UNSUPPORTED;
+      if (reg.descriptor.input == sdrcore::decoder::Input::raw_iq &&
+          reg.descriptor.required_rate_hz &&
+          sample_rate != reg.descriptor.required_rate_hz) return SDR_UNSUPPORTED;
+      auto candidate = reg.create();
+      if (!candidate) return SDR_UNSUPPORTED;
+      if (!candidate->configure(std::string_view(config ? config : "", config_bytes)))
+        return SDR_INVALID_ARGUMENT;
+      // Commit only after every validation succeeds. No second tuner or
+      // control change; receiver owns a borrowed pointer under dsp_mutex.
+      h->receiver->set_decoder(nullptr);
+      h->decoder = std::move(candidate);
+      h->decoder_input = reg.descriptor.input;
+      h->decoder_attached = true;
+      h->receiver->set_decoder(h->decoder.get());
+      h->invalidate_decoder_events();
+      h->decoder_dropped = 0;
+      return SDR_OK;
+    }
+    return SDR_UNSUPPORTED;
+  } catch (...) { return SDR_INTERNAL_ERROR; }
+}
+
+extern "C" int32_t sdr_decoder_poll(SdrHandle* h, uint64_t after_sequence,
+                                     SdrDecoderEvent* event, uint8_t* payload,
+                                     uint32_t capacity) {
+  if (!h || !event || event->size != sizeof(*event) ||
+      event->revision != SDR_DECODER_REVISION || (capacity && !payload))
+    return SDR_INVALID_ARGUMENT;
+  std::lock_guard<std::mutex> lock(h->mutex);
+  if (h->snapshot.state != SDR_RUNNING) return SDR_DECODER_NO_DATA;
+  const auto it = std::find_if(h->decoder_events.begin(), h->decoder_events.end(),
+      [after_sequence](const SdrHandle::QueuedDecoderEvent& e) {
+        return e.header.sequence > after_sequence;
+      });
+  if (it == h->decoder_events.end()) return SDR_DECODER_NO_DATA;
+  if (capacity < it->payload.size()) {
+    event->payload_bytes = static_cast<uint32_t>(it->payload.size());
+    return SDR_DECODER_BUFFER_SMALL;
+  }
+  *event = it->header;
+  event->dropped_events = h->decoder_dropped;
+  if (!it->payload.empty()) std::memcpy(payload, it->payload.data(), it->payload.size());
   return SDR_OK;
 }
 

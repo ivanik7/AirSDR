@@ -99,18 +99,12 @@ final decoderCatalog = <DecoderDescriptor>[
   DecoderDescriptor(
     id: 'rtl_433',
     label: 'rtl_433',
-    input: DecoderInput.rawIq,
-    exclusiveReceiver: true,
+    input: DecoderInput.baseband,
+    exclusiveReceiver: false,
     requiredMode: null,
-    requiredRateHz: 250000,
+    requiredRateHz: null,
     result: DecoderResult.message,
-    settings: [
-      DecoderSetting(
-        'frequency_hz',
-        433920000,
-        allowed: [315000000, 433920000, 868000000, 915000000],
-      ),
-    ],
+    settings: const [], // v1 {"version":1,"settings":{}}; tuning is the VFO.
   ),
   DecoderDescriptor(
     id: 'adsb',
@@ -135,13 +129,17 @@ class DecoderEvent {
     this.sequence,
     this.streamGeneration,
     this.kind,
-    this.payload,
-  );
+    this.payload, {
+    this.droppedEvents = 0,
+  });
   final int sequence, streamGeneration;
   final DecoderResult kind;
 
   /// Copied bounded payload; image bytes are not IQ or PCM samples.
   final Uint8List payload;
+
+  /// Cumulative overflow of the native event FIFO since decoder selection.
+  final int droppedEvents;
 }
 
 /// Optional additive native decoder extension, never a Dart DSP substitute.

@@ -1,10 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Behavioral ABI/lifecycle test for the additive decoder extension
-// (native/include/sdrcore_decoder_v1.h, native/include/decoder.hpp). Written
-// before any decoder registry/dispatch implementation exists (RED), then
-// exercised again after native/src/decoder/ lands (GREEN). No decoding
-// engine is implemented or claimed here: this only checks registry
-// enumeration, selection gating, and safe absent-backend behavior.
+// Behavioral ABI/lifecycle test for the additive decoder extension.
 #include "sdrcore_decoder_v1.h"
 
 #include <cassert>
@@ -52,7 +47,7 @@ int main() {
   assert(sdr_decoder_count(nullptr) == SDR_INVALID_ARGUMENT);
   uint32_t count = 0xdeadbeef;
   assert(sdr_decoder_count(&count) == SDR_OK);
-  assert(count > 0);  // registry entries exist even though none are available.
+  assert(count > 0);
 
   // --- sdr_decoder_descriptor(): index bounds, size/revision checks, and
   // "failure leaves it unchanged" (header contract).
@@ -107,17 +102,15 @@ int main() {
   // v3 mode/WFM stereo remain the only voice path (AGENTS.md, decoder.hpp).
   assert(!contains("voice"));
 
-  // --- Preview catalog entries exist but have no real backend installed
-  // (factory null => available == 0) in this host build.
+  // Registry entries expose real availability, not preview status.
   for (const char* id : {"sstv", "rtl_433", "adsb"}) {
     assert(contains(id));
     SdrDecoderDescriptor d = find(id);
-    assert(d.available == 0);
+    if (std::strcmp(id, "rtl_433") == 0) assert(d.available == 1);
+    else assert(d.available == 0);
   }
 
-  // --- sdr_decoder_select(): absent-backend handles are safe (never engage
-  // the receiver, never crash, never partially mutate state) and NULL/empty
-  // ID deselects cleanly even with no handle activity.
+  // --- Selection cannot mutate an unopened handle; NULL/empty deselects.
   assert(sdr_decoder_select(nullptr, "sstv", 4, nullptr, 0) == SDR_INVALID_ARGUMENT);
   SdrHandle* h = sdr_create();
   assert(h);
@@ -151,9 +144,13 @@ int main() {
   auto after = snap_before();
   assert(after.control_sequence == before.control_sequence);
   assert(after.center_frequency_hz == before.center_frequency_hz);
-  // A preview-catalog but factory-null backend (sstv/rtl_433/adsb) is also
-  // unavailable for selection today: no engine exists, so selecting it must
-  // fail safely, not fabricate a running decoder.
+  const char* valid_json = "{\"version\":1,\"settings\":{}}";
+  assert(sdr_decoder_select(h, "rtl_433", 7, "{", 1) == SDR_INVALID_ARGUMENT);
+  assert(sdr_decoder_select(h, "rtl_433", 7, valid_json,
+                            std::strlen(valid_json)) == SDR_OK);
+  assert(sdr_decoder_select(h, "rtl_433", 7, "{", 1) == SDR_INVALID_ARGUMENT);
+  assert(sdr_decoder_select(h, nullptr, 0, nullptr, 0) == SDR_OK);
+  // Factory-null SSTV remains unavailable and must not replace an engine.
   before = snap_before();
   assert(sdr_decoder_select(h, "sstv", 4, nullptr, 0) == SDR_UNSUPPORTED);
   after = snap_before();
@@ -165,9 +162,14 @@ int main() {
   assert(sdr_decoder_select(h, "", 0, nullptr, 0) == SDR_OK);
   after = snap_before();
   assert(after.control_sequence == before.control_sequence);
+  assert(sdr_v3_start(h) == SDR_OK);
+  assert(sdr_decoder_select(h, "rtl_433", 7, valid_json,
+                            std::strlen(valid_json)) == SDR_OK);
+  assert(sdr_decoder_select(h, "rtl_433", 7, "{", 1) == SDR_INVALID_ARGUMENT);
+  assert(sdr_decoder_select(h, nullptr, 0, nullptr, 0) == SDR_OK);
+  assert(sdr_v3_stop(h) == SDR_OK);
 
-  // --- sdr_decoder_poll(): with nothing ever selected, must behave like an
-  // empty bounded queue forever (NO_DATA), never fabricate a result.
+  // --- After deselect and stop, the event queue is empty (NO_DATA).
   SdrDecoderEvent event{};
   event.size = sizeof event;
   event.revision = SDR_DECODER_REVISION;
@@ -180,12 +182,11 @@ int main() {
   bad_event_size.revision = SDR_DECODER_REVISION;
   assert(sdr_decoder_poll(h, 0, &bad_event_size, payload, sizeof payload) == SDR_INVALID_ARGUMENT);
 
-  assert(sdr_v3_stop(h) == SDR_INVALID_STATE);  // never started; only configured.
+  assert(sdr_v3_stop(h) == SDR_INVALID_STATE);
   assert(sdr_v2_close(h) == SDR_OK);
   sdr_destroy(h);
 
-  // --- A second handle never races the first and gets its own independent
-  // (also-absent) decoder state; the registry itself is static/shared.
+  // --- Each handle has an independent selected backend and queue.
   SdrHandle* a = sdr_create();
   SdrHandle* b = sdr_create();
   assert(a && b && a != b);
@@ -195,6 +196,8 @@ int main() {
   assert(sdr_v3_set_controls(b, &c) == SDR_OK);
   assert(sdr_decoder_select(a, "sstv", 4, nullptr, 0) == SDR_UNSUPPORTED);
   assert(sdr_decoder_select(b, "sstv", 4, nullptr, 0) == SDR_UNSUPPORTED);
+  assert(sdr_decoder_select(a, "rtl_433", 7, valid_json, std::strlen(valid_json)) == SDR_OK);
+  assert(sdr_decoder_select(b, "rtl_433", 7, valid_json, std::strlen(valid_json)) == SDR_OK);
   assert(sdr_v2_close(a) == SDR_OK);
   assert(sdr_v2_close(b) == SDR_OK);
   sdr_destroy(a);

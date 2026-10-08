@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
 // DecoderSession: real v3 mode choices and conservative data previews.
+import 'dart:convert';
+import 'dart:typed_data';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sdr_flutter/ui/decoders/decoder_contract.dart';
 import 'package:sdr_flutter/ui/decoders/decoder_session.dart';
@@ -13,16 +16,25 @@ class _FakeBackend implements DecoderBackend {
   _FakeBackend(this._available);
   final Set<String> _available;
   final List<(String?, Map<String, Object>)> selectCalls = [];
+  final List<DecoderEvent> events = [];
+  final List<int> pollCalls = [];
+  bool reject = false;
   @override
   Set<String> get availableIds => _available;
   @override
   bool select(String? id, Map<String, Object> versionedConfig) {
     selectCalls.add((id, Map<String, Object>.from(versionedConfig)));
-    return id != null;
+    return id != null && !reject;
   }
 
   @override
-  DecoderEvent? poll(int afterSequence) => null;
+  DecoderEvent? poll(int afterSequence) {
+    pollCalls.add(afterSequence);
+    for (final event in events) {
+      if (event.sequence > afterSequence) return event;
+    }
+    return null;
+  }
 }
 
 class _BackedRadio extends DemoRadioController {
@@ -79,18 +91,45 @@ void main() {
     radio.dispose();
   });
 
-  test('exclusive decoder preview cannot claim a running receiver', () async {
-    final backend = _FakeBackend({'rtl_433'});
-    final radio = _BackedRadio(backend);
-    await radio.start();
-    final session = DecoderSession(radio);
-    session.selectPreview('rtl_433');
-    expect(session.selectedId, 'rtl_433');
-    expect(backend.selectCalls, hasLength(1));
-    expect(backend.selectCalls.single.$1, isNull);
-    await radio.stop();
-    radio.dispose();
-  });
+  test(
+    'rtl_433 attaches to a running receiver with empty versioned settings',
+    () async {
+      final backend = _FakeBackend({'rtl_433'});
+      final radio = _BackedRadio(backend);
+      await radio.start();
+      final session = DecoderSession(radio);
+      session.selectPreview('rtl_433');
+      expect(session.selectedId, 'rtl_433');
+      expect(backend.selectCalls, hasLength(1));
+      expect(backend.selectCalls.single.$1, 'rtl_433');
+      expect(backend.selectCalls.single.$2, {
+        'version': 1,
+        'settings': <String, Object>{},
+      });
+      await radio.stop();
+      radio.dispose();
+    },
+  );
+
+  test(
+    'native rejection reports reason and never polls a false session',
+    () async {
+      final backend = _FakeBackend({'rtl_433'})..reject = true;
+      final radio = _BackedRadio(backend);
+      await radio.start();
+      final session = DecoderSession(radio);
+      session.selectPreview('rtl_433');
+      expect(session.active, isFalse);
+      expect(session.failureReason, isNotNull);
+      expect(backend.selectCalls.first.$1, 'rtl_433');
+      expect(backend.selectCalls.last.$1, isNull);
+      await Future<void>.delayed(const Duration(milliseconds: 150));
+      expect(backend.pollCalls, isEmpty);
+      session.dispose();
+      await radio.stop();
+      radio.dispose();
+    },
+  );
 
   test('compatible running audio decoder gets versioned settings', () async {
     final backend = _FakeBackend({'sstv'});
@@ -138,30 +177,30 @@ void main() {
     radio.dispose();
   });
 
-  test('setSetting ignores unknown keys and disallowed values', () {
+  test('rtl_433 has no decoder-specific settings; tuning is the radio VFO', () {
     final backend = _FakeBackend({'rtl_433'});
     final radio = _BackedRadio(backend);
     final session = DecoderSession(radio);
     session.selectPreview('rtl_433');
     session.setSetting('rtl_433', 'frequency_hz', 915000000);
-    expect(session.currentSettings['frequency_hz'], 915000000);
+    expect(session.currentSettings, isEmpty);
     // Disallowed value: ignored, keeps the previous one.
     session.setSetting('rtl_433', 'frequency_hz', 999);
-    expect(session.currentSettings['frequency_hz'], 915000000);
+    expect(session.currentSettings, isEmpty);
     // Unknown key: ignored entirely.
     session.setSetting('rtl_433', 'nonsense', 1);
     expect(session.currentSettings.containsKey('nonsense'), isFalse);
     radio.dispose();
   });
 
-  test('setSetting on an unavailable decoder updates local state only', () {
+  test('setSetting on an unavailable decoder does not start the backend', () {
     final backend = _FakeBackend(const {});
     final radio = _BackedRadio(backend);
     final session = DecoderSession(radio);
     session.selectPreview('rtl_433');
     backend.selectCalls.clear();
     session.setSetting('rtl_433', 'frequency_hz', 868000000);
-    expect(session.currentSettings['frequency_hz'], 868000000);
+    expect(session.currentSettings, isEmpty);
     expect(
       backend.selectCalls,
       isEmpty,
@@ -206,4 +245,82 @@ void main() {
     expect(backend.selectCalls.last.$2, isEmpty);
     radio.dispose();
   });
+
+  test(
+    'rtl_433 drains FIFO, tracks drops, bounds log, and reselects on restart',
+    () async {
+      final backend = _FakeBackend({'rtl_433'});
+      final radio = _BackedRadio(backend);
+      final session = DecoderSession(radio);
+      session.selectPreview('rtl_433');
+      expect(backend.selectCalls.last.$1, isNull);
+      await radio.start();
+      expect(backend.selectCalls.last.$1, 'rtl_433');
+      for (var i = 1; i <= 510; i++) {
+        backend.events.add(
+          DecoderEvent(
+            i,
+            1,
+            DecoderResult.message,
+            Uint8List.fromList(utf8.encode('{"model":"Sensor","id":$i}')),
+            droppedEvents: 4,
+          ),
+        );
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 350));
+      expect(session.messages, hasLength(500));
+      expect(session.messages.first.sequence, 510);
+      expect(session.messages.last.sequence, 11);
+      expect(session.droppedEvents, 4);
+      expect(backend.pollCalls, contains(0));
+      session.clearMessages();
+      expect(session.messages, isEmpty);
+      await radio.stop();
+      final count = backend.pollCalls.length;
+      await Future<void>.delayed(const Duration(milliseconds: 150));
+      expect(backend.pollCalls.length, count);
+      await radio.start();
+      expect(backend.selectCalls.last.$1, 'rtl_433');
+      session.selectPreview(decoderIdForMode(radio.mode));
+      expect(backend.selectCalls.last.$1, isNull);
+      session.dispose();
+      radio.dispose();
+    },
+  );
+
+  test(
+    'retuning clears rtl_433 log; an invalid rate detaches until restored',
+    () async {
+      final backend = _FakeBackend({'rtl_433'});
+      final radio = _BackedRadio(backend);
+      final session = DecoderSession(radio);
+      await radio.start();
+      session.selectPreview('rtl_433');
+      expect(session.active, isTrue);
+      backend.events.add(
+        DecoderEvent(
+          1,
+          1,
+          DecoderResult.message,
+          Uint8List.fromList(utf8.encode('{"model":"Weather"}')),
+        ),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 150));
+      expect(session.messages, hasLength(1));
+      radio.setTuning(centerFrequency: 433920000, vfoOffset: 0);
+      expect(session.messages, isEmpty);
+      expect(session.active, isTrue);
+      radio.setSampleRate(192000);
+      expect(session.active, isFalse);
+      expect(session.failureReason, contains('200 кГц'));
+      expect(backend.selectCalls.last.$1, isNull);
+      radio.setSampleRate(2400000);
+      expect(session.active, isTrue);
+      expect(session.decoderRateHz, 240000);
+      expect(backend.selectCalls.last.$1, 'rtl_433');
+      session.dispose();
+      await radio.stop();
+      radio.dispose();
+    },
+  );
 }
