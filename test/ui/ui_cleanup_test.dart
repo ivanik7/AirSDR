@@ -73,7 +73,7 @@ void main() {
           home: LegacyAppShell(controller: radio, favorites: favorites),
         ),
       );
-      await tester.tap(find.byKey(const ValueKey('tab-1')));
+      await tester.tap(find.byKey(const ValueKey('tab-2')));
       await tester.pump();
       expect(find.textContaining('1 сохранено'), findsOneWidget);
       expect(find.text('Старый пресет'), findsOneWidget);
@@ -83,7 +83,7 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('apply-user-0')));
       await tester.pump();
       expect(radio.tunedFrequency, 99500000);
-      await tester.tap(find.byKey(const ValueKey('tab-2')));
+      await tester.tap(find.byKey(const ValueKey('tab-3')));
       await tester.pump();
       await tester.drag(find.byType(ListView).last, const Offset(0, -1200));
       await tester.pump();

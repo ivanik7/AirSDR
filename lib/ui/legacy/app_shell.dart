@@ -36,6 +36,10 @@ class LegacyAppShell extends StatefulWidget {
 }
 
 class _LegacyAppShellState extends State<LegacyAppShell> {
+  /// Bottom tab order: Receive, Decoder, Presets, Settings.
+  static const _receiveTab = 0;
+  static const _tabLabels = ['Приём', 'Decoder', 'Пресеты', 'Настройки'];
+
   late CenteredReceiver receiver;
   late SdrUiState spectrum;
   late FavoritesRepository favorites;
@@ -49,7 +53,7 @@ class _LegacyAppShellState extends State<LegacyAppShell> {
   bool ownChannels = false;
   bool ownBands = false;
   bool radioReady = false;
-  int tab = 0;
+  int tab = _receiveTab;
   @override
   void initState() {
     super.initState();
@@ -57,7 +61,7 @@ class _LegacyAppShellState extends State<LegacyAppShell> {
     _init();
   }
 
-  void _showReceive() => setState(() => tab = 0);
+  void _showReceive() => setState(() => tab = _receiveTab);
 
   void _init() {
     radioReady = true;
@@ -188,12 +192,17 @@ class _LegacyAppShellState extends State<LegacyAppShell> {
                   meter: meter,
                   decoderSession: decoderSession,
                 ),
+                DecoderScreen(
+                  controller: widget.controller,
+                  receiver: receiver,
+                  session: decoderSession,
+                ),
                 PresetsScreen(
                   controller: widget.controller,
                   receiver: receiver,
                   favorites: favorites,
                   bands: bands,
-                  onApplied: () => setState(() => tab = 0),
+                  onApplied: _showReceive,
                   decoderSession: decoderSession,
                 ),
                 SettingsScreen(
@@ -201,11 +210,6 @@ class _LegacyAppShellState extends State<LegacyAppShell> {
                   receiver: receiver,
                   spectrum: spectrum,
                   bands: bands,
-                ),
-                DecoderScreen(
-                  controller: widget.controller,
-                  receiver: receiver,
-                  session: decoderSession,
                 ),
               ],
             ),
@@ -217,7 +221,7 @@ class _LegacyAppShellState extends State<LegacyAppShell> {
             ),
             child: Row(
               children: [
-                for (var i = 0; i < 4; i++)
+                for (var i = 0; i < _tabLabels.length; i++)
                   Expanded(
                     child: InkWell(
                       key: ValueKey('tab-$i'),
@@ -236,7 +240,7 @@ class _LegacyAppShellState extends State<LegacyAppShell> {
                           FittedBox(
                             fit: BoxFit.scaleDown,
                             child: Text(
-                              ['Приём', 'Пресеты', 'Настройки', 'Decoder'][i],
+                              _tabLabels[i],
                               maxLines: 1,
                               softWrap: false,
                               style: plex(

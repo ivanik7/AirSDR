@@ -6,52 +6,8 @@ import '../legacy/theme.dart';
 import 'decoder_contract.dart';
 import 'decoder_session.dart';
 
-/// Compact WFM station line; never substitutes RDS for receiver audio.
-class RdsStationLine extends StatelessWidget {
-  const RdsStationLine({super.key, required this.session});
-  final DecoderSession session;
-
-  @override
-  Widget build(BuildContext context) => ListenableBuilder(
-    listenable: session,
-    builder: (context, _) {
-      final station = session.rds;
-      if (session.radio.mode != DemodMode.wfm) return const SizedBox.shrink();
-      final ps = station.text('ps');
-      final pty = station.text('prog_type');
-      final text = station.text('radiotext');
-      final stationText = [ps, pty, text].nonNulls.join(' · ');
-      return Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
-        child: Row(
-          key: const ValueKey('rdsStationLine'),
-          children: [
-            Icon(
-              station.synced
-                  ? Icons.radio_button_checked
-                  : Icons.radio_button_unchecked,
-              size: 13,
-              color: station.synced ? LegacyColors.accent : LegacyColors.muted,
-            ),
-            const SizedBox(width: 5),
-            Expanded(
-              child: Text(
-                station.synced
-                    ? (stationText.isEmpty ? 'RDS: синхронизация' : stationText)
-                    : 'RDS: нет сигнала',
-                key: const ValueKey('rdsStationText'),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: plex(size: 12, color: LegacyColors.primary),
-              ),
-            ),
-          ],
-        ),
-      );
-    },
-  );
-}
-
+/// RDS station details and the RBDS switch; shown only by the WFM decoder
+/// panel, never on the Receive screen.
 class RdsDetailsPanel extends StatelessWidget {
   const RdsDetailsPanel({super.key, required this.session});
   final DecoderSession session;
