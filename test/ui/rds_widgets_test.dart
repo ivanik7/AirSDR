@@ -43,7 +43,7 @@ class _Radio extends DemoRadioController {
 
 void main() {
   testWidgets(
-    'WFM station line and details fit 344 dp, RBDS toggle persists in preset settings',
+    'WFM RDS details fit 344 dp, RBDS toggle persists in preset settings',
     (tester) async {
       tester.view.physicalSize = const Size(904, 1811);
       tester.view.devicePixelRatio = 2.625;
@@ -58,17 +58,13 @@ void main() {
           home: Scaffold(
             body: ListenableBuilder(
               listenable: session,
-              builder: (context, _) => ListView(
-                children: [
-                  RdsStationLine(session: session),
-                  RdsDetailsPanel(session: session),
-                ],
-              ),
+              builder: (context, _) =>
+                  ListView(children: [RdsDetailsPanel(session: session)]),
             ),
           ),
         ),
       );
-      expect(find.text('RDS: нет сигнала'), findsOneWidget);
+      expect(find.text('RDS · нет сигнала'), findsOneWidget);
       final hz = radio.tunedFrequency.round();
       backend.events.add(
         DecoderEvent(

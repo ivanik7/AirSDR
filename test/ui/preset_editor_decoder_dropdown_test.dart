@@ -83,7 +83,7 @@ void main() {
           home: LegacyAppShell(controller: radio, favorites: favorites),
         ),
       );
-      await tester.tap(find.byKey(const ValueKey('tab-1')));
+      await tester.tap(find.byKey(const ValueKey('tab-2')));
       await tester.pump();
       await tester.tap(find.byKey(const ValueKey('addFavorite')));
       await tester.pumpAndSettle();
@@ -113,7 +113,7 @@ void main() {
           home: LegacyAppShell(controller: radio, favorites: favorites),
         ),
       );
-      await tester.tap(find.byKey(const ValueKey('tab-1')));
+      await tester.tap(find.byKey(const ValueKey('tab-2')));
       await tester.pump();
       await tester.tap(find.byKey(const ValueKey('addFavorite')));
       await tester.pumpAndSettle();
@@ -153,7 +153,7 @@ void main() {
           home: LegacyAppShell(controller: radio, favorites: favorites),
         ),
       );
-      await tester.tap(find.byKey(const ValueKey('tab-1')));
+      await tester.tap(find.byKey(const ValueKey('tab-2')));
       await tester.pump();
       await tester.tap(find.byKey(const ValueKey('addFavorite')));
       await tester.pumpAndSettle();
@@ -198,7 +198,7 @@ void main() {
         home: LegacyAppShell(controller: radio, favorites: favorites),
       ),
     );
-    await tester.tap(find.byKey(const ValueKey('tab-1')));
+    await tester.tap(find.byKey(const ValueKey('tab-2')));
     await tester.pump();
     await tester.tap(find.byKey(ValueKey('favoriteMenu-${plain.id}')));
     await tester.pumpAndSettle();

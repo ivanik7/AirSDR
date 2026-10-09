@@ -173,7 +173,7 @@ void main() {
       MaterialApp(home: LegacyAppShell(controller: radio)),
     );
     await tester.pump();
-    await tester.tap(find.byKey(const ValueKey('tab-2')));
+    await tester.tap(find.byKey(const ValueKey('tab-3')));
     await tester.pump();
     final sw = find.byKey(const ValueKey('legacyAutoLevels'));
     final minSlider = find.byKey(const ValueKey('legacyFftMin'));

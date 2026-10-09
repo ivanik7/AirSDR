@@ -25,7 +25,7 @@ void main() {
         ),
       );
       await tester.pump();
-      await tester.tap(find.byKey(const ValueKey('tab-2')));
+      await tester.tap(find.byKey(const ValueKey('tab-3')));
       await tester.pump();
       await tester.scrollUntilVisible(
         find.byKey(const ValueKey('settingsBands')),
@@ -113,7 +113,7 @@ void main() {
       expect(find.byKey(const ValueKey('legacyBandName')), findsOneWidget);
       expect(find.text('FM'), findsOneWidget);
       expect(radio.mode.label, 'WFM');
-      await tester.tap(find.byKey(const ValueKey('tab-1')));
+      await tester.tap(find.byKey(const ValueKey('tab-2')));
       await tester.pump();
       expect(
         find.byKey(const ValueKey('presetSection-band-fm')),
