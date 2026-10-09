@@ -211,10 +211,9 @@ class _ChannelsSectionState extends State<ChannelsSection> {
       c.id,
       name: name.trim(),
       decoderId: decoderId,
-      decoderSettings:
-          decoderId == null || demodModeFromDecoderId(decoderId) != null
+      decoderSettings: decoderId == null
           ? null
-          : session!.currentSettings,
+          : session?.settingsFor(decoderId),
     );
     _snack(
       saveError == null

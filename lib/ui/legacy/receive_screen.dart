@@ -7,6 +7,7 @@ import '../channels/channel_scanner.dart';
 import '../channels/signal_meter.dart';
 
 import '../decoders/decoder_session.dart';
+import '../decoders/rds_widgets.dart';
 import '../favorites/favorites.dart';
 import '../radio_controller.dart';
 import '../sdr_ui_state.dart';
@@ -246,6 +247,13 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
             ],
           ),
         ),
+        if (widget.decoderSession != null)
+          SizedBox(
+            height: 21,
+            child: r.mode == DemodMode.wfm
+                ? RdsStationLine(session: widget.decoderSession!)
+                : null,
+          ),
         const SizedBox(height: 4),
         if (compactHeight)
           SizedBox(height: 100, child: _spectrumPanel(r, f))
