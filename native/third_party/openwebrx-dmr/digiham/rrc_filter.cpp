@@ -5,8 +5,9 @@ using namespace Digiham::RrcFilter;
 RrcFilter::RrcFilter(unsigned int nZeros, double gain, const float coeffs[]):
     nZeros(nZeros),
     gain(gain),
-    coeffs(coeffs),
-    delay((float*) malloc(sizeof(float) * (nZeros + 1)))
+    coeffs(coeffs, coeffs + nZeros + 1),
+    // sdr_flutter: calloc instead of malloc so the delay line starts at zero.
+    delay((float*) calloc(nZeros + 1, sizeof(float)))
 {}
 
 RrcFilter::~RrcFilter() {

@@ -24,7 +24,8 @@ namespace Digiham {
                 unsigned int variance_rb_pos = 0;
                 float* variance_rb;
                 int variance_offset = 0;
-                float volume_rb[VOLUME_RB_SIZE];
+                // sdr_flutter: zero-initialised (upstream leaves it indeterminate).
+                float volume_rb[VOLUME_RB_SIZE] = {};
                 unsigned int volume_rb_pos = 0;
                 float min = 0;
                 float max = 0;

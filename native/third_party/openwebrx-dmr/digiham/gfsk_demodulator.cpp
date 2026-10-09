@@ -108,7 +108,7 @@ void GfskDemodulator::process() {
 
 void GfskDemodulator::calibrateAudio() {
     int i;
-    min = FLT_MAX, max = FLT_MIN;
+    min = FLT_MAX, max = -FLT_MAX;
 
     for (i = 0; i < VOLUME_RB_SIZE; i++) {
         if (volume_rb[i] < min) min = volume_rb[i];

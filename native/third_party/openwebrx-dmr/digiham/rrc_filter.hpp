@@ -2,6 +2,7 @@
 
 #include <csdr/module.hpp>
 #include <initializer_list>
+#include <vector>
 
 namespace Digiham {
 
@@ -16,7 +17,9 @@ namespace Digiham {
                 float filter(float sample);
                 unsigned int nZeros;
                 double gain;
-                const float* coeffs;
+                // The upstream constructors pass temporary compound-literal arrays.
+                // Own a copy so their lifetime cannot end before the next block.
+                std::vector<float> coeffs;
                 float* delay;
         };
 
