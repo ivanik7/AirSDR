@@ -201,7 +201,8 @@ edit: its row is generated from `DemodMode` order in `decoderCatalog`.
 
 ## Known limitations (by design, today)
 
-- **Only rtl_433 has real decode output.** SSTV and ADS-B are preview-only.
+- **Only rtl_433 has selectable data-decoder output.** Implicit WFM RDS
+  metadata is active alongside audio; SSTV and ADS-B are preview-only.
 - **No Start/Stop control.** Decoder lifecycle (when a backend exists) is
   expected to be driven by `DecoderBackend.select` as a side effect of
   `DecoderSession.selectPreview`/`applyStored`, not a separate user action —
@@ -225,7 +226,7 @@ edit: its row is generated from `DemodMode` order in `decoderCatalog`.
   gates are reported separately in the task handoff; subjective Android audio
   quality and phone screen appearance are not inferred from host tests.
 
-## WFM RDS integration contract (design; not yet implemented)
+## WFM RDS integration contract (implemented; validation in STATUS-rds.md)
 
 This section supersedes the historical RDS/SDR++ suggestion in
 `~/prj/docs/30-openwebrx-decoders-plan.md`. The implementation target is the
