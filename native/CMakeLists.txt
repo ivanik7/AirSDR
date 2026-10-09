@@ -203,6 +203,19 @@ if(NOT ANDROID AND PROJECT_IS_TOP_LEVEL)
     target_link_libraries(sdrcore_live_retune_test PRIVATE sdrcore_rtlsdr sdrcore_hackrf sdrcore_audio Threads::Threads)
     target_link_libraries(sdrcore_live_retune_test PRIVATE sdrcore_rds)
     add_test(NAME sdrcore_live_retune COMMAND sdrcore_live_retune_test)
+    # White-box: discrete LO switches on a real-time paced fake RTL against an
+    # AAudio callback model of the playback ring (t_8063d101).
+    add_executable(sdrcore_retune_switch_gap_test
+        tests/retune_switch_gap_test.cpp
+        tests/decoder_registry_stub.cpp
+        src/dsp/receiver.cpp
+        src/usb_rtlsdr_adapter.cpp
+        src/usb_hackrf_adapter.cpp)
+    target_include_directories(sdrcore_retune_switch_gap_test PRIVATE include)
+    target_compile_features(sdrcore_retune_switch_gap_test PRIVATE cxx_std_17)
+    target_link_libraries(sdrcore_retune_switch_gap_test PRIVATE sdrcore_rtlsdr sdrcore_hackrf
+        sdrcore_audio sdrcore_rds Threads::Threads)
+    add_test(NAME sdrcore_retune_switch_gap COMMAND sdrcore_retune_switch_gap_test)
     add_executable(sdrcore_host_rtl_gain_test tests/host_rtl_gain_test.c)
     target_link_libraries(sdrcore_host_rtl_gain_test PRIVATE sdrcore)
     add_test(NAME sdrcore_host_rtl_gain COMMAND sdrcore_host_rtl_gain_test)
