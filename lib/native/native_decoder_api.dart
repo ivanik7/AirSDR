@@ -77,6 +77,12 @@ abstract interface class NativeDecoderApi {
   NativeDecoderEvent? poll(Pointer<SdrHandle> handle, int afterSequence);
 }
 
+/// Additive native RDS control, independent of the selectable decoder ABI.
+abstract interface class NativeRbdsControl {
+  bool get rbdsAvailable;
+  bool setRbds(Pointer<SdrHandle> handle, bool enabled);
+}
+
 // C layout: native/include/sdrcore_decoder_v1.h SdrDecoderDescriptor.
 final class _Descriptor extends Struct {
   @Uint32()
@@ -128,10 +134,24 @@ String _idText(Array<Uint8> data) {
 /// Resolved only when every `sdr_decoder_*` symbol exists and
 /// `sdr_decoder_version()` matches [sdrDecoderRevision]; otherwise the
 /// optional extension is treated as absent (see [tryOpen]).
-final class FfiNativeDecoderApi implements NativeDecoderApi {
+final class FfiNativeDecoderApi implements NativeDecoderApi, NativeRbdsControl {
   FfiNativeDecoderApi._(this._lib);
 
   final DynamicLibrary _lib;
+
+  @override
+  bool get rbdsAvailable => _lib.providesSymbol('sdr_rds_set_rbds');
+
+  @override
+  bool setRbds(Pointer<SdrHandle> handle, bool enabled) {
+    if (!rbdsAvailable) return false;
+    final call = _lib
+        .lookupFunction<
+          Int32 Function(Pointer<SdrHandle>, Uint32),
+          int Function(Pointer<SdrHandle>, int)
+        >('sdr_rds_set_rbds');
+    return call(handle, enabled ? 1 : 0) == 0;
+  }
 
   /// Exact ABI sizes verified against native/include/sdrcore_decoder_v1.h.
   static List<int> get layoutSizes => [sizeOf<_Descriptor>(), sizeOf<_Event>()];

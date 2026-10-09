@@ -9,6 +9,7 @@ import 'package:flutter/foundation.dart';
 import '../radio_controller.dart';
 import '../legacy/centered_receiver.dart';
 import 'decoder_contract.dart';
+import 'rds_station.dart';
 
 class DecoderMessage {
   const DecoderMessage(
@@ -54,7 +55,12 @@ class DecoderSession extends ChangeNotifier {
     _wasRunning = radio.running;
     _lastTunedFrequency = radio.tunedFrequency;
     _lastSampleRate = radio.sampleRate.round();
+    _lastMode = radio.mode;
     radio.addListener(_radioChanged);
+    if (radio.running && radio.mode == DemodMode.wfm) {
+      _applyRbds();
+      _startPolling();
+    }
   }
   final RadioController radio;
   final CenteredReceiver _receiver;
@@ -66,6 +72,8 @@ class DecoderSession extends ChangeNotifier {
   bool _wasRunning = false;
   late double _lastTunedFrequency;
   late int _lastSampleRate;
+  late DemodMode _lastMode;
+  final RdsStation rds = RdsStation();
   int _afterSequence = 0;
   int? _streamGeneration;
   int _droppedEvents = 0;
@@ -75,6 +83,9 @@ class DecoderSession extends ChangeNotifier {
   bool get active => _attached && radio.running;
   String? get failureReason => _failure;
   int get droppedEvents => _droppedEvents;
+  bool get rbdsAvailable =>
+      radio.decoderBackend is RbdsDecoderBackend &&
+      (radio.decoderBackend! as RbdsDecoderBackend).rbdsAvailable;
   List<DecoderMessage> get messages => List.unmodifiable(_messages);
   int get inputRateHz => radio.sampleRate.round();
   int get decoderRateHz {
@@ -106,9 +117,15 @@ class DecoderSession extends ChangeNotifier {
     final running = radio.running;
     final frequency = radio.tunedFrequency;
     final rate = radio.sampleRate.round();
+    final modeChanged = radio.mode != _lastMode;
+    if (modeChanged) {
+      _lastMode = radio.mode;
+      rds.clear();
+    }
     if (frequency != _lastTunedFrequency || rate != _lastSampleRate) {
       _lastTunedFrequency = frequency;
       _lastSampleRate = rate;
+      rds.clear();
       if (decoderById(_selectedId)?.voice != true) {
         _resetEvents();
         if (rate != 0 && decoderRateHz == 0 && _selectedId == 'rtl_433') {
@@ -126,14 +143,22 @@ class DecoderSession extends ChangeNotifier {
       _stopPolling();
       _attached = false;
       _resetEvents();
+      rds.clear();
     }
-    if (running && !_wasRunning && decoderById(_selectedId)?.voice != true) {
+    if (running && !_wasRunning) {
       _attachSelected();
     }
     _wasRunning = running;
     if (decoderById(_selectedId)?.voice == true) {
       final next = decoderIdForMode(radio.mode);
       if (_selectedId != next) _selectedId = next;
+    }
+    if (modeChanged && running) {
+      _stopPolling();
+      if (radio.mode == DemodMode.wfm) {
+        _applyRbds();
+      }
+      _startPolling();
     }
     notifyListeners();
   }
@@ -150,6 +175,24 @@ class DecoderSession extends ChangeNotifier {
     _messages.clear();
   }
 
+  void _startPolling() {
+    if (!radio.running || (radio.mode != DemodMode.wfm && !active)) {
+      return;
+    }
+    _pollTimer ??= Timer.periodic(
+      const Duration(milliseconds: 100),
+      (_) => _drainEvents(),
+    );
+  }
+
+  void _applyRbds() {
+    if (rbdsAvailable && radio.running && radio.mode == DemodMode.wfm) {
+      (radio.decoderBackend! as RbdsDecoderBackend).setRbds(
+        settingsFor(decoderIdForMode(DemodMode.wfm))['rbds'] == true,
+      );
+    }
+  }
+
   void _attachSelected() {
     _stopPolling();
     _attached = false;
@@ -158,6 +201,10 @@ class DecoderSession extends ChangeNotifier {
     final backend = radio.decoderBackend;
     if (decoderById(id)?.voice == true) {
       backend?.select(null, const <String, Object>{});
+      if (radio.mode == DemodMode.wfm) {
+        _applyRbds();
+        _startPolling();
+      }
       return;
     }
     if (!_canAttach(id) || backend == null) {
@@ -180,16 +227,11 @@ class DecoderSession extends ChangeNotifier {
     }
     _attached = true;
     _resetEvents();
-    if (id == 'rtl_433') {
-      _pollTimer = Timer.periodic(
-        const Duration(milliseconds: 100),
-        (_) => _drainEvents(),
-      );
-    }
+    _startPolling();
   }
 
   void _drainEvents() {
-    if (!active || _selectedId != 'rtl_433') return;
+    if (!radio.running || (radio.mode != DemodMode.wfm && !active)) return;
     final backend = radio.decoderBackend;
     if (backend == null) return;
     var changed = false;
@@ -203,6 +245,7 @@ class DecoderSession extends ChangeNotifier {
       if (_streamGeneration != null &&
           event.streamGeneration != _streamGeneration) {
         _messages.clear();
+        rds.clear();
         changed = true;
       }
       _streamGeneration = event.streamGeneration;
@@ -212,6 +255,15 @@ class DecoderSession extends ChangeNotifier {
       try {
         final data = jsonDecode(utf8.decode(event.payload));
         if (data is! Map<String, dynamic>) continue;
+        if (data['source'] == 'rds') {
+          if (radio.mode == DemodMode.wfm &&
+              data['frequency_hz'] == radio.tunedFrequency.round() &&
+              rds.apply(data)) {
+            changed = true;
+          }
+          continue;
+        }
+        if (!active || _selectedId != 'rtl_433') continue;
         _messages.insert(
           0,
           DecoderMessage(
@@ -279,6 +331,18 @@ class DecoderSession extends ChangeNotifier {
       return;
     }
     _settings.putIfAbsent(id, () => <String, Object>{})[key] = value;
+    if (id == decoderIdForMode(DemodMode.wfm) && key == 'rbds') {
+      if (rbdsAvailable &&
+          radio.running &&
+          radio.mode == DemodMode.wfm &&
+          !(radio.decoderBackend! as RbdsDecoderBackend).setRbds(
+            value == true,
+          )) {
+        _settings[id]![key] = value != true;
+        return;
+      }
+      rds.clear();
+    }
     if (id == _selectedId && descriptor?.voice != true && _canAttach(id)) {
       _attachSelected();
     }
@@ -306,6 +370,7 @@ class DecoderSession extends ChangeNotifier {
     _selectedId = resolvedId;
     _resetEvents();
     _attachSelected();
+    _applyRbds();
     notifyListeners();
   }
 }
