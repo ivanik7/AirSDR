@@ -521,7 +521,7 @@ struct SdrHandle {
         // Stale ring/USB transfers must never enter the decoder. Detach
         // during the gap and reattach only on a clean block of the new tune.
         if (decoder && (stale || !decoder_attached)) {
-          receiver->set_decoder(stale ? nullptr : decoder.get());
+          receiver->set_decoder(stale ? nullptr : decoder.get(), decoder_input);
           decoder_attached = !stale;
         }
         receiver->set_rds_suspended(stale);
@@ -541,7 +541,11 @@ struct SdrHandle {
             while (receiver->take_rds_group(discarded_rds)) {}
           }
         }
-        if (decoder) std::fill(result.audio.begin(), result.audio.end(), 0.0f);
+        // Baseband decoders (rtl_433) keep their mute-while-decoding policy.
+        // Audio-tap decoders (SSTV) listen alongside the operator, as in
+        // OpenWebRX+: selection never mutes voice audio implicitly.
+        if (decoder && decoder_input != sdrcore::decoder::Input::audio)
+          std::fill(result.audio.begin(), result.audio.end(), 0.0f);
         if (!result.audio.empty())
           audio_sink->write(result.audio.data(), result.audio.size() / 2);
         audio_stats = audio_sink->stats();
@@ -831,7 +835,9 @@ extern "C" int32_t sdr_v3_set_controls(SdrHandle* h, const SdrV3Controls* in) {
       const bool rds_mode_changed = h->controls.mode != in->mode;
       h->controls = *in;
       if (h->dsp_controls.center_frequency_hz != in->center_frequency_hz ||
-          h->dsp_controls.vfo_offset_hz != in->vfo_offset_hz)
+          h->dsp_controls.vfo_offset_hz != in->vfo_offset_hz ||
+          (h->decoder_input == sdrcore::decoder::Input::audio &&
+           h->dsp_controls.mode != in->mode))
         h->invalidate_decoder_events();
       if (rds_tune_changed || rds_mode_changed)
         h->reset_rds(rds_mode_changed ? "mode" : "retune");
@@ -892,7 +898,9 @@ extern "C" int32_t sdr_v3_set_controls(SdrHandle* h, const SdrV3Controls* in) {
     h->receiver->set_rds_rbds(h->rbds);
     if (h->decoder && (h->dsp_controls.center_frequency_hz != in->center_frequency_hz ||
                        h->dsp_controls.vfo_offset_hz != in->vfo_offset_hz ||
-                       h->dsp_controls.sample_rate != in->sample_rate))
+                       h->dsp_controls.sample_rate != in->sample_rate ||
+                       (h->decoder_input == sdrcore::decoder::Input::audio &&
+                        h->dsp_controls.mode != in->mode)))
       h->invalidate_decoder_events();
     h->controls = *in;
     h->dsp_controls = *in;

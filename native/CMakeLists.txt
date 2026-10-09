@@ -3,6 +3,10 @@ project(sdrcore VERSION 1.0.0 LANGUAGES C CXX)
 
 add_subdirectory(third_party)
 include(third_party/rds.cmake)
+include(third_party/fftw.cmake)
+# csdr-plus SSTV decoder sources (BSD-3) + SSTV-only Module shim; defines the
+# static target sdrcore_csdr_sstv (links sdrcore_fftw3f).
+include(third_party/csdr_sstv.cmake)
 add_library(sdrcore_rds STATIC src/rds/rds.cpp)
 set_target_properties(sdrcore_rds PROPERTIES POSITION_INDEPENDENT_CODE ON)
 target_compile_features(sdrcore_rds PRIVATE cxx_std_17)
@@ -47,6 +51,7 @@ add_library(sdrcore SHARED
     src/usb_hackrf_adapter.cpp
     src/decoder/registry.cpp
     src/decoder/rtl433.cpp
+    src/decoder/sstv.cpp
     src/decoder/decoder_abi.cpp
 )
 if(ANDROID)
@@ -58,7 +63,7 @@ else()
 endif()
 target_compile_features(sdrcore PRIVATE cxx_std_17)
 find_package(Threads REQUIRED)
-target_link_libraries(sdrcore PRIVATE Threads::Threads sdrcore_rtlsdr sdrcore_hackrf sdrcore_rtl433 sdrcore_rds sdrcore_meshtastic m)
+target_link_libraries(sdrcore PRIVATE Threads::Threads sdrcore_rtlsdr sdrcore_hackrf sdrcore_rtl433 sdrcore_rds sdrcore_meshtastic sdrcore_csdr_sstv m)
 if(UNIX AND NOT APPLE)
     # Do not export upstream's API from libsdrcore: otherwise exported but
     # unused CLI/network sections keep unresolved CLI dependencies alive.
@@ -126,7 +131,8 @@ if(NOT ANDROID AND PROJECT_IS_TOP_LEVEL)
     add_executable(sdrcore_rtl433_engine_test tests/rtl433_engine_test.cpp)
     target_link_libraries(sdrcore_rtl433_engine_test PRIVATE sdrcore_rtl433)
     target_sources(sdrcore_rtl433_engine_test PRIVATE
-        src/decoder/rtl433.cpp src/decoder/registry.cpp)
+        src/decoder/rtl433.cpp src/decoder/sstv.cpp src/decoder/registry.cpp)
+    target_link_libraries(sdrcore_rtl433_engine_test PRIVATE sdrcore_csdr_sstv)
     target_include_directories(sdrcore_rtl433_engine_test PRIVATE include)
     target_compile_features(sdrcore_rtl433_engine_test PRIVATE cxx_std_17)
     target_compile_options(sdrcore_rtl433_engine_test PRIVATE -UNDEBUG)
@@ -135,11 +141,11 @@ if(NOT ANDROID AND PROJECT_IS_TOP_LEVEL)
     add_test(NAME sdrcore_rtl433_engine COMMAND sdrcore_rtl433_engine_test)
     add_executable(sdrcore_rtl433_tap_oracle
         tests/rtl433_tap_oracle.cpp src/dsp/receiver.cpp
-        src/decoder/rtl433.cpp src/decoder/registry.cpp)
+        src/decoder/rtl433.cpp src/decoder/sstv.cpp src/decoder/registry.cpp)
     target_include_directories(sdrcore_rtl433_tap_oracle PRIVATE include)
     target_compile_features(sdrcore_rtl433_tap_oracle PRIVATE cxx_std_17)
     target_compile_options(sdrcore_rtl433_tap_oracle PRIVATE -O2)
-    target_link_libraries(sdrcore_rtl433_tap_oracle PRIVATE sdrcore_rtl433 m)
+    target_link_libraries(sdrcore_rtl433_tap_oracle PRIVATE sdrcore_rtl433 sdrcore_csdr_sstv m)
     target_link_libraries(sdrcore_rtl433_tap_oracle PRIVATE sdrcore_rds)
     target_link_options(sdrcore_rtl433_tap_oracle PRIVATE -Wl,--gc-sections)
     add_executable(sdrcore_abi_test tests/abi_test.c)
@@ -269,4 +275,7 @@ if(NOT ANDROID AND PROJECT_IS_TOP_LEVEL)
         sdrcore_rtlsdr sdrcore_hackrf sdrcore_audio Threads::Threads)
     target_link_libraries(sdrcore_baseband_tap_abi_test PRIVATE sdrcore_rds)
     add_test(NAME sdrcore_baseband_tap_abi COMMAND sdrcore_baseband_tap_abi_test)
+    # SSTV backend (adapter + upstream decoder) and receiver audio-tap tests.
+    include(tests/sstv_tests.cmake)
+    include(tests/audio_tap_tests.cmake)
 endif()

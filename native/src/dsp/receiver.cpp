@@ -276,7 +276,10 @@ class ReceiverImpl final : public Receiver {
   }
   bool rds_synced() const override { return rds_ && rds_->synced(); }
 
-  uint32_t set_decoder(sdrcore::decoder::Decoder* decoder) override {
+  uint32_t set_decoder(sdrcore::decoder::Decoder* decoder,
+                       sdrcore::decoder::Input input) override {
+    // PLACEHOLDER: audio-tap scheduling is implemented by the tap work.
+    (void)input;
     if (decoder_ == decoder) return decoder_rate_hz();
     decoder_ = decoder;
     configure_decoder_branch();

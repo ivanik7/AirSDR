@@ -3,14 +3,13 @@
 #define SDRCORE_DSP_RECEIVER_H
 
 #include "sdrcore_v3.h"
-
+#include "decoder.hpp"
 #include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <string>
 #include <vector>
 
-namespace sdrcore::decoder { class Decoder; }
 
 namespace sdrcore {
 namespace dsp {
@@ -43,10 +42,22 @@ class Receiver {
   virtual void set_rds_suspended(bool suspended) = 0;
   virtual bool take_rds_group(std::string& json) = 0;
   virtual bool rds_synced() const = 0;
-  // Borrowed, DSP-lock protected. The branch is filtered and integer-decimated
-  // to a complex 200-300 kS/s tuned VFO; zero means source rate is unsuitable.
-  // Attach/detach, retune, rate and stream generation changes reset the branch.
-  virtual uint32_t set_decoder(sdrcore::decoder::Decoder* decoder) = 0;
+  // Borrowed, DSP-lock protected. Input::baseband: the branch is filtered and
+  // integer-decimated to a complex 200-300 kS/s tuned VFO; zero means source
+  // rate is unsuitable. Attach/detach, retune, rate and stream generation
+  // changes reset the branch.
+  // Input::audio: real mono demodulator output (USB/LSB real part, NFM
+  // discriminator + csdr 24 kHz NFM deemphasis FIR) band-limited and resampled
+  // to exactly 24000 S/s, tapped before AGC/squelch gate/volume/mute; fed only
+  // while the squelch is open (or off) and decoder->accepts_mode(mode).
+  // Reset on tuned-frequency (center+offset) change, mode change, sample-rate
+  // change, attach, retune() and stream reset; NOT on a bandwidth change.
+  // Before every decoder reset() the receiver calls decoder->set_tuning()
+  // with the applied tuned frequency and mode (see decoder.hpp).
+  // Returns the tap rate: 24000 for audio (0 when not attached).
+  virtual uint32_t set_decoder(sdrcore::decoder::Decoder* decoder,
+                               sdrcore::decoder::Input input =
+                                   sdrcore::decoder::Input::baseband) = 0;
   virtual uint32_t decoder_rate_hz() const = 0;
   virtual void reset() = 0;
   // Live LO retune on a continuing stream: forgets what belonged to the old
