@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../decoders/decoder_contract.dart';
 import '../decoders/decoder_panels.dart';
 import '../decoders/decoder_session.dart';
+import '../decoders/rds_widgets.dart';
 import '../radio_controller.dart';
 import 'centered_receiver.dart';
 import 'theme.dart';
@@ -40,6 +41,8 @@ class DecoderScreen extends StatelessWidget {
             VoiceDecoderPanel(controller: controller, receiver: receiver)
           else
             DecoderPlaceholderPanel(descriptor: selected, session: session),
+          if (controller.mode == DemodMode.wfm)
+            RdsDetailsPanel(session: session),
         ],
       );
     },

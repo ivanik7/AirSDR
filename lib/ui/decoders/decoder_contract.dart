@@ -79,6 +79,11 @@ final decoderCatalog = <DecoderDescriptor>[
       result: DecoderResult.none,
       voice: true,
       demodMode: mode,
+      settings: mode == DemodMode.wfm
+          ? const [
+              DecoderSetting('rbds', false, allowed: [false, true]),
+            ]
+          : const [],
     ),
   DecoderDescriptor(
     id: 'sstv',
@@ -150,4 +155,10 @@ abstract interface class DecoderBackend {
   /// Only implemented engines may be selected; failure must leave RX unchanged.
   bool select(String? id, Map<String, Object> versionedConfig);
   DecoderEvent? poll(int afterSequence);
+}
+
+/// Optional WFM metadata control; not a selectable data decoder.
+abstract interface class RbdsDecoderBackend {
+  bool get rbdsAvailable;
+  bool setRbds(bool enabled);
 }
