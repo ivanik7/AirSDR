@@ -1,5 +1,12 @@
 # Decoder architecture (native contract and UI)
 
+SSTV source audit and the shared native/UI line-event contract are in
+[`STATUS-sstv-audit.md`](../STATUS-sstv-audit.md). It documents the mapped
+csdr-plus VIS list (including disabled AVT-90 and a required PD 290 fix), the
+24 kHz audio boundary, source licenses/FFTW build gap, and the bounded
+progress/completion schema.
+This is a design handoff, not an SSTV implementation or availability claim.
+
 Status: `rtl_433` is an in-process upstream engine on the single native
 receiver's tuned complex-IQ branch. `sstv` and `adsb` remain unavailable.
 The v1 decoder extension sends only bounded low-rate JSON events to Dart.
