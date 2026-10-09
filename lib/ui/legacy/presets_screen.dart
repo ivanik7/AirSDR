@@ -275,7 +275,8 @@ class _PresetsScreenState extends State<PresetsScreen> {
                 style: plex(size: 14),
               ),
               Text(
-                '${formatMhz(f.frequencyHz)} MHz · ${f.mode.label}',
+                '${formatMhz(f.frequencyHz)} MHz · '
+                '${decoderById(f.decoderChoice)?.label ?? f.mode.label}',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: plex(size: 11, mono: true, color: LegacyColors.muted),
