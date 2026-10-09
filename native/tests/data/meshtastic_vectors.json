@@ -1,0 +1,523 @@
+{
+ "generator": "native/tests/meshtastic_oracle.py",
+ "reference": "openwebrx-plus f1e0d1ac7dfac3732f2981078e8bf7fff63d9764 owrx/meshtastic.py MeshtasticParser.parsePacket",
+ "python_packages": "meshtastic==2.7.11 protobuf pycryptodomex==3.24.0",
+ "freq": 869525000,
+ "volatile_keys": [
+  "timestamp",
+  "color",
+  "symbol"
+ ],
+ "groups": [
+  {
+   "name": "default",
+   "config": {
+    "v": 1
+   },
+   "packets": [
+    {
+     "name": "real_meshtastic_sdr_text",
+     "hex": "ffffffffb45463dab971aa8c6308000078aacf76587a5a4cf4a20e2c1d0349ab3f72",
+     "notes": "real capture, default key, TEXT_MESSAGE_APP",
+     "owrx": {
+      "mode": "Meshtastic",
+      "comment": "34 bytes, hop 0/3",
+      "dst": 4294967295,
+      "src": 3663942836,
+      "freq": 869525000,
+      "port": 1,
+      "type": "TEXT_MESSAGE_APP",
+      "message": "TestingCLU1234"
+     }
+    },
+    {
+     "name": "nodeinfo",
+     "hex": "ffffffff2b1a3c43111111116308000005c44f5adfd3c211053c970a4dd5486dc3b36857aeff2187d1ef0f2ad4a072576a2a3949ffc5b4be4bd2c49d6e3ef44d566d082f135a97a006be124e993af96a72204f350ab2df8e7af31fa760c0a776",
+     "owrx": {
+      "mode": "Meshtastic",
+      "comment": "96 bytes, hop 0/3",
+      "dst": 4294967295,
+      "src": 1128012331,
+      "freq": 869525000,
+      "port": 4,
+      "type": "NODEINFO_APP",
+      "data": {
+       "id": "!433c1a2b",
+       "long_name": "Test Heltec V3",
+       "short_name": "TST",
+       "macaddr": "SMpDPBor",
+       "hw_model": "HELTEC_V3",
+       "public_key": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8="
+      },
+      "nickName": "TST",
+      "longName": "Test Heltec V3",
+      "device": "HELTEC_V3"
+     }
+    },
+    {
+     "name": "position",
+     "hex": "ffffffff2b1a3c4312111111630800005ee2f803968694686e6480359568641402c8c0b22bda6023e6d7ce04916de173",
+     "owrx": {
+      "mode": "Meshtastic",
+      "comment": "48 bytes, hop 0/3",
+      "dst": 4294967295,
+      "src": 1128012331,
+      "freq": 869525000,
+      "port": 3,
+      "type": "POSITION_APP",
+      "data": {
+       "latitude_i": 516789012,
+       "longitude_i": -1234567,
+       "altitude": 153,
+       "time": 1791500000,
+       "location_source": "LOC_INTERNAL",
+       "ground_speed": 3,
+       "sats_in_view": 9,
+       "precision_bits": 32
+      },
+      "lat": 51.6789012,
+      "lon": -0.1234567,
+      "altitude": 153,
+      "nickName": "TST",
+      "longName": "Test Heltec V3",
+      "device": "HELTEC_V3"
+     }
+    },
+    {
+     "name": "text_utf8_after_nodeinfo",
+     "hex": "ffffffff2b1a3c4313111111630800002afca9be58b2c742bb02f3d31144add563422d26e66d4e84c60bf4d6",
+     "owrx": {
+      "mode": "Meshtastic",
+      "comment": "44 bytes, hop 0/3",
+      "dst": 4294967295,
+      "src": 1128012331,
+      "freq": 869525000,
+      "port": 1,
+      "type": "TEXT_MESSAGE_APP",
+      "message": "Привет, mesh! 📡",
+      "nickName": "TST",
+      "longName": "Test Heltec V3",
+      "device": "HELTEC_V3",
+      "lat": 51.6789012,
+      "lon": -0.1234567,
+      "altitude": 153
+     }
+    },
+    {
+     "name": "text_invalid_utf8",
+     "hex": "ffffffffb45463da14111111630800000f3ab9c23988235bebd9c260932f",
+     "owrx": {
+      "mode": "Meshtastic",
+      "comment": "30 bytes, hop 0/3",
+      "dst": 4294967295,
+      "src": 3663942836,
+      "freq": 869525000,
+      "port": 1,
+      "type": "TEXT_MESSAGE_APP",
+      "message": "ok��� end"
+     }
+    },
+    {
+     "name": "telemetry_device",
+     "hex": "ffffffff2b1a3c431511111163080000313e25fb1d83758c48f84ebffcbe4fdc7c0d003412841b618b314018d6fe403e",
+     "owrx": {
+      "mode": "Meshtastic",
+      "comment": "48 bytes, hop 0/3",
+      "dst": 4294967295,
+      "src": 1128012331,
+      "freq": 869525000,
+      "port": 67,
+      "type": "TELEMETRY_APP",
+      "data": {
+       "time": 1791500100,
+       "device_metrics": {
+        "battery_level": 87,
+        "voltage": 4.105,
+        "channel_utilization": 12.34,
+        "air_util_tx": 1.5,
+        "uptime_seconds": 86400
+       }
+      },
+      "battery": 4.105,
+      "uptime": 86400,
+      "channelUse": 12.34,
+      "airtimeUse": 1.5,
+      "nickName": "TST",
+      "longName": "Test Heltec V3",
+      "device": "HELTEC_V3",
+      "lat": 51.6789012,
+      "lon": -0.1234567,
+      "altitude": 153
+     }
+    },
+    {
+     "name": "telemetry_environment",
+     "hex": "ffffffff01007f9e16111111630800006c9d743ea8961768fd22a9b7b9271f626b91df3e22283e6185d81879",
+     "owrx": {
+      "mode": "Meshtastic",
+      "comment": "44 bytes, hop 0/3",
+      "dst": 4294967295,
+      "src": 2659123201,
+      "freq": 869525000,
+      "port": 67,
+      "type": "TELEMETRY_APP",
+      "data": {
+       "time": 1791500200,
+       "environment_metrics": {
+        "temperature": 21.7,
+        "relative_humidity": 48.25,
+        "barometric_pressure": 1013.1,
+        "iaq": 55
+       }
+      },
+      "weather": {
+       "temperature": 21.7,
+       "humidity": 48.25,
+       "barometricpressure": 1013.1
+      }
+     }
+    },
+    {
+     "name": "routing_ack_none",
+     "hex": "2b1a3c43b45463da17111111630800000bcd345111a92f3265494e",
+     "owrx": {
+      "mode": "Meshtastic",
+      "comment": "27 bytes, hop 0/3",
+      "dst": 1128012331,
+      "src": 3663942836,
+      "freq": 869525000,
+      "port": 5,
+      "type": "ROUTING_APP",
+      "data": {},
+      "dstNickName": "TST",
+      "dstLongName": "Test Heltec V3"
+     }
+    },
+    {
+     "name": "routing_error",
+     "hex": "2b1a3c43b45463da1811111161080000e90877d14808",
+     "owrx": {
+      "mode": "Meshtastic",
+      "comment": "22 bytes, hop 2/3",
+      "dst": 1128012331,
+      "src": 3663942836,
+      "freq": 869525000,
+      "port": 5,
+      "type": "ROUTING_APP",
+      "data": {
+       "error_reason": "NO_RESPONSE"
+      },
+      "dstNickName": "TST",
+      "dstLongName": "Test Heltec V3"
+     }
+    },
+    {
+     "name": "traceroute",
+     "hex": "b45463da2b1a3c431911111163080000a5e29a201d106ec314b76d407f00e06c71406573628f8c93eb9f8f81b04f59a8",
+     "owrx": {
+      "mode": "Meshtastic",
+      "comment": "48 bytes, hop 0/3",
+      "dst": 3663942836,
+      "src": 1128012331,
+      "freq": 869525000,
+      "port": 70,
+      "type": "TRACEROUTE_APP",
+      "data": {
+       "route": [
+        2659123201
+       ],
+       "snr_towards": [
+        24,
+        -8
+       ],
+       "route_back": [
+        2659123201
+       ],
+       "snr_back": [
+        12
+       ]
+      },
+      "nickName": "TST",
+      "longName": "Test Heltec V3",
+      "device": "HELTEC_V3",
+      "lat": 51.6789012,
+      "lon": -0.1234567,
+      "altitude": 153
+     }
+    },
+    {
+     "name": "neighborinfo",
+     "hex": "ffffffff2b1a3c431a11111163080000c29f4aca42b6fa7ebb2296e9a0e64c75af288f007d3628e1cdb8074a36ca8d11779cca3cc195daea1be635c486",
+     "owrx": {
+      "mode": "Meshtastic",
+      "comment": "61 bytes, hop 0/3",
+      "dst": 4294967295,
+      "src": 1128012331,
+      "freq": 869525000,
+      "port": 71,
+      "type": "NEIGHBORINFO_APP",
+      "data": {
+       "node_id": 1128012331,
+       "last_sent_by_id": 1128012331,
+       "node_broadcast_interval_secs": 900,
+       "neighbors": [
+        {
+         "node_id": 3663942836,
+         "snr": 6.75
+        },
+        {
+         "node_id": 2659123201,
+         "snr": -3.5
+        }
+       ]
+      },
+      "nickName": "TST",
+      "longName": "Test Heltec V3",
+      "device": "HELTEC_V3",
+      "lat": 51.6789012,
+      "lon": -0.1234567,
+      "altitude": 153
+     }
+    },
+    {
+     "name": "waypoint",
+     "hex": "ffffffff2b1a3c431b111111630800007290d839debb78cc770aa0b3f4a2b3cd13ec46b23ab82177345e4caaff513a4affe608c9873203",
+     "owrx": {
+      "mode": "Meshtastic",
+      "comment": "55 bytes, hop 0/3",
+      "dst": 4294967295,
+      "src": 1128012331,
+      "freq": 869525000,
+      "port": 8,
+      "type": "WAYPOINT_APP",
+      "data": {
+       "id": 7,
+       "latitude_i": 516780000,
+       "longitude_i": -1230000,
+       "expire": 1791600000,
+       "name": "Camp",
+       "description": "base",
+       "icon": 127957
+      },
+      "waypoint": {
+       "name": "Camp",
+       "lat": 51.678,
+       "lon": -0.123
+      },
+      "nickName": "TST",
+      "longName": "Test Heltec V3",
+      "device": "HELTEC_V3",
+      "lat": 51.6789012,
+      "lon": -0.1234567,
+      "altitude": 153
+     }
+    },
+    {
+     "name": "paxcounter",
+     "hex": "ffffffff01007f9e1c1111116308000024f141f99004b22968bb6c",
+     "owrx": {
+      "mode": "Meshtastic",
+      "comment": "27 bytes, hop 0/3",
+      "dst": 4294967295,
+      "src": 2659123201,
+      "freq": 869525000,
+      "port": 34,
+      "type": "PAXCOUNTER_APP",
+      "data": {
+       "wifi": 12,
+       "ble": 30,
+       "uptime": 3600
+      }
+     }
+    },
+    {
+     "name": "admin_raw",
+     "hex": "2b1a3c43b45463da1d11111163080000365ada391064",
+     "notes": "ADMIN_APP: OpenWebRX+ decodes AdminMessage; native keeps raw payload",
+     "ignore": [
+      "data"
+     ],
+     "owrx": {
+      "mode": "Meshtastic",
+      "comment": "22 bytes, hop 0/3",
+      "dst": 1128012331,
+      "src": 3663942836,
+      "freq": 869525000,
+      "port": 6,
+      "type": "ADMIN_APP",
+      "data": {
+       "get_owner_request": true
+      },
+      "dstNickName": "TST",
+      "dstLongName": "Test Heltec V3"
+     }
+    },
+    {
+     "name": "detection_sensor_raw",
+     "hex": "ffffffff01007f9e1e111111630800008c8c0789e5e18121c0df83d9d2830438ba0833",
+     "owrx": {
+      "mode": "Meshtastic",
+      "comment": "35 bytes, hop 0/3",
+      "dst": 4294967295,
+      "src": 2659123201,
+      "freq": 869525000,
+      "port": 10,
+      "type": "DETECTION_SENSOR_APP"
+     }
+    },
+    {
+     "name": "duplicate_dropped",
+     "hex": "ffffffff2b1a3c4313111111630800002afca9a5ec5866",
+     "expect_drop": "duplicate",
+     "owrx": null
+    },
+    {
+     "name": "header_only",
+     "hex": "ffffffffb45463da1f11111163080000",
+     "owrx": {
+      "mode": "Meshtastic",
+      "comment": "16 bytes, hop 0/3",
+      "dst": 4294967295,
+      "src": 3663942836,
+      "freq": 869525000
+     }
+    },
+    {
+     "name": "short_dropped",
+     "hex": "000000000000000000000000000000",
+     "expect_drop": "bad_length",
+     "owrx": null
+    },
+    {
+     "name": "unknown_key_hash_mismatch",
+     "hex": "ffffffffb45463da2011111163360000e31954e117e2b9eb8482",
+     "notes": "OpenWebRX+ tries the default key regardless of channel hash",
+     "encrypted": "unknown_key",
+     "owrx": {
+      "mode": "Meshtastic",
+      "comment": "26 bytes, hop 0/3",
+      "dst": 4294967295,
+      "src": 3663942836,
+      "freq": 869525000
+     }
+    }
+   ]
+  },
+  {
+   "name": "aes256",
+   "config": {
+    "v": 1,
+    "channels": [
+     {
+      "name": "Ops",
+      "psk": "ICEiIyQlJicoKSorLC0uLzAxMjM0NTY3ODk6Ozw9Pj8="
+     }
+    ],
+    "defaultKeyAllPresets": false
+   },
+   "packets": [
+    {
+     "name": "aes256_text",
+     "hex": "ffffffffb45463da01002222634c00000285d3a10b395ca5b5db22700bbab6a2b9e6cf",
+     "owrx": {
+      "mode": "Meshtastic",
+      "comment": "35 bytes, hop 0/3",
+      "dst": 4294967295,
+      "src": 3663942836,
+      "freq": 869525000,
+      "port": 1,
+      "type": "TEXT_MESSAGE_APP",
+      "message": "AES-256 channel"
+     }
+    },
+    {
+     "name": "aes256_position",
+     "hex": "ffffffffb45463da02002222634c0000b069a3444a2896d9ca4e1d31aeb3",
+     "owrx": {
+      "mode": "Meshtastic",
+      "comment": "30 bytes, hop 0/3",
+      "dst": 4294967295,
+      "src": 3663942836,
+      "freq": 869525000,
+      "port": 3,
+      "type": "POSITION_APP",
+      "data": {
+       "latitude_i": -337000000,
+       "longitude_i": 1512000000
+      },
+      "lat": -33.7,
+      "lon": 151.2
+     }
+    }
+   ]
+  },
+  {
+   "name": "aes128_hex",
+   "config": {
+    "v": 1,
+    "channels": [
+     {
+      "name": "Family",
+      "psk": "8A:1F:0C:55:E2:D4:B6:97:03:11:AA:BB:CC:DD:EE:FF"
+     }
+    ]
+   },
+   "packets": [
+    {
+     "name": "aes128_text",
+     "hex": "ffffffff01007f9e0100333363ee0000faac2f278d0c0e54f1cfc0",
+     "owrx": {
+      "mode": "Meshtastic",
+      "comment": "27 bytes, hop 0/3",
+      "dst": 4294967295,
+      "src": 2659123201,
+      "freq": 869525000,
+      "port": 1,
+      "type": "TEXT_MESSAGE_APP",
+      "message": "hex key"
+     }
+    },
+    {
+     "name": "aes128_wrong_key_reported_encrypted",
+     "hex": "ffffffff01007f9e0200333363ee0000eea6358374072a35133a",
+     "encrypted": "failed",
+     "owrx": {
+      "mode": "Meshtastic",
+      "comment": "26 bytes, hop 0/3",
+      "dst": 4294967295,
+      "src": 2659123201,
+      "freq": 869525000
+     }
+    }
+   ]
+  },
+  {
+   "name": "short_psk_index2",
+   "config": {
+    "v": 1,
+    "preset": "MediumFast",
+    "channels": [
+     {
+      "psk": "Ag=="
+     }
+    ]
+   },
+   "packets": [
+    {
+     "name": "short_psk_text",
+     "hex": "ffffffff2b1a3c4301004444631c0000533daa92b24c6509483fa29f02",
+     "owrx": {
+      "mode": "Meshtastic",
+      "comment": "29 bytes, hop 0/3",
+      "dst": 4294967295,
+      "src": 1128012331,
+      "freq": 869525000,
+      "port": 1,
+      "type": "TEXT_MESSAGE_APP",
+      "message": "index two"
+     }
+    }
+   ]
+  }
+ ]
+}

@@ -1,0 +1,20 @@
+--- a/crypto-algorithms/aes.c
++++ b/crypto-algorithms/aes.c
+@@ -545,7 +545,7 @@
+ 	result = (int)aes_sbox[(word >> 4) & 0x0000000F][word & 0x0000000F];
+ 	result += (int)aes_sbox[(word >> 12) & 0x0000000F][(word >> 8) & 0x0000000F] << 8;
+ 	result += (int)aes_sbox[(word >> 20) & 0x0000000F][(word >> 16) & 0x0000000F] << 16;
+-	result += (int)aes_sbox[(word >> 28) & 0x0000000F][(word >> 24) & 0x0000000F] << 24;
++	result += (WORD)aes_sbox[(word >> 28) & 0x0000000F][(word >> 24) & 0x0000000F] << 24;
+ 	return(result);
+ }
+ 
+@@ -567,7 +567,7 @@
+ 	}
+ 
+ 	for (idx=0; idx < Nk; ++idx) {
+-		w[idx] = ((key[4 * idx]) << 24) | ((key[4 * idx + 1]) << 16) |
++		w[idx] = ((WORD)(key[4 * idx]) << 24) | ((key[4 * idx + 1]) << 16) |
+ 				   ((key[4 * idx + 2]) << 8) | ((key[4 * idx + 3]));
+ 	}
+ 

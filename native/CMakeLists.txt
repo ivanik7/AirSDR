@@ -8,6 +8,18 @@ set_target_properties(sdrcore_rds PROPERTIES POSITION_INDEPENDENT_CODE ON)
 target_compile_features(sdrcore_rds PRIVATE cxx_std_17)
 target_link_libraries(sdrcore_rds PUBLIC sdrcore_redsea)
 
+# Meshtastic packet layer (header/keys/AES-CTR/nanopb payloads). Pure library;
+# the LoRa PHY and decoder backend wiring are separate cards.
+include(third_party/meshtastic.cmake)
+add_library(sdrcore_meshtastic STATIC
+    src/meshtastic/meshtastic.cpp
+    src/meshtastic/pb_reflect.cpp)
+set_target_properties(sdrcore_meshtastic PROPERTIES POSITION_INDEPENDENT_CODE ON)
+target_compile_features(sdrcore_meshtastic PUBLIC cxx_std_17)
+target_include_directories(sdrcore_meshtastic PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR}/third_party)
+target_link_libraries(sdrcore_meshtastic PUBLIC sdrcore_meshtastic_pb)
+
 # rtl_433 upstream sources are embedded, not run as a subprocess. Preserve
 # upstream source verbatim; link only the engine/API and protocol decoders.
 set(RTL433_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/third_party/rtl_433)
@@ -46,7 +58,7 @@ else()
 endif()
 target_compile_features(sdrcore PRIVATE cxx_std_17)
 find_package(Threads REQUIRED)
-target_link_libraries(sdrcore PRIVATE Threads::Threads sdrcore_rtlsdr sdrcore_hackrf sdrcore_rtl433 sdrcore_rds m)
+target_link_libraries(sdrcore PRIVATE Threads::Threads sdrcore_rtlsdr sdrcore_hackrf sdrcore_rtl433 sdrcore_rds sdrcore_meshtastic m)
 if(UNIX AND NOT APPLE)
     # Do not export upstream's API from libsdrcore: otherwise exported but
     # unused CLI/network sections keep unresolved CLI dependencies alive.
@@ -87,6 +99,11 @@ if(NOT ANDROID AND PROJECT_IS_TOP_LEVEL)
     target_link_libraries(sdrcore_rds_abi_test PRIVATE sdrcore)
     target_compile_options(sdrcore_rds_abi_test PRIVATE -UNDEBUG)
     add_test(NAME sdrcore_rds_abi COMMAND sdrcore_rds_abi_test)
+    add_executable(sdrcore_meshtastic_packet_test tests/meshtastic_packet_test.cpp)
+    target_link_libraries(sdrcore_meshtastic_packet_test PRIVATE sdrcore_meshtastic)
+    target_compile_definitions(sdrcore_meshtastic_packet_test PRIVATE
+        MESHTASTIC_VECTORS="${CMAKE_CURRENT_SOURCE_DIR}/tests/data/meshtastic_vectors.json")
+    add_test(NAME sdrcore_meshtastic_packet COMMAND sdrcore_meshtastic_packet_test)
     # Check the N2 header layouts independently of the DSP implementation.
     # The integrator advances sdr_version only after all N2 layers are ready.
     add_library(sdrcore_v3_contract_compile OBJECT tests/v3_contract_compile.c)
