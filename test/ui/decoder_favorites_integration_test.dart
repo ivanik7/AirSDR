@@ -56,7 +56,7 @@ void main() {
       );
       await tester.pump();
 
-      await tester.tap(find.byKey(const ValueKey('tab-3')));
+      await tester.tap(find.byKey(const ValueKey('tab-1')));
       await tester.pump();
       await tester.tap(find.byKey(const ValueKey('decoderSelector')));
       await tester.pumpAndSettle();
@@ -68,7 +68,7 @@ void main() {
         reason: 'preview cannot claim tuner',
       );
 
-      await tester.tap(find.byKey(const ValueKey('tab-1')));
+      await tester.tap(find.byKey(const ValueKey('tab-2')));
       await tester.pump();
       await tester.tap(find.byKey(const ValueKey('addFavorite')));
       await tester.pumpAndSettle();
@@ -117,14 +117,14 @@ void main() {
     );
     await tester.pump();
 
-    await tester.tap(find.byKey(const ValueKey('tab-1')));
+    await tester.tap(find.byKey(const ValueKey('tab-2')));
     await tester.pump();
     final f = favorites.entries.firstWhere((e) => e.name == 'Sensors');
     await tester.tap(find.byKey(ValueKey('apply-${f.id}')));
     await tester.pump();
     // Applying switches to Receive (onApplied); check the Decoder tab now
     // shows the restored preview.
-    await tester.tap(find.byKey(const ValueKey('tab-3')));
+    await tester.tap(find.byKey(const ValueKey('tab-1')));
     await tester.pump();
     expect(find.byKey(const ValueKey('decoderPanel-rtl_433')), findsOneWidget);
     expect(
@@ -157,7 +157,7 @@ void main() {
     radio.setTuning(centerFrequency: 29912500, vfoOffset: 0);
     await tester.pump();
 
-    await tester.tap(find.byKey(const ValueKey('tab-3')));
+    await tester.tap(find.byKey(const ValueKey('tab-1')));
     await tester.pump();
     await tester.tap(find.byKey(const ValueKey('decoderSelector')));
     await tester.pumpAndSettle();
@@ -215,7 +215,7 @@ void main() {
       ),
     );
     await tester.pump();
-    await tester.tap(find.byKey(const ValueKey('tab-1')));
+    await tester.tap(find.byKey(const ValueKey('tab-2')));
     await tester.pump();
     final f = favorites.entries.firstWhere((e) => e.name == 'Sensors');
     await tester.tap(find.byKey(ValueKey('favoriteMenu-${f.id}')));
@@ -263,7 +263,7 @@ void main() {
       ),
     );
     await tester.pump();
-    await tester.tap(find.byKey(const ValueKey('tab-1')));
+    await tester.tap(find.byKey(const ValueKey('tab-2')));
     await tester.pump();
     await tester.tap(find.byKey(ValueKey('favoriteMenu-${preset.id}')));
     await tester.pumpAndSettle();

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import 'decoder_contract.dart';
 import 'decoder_session.dart';
+import 'rds_widgets.dart';
 import '../legacy/centered_receiver.dart';
 import '../legacy/squelch_controls.dart';
 import '../legacy/theme.dart';
@@ -15,6 +16,75 @@ const _demodOptionLabels = <String, String>{
   'lowPass': 'Фильтр НЧ',
   'carrierAgc': 'АРУ несущей',
 };
+
+/// Everything a decoder panel may need; each panel picks its own inputs.
+class DecoderPanelContext {
+  const DecoderPanelContext({
+    required this.descriptor,
+    required this.controller,
+    required this.receiver,
+    required this.session,
+  });
+  final DecoderDescriptor descriptor;
+  final RadioController controller;
+  final CenteredReceiver receiver;
+  final DecoderSession session;
+}
+
+typedef DecoderPanelBuilder = Widget Function(DecoderPanelContext context);
+
+Widget _voicePanel(DecoderPanelContext c) =>
+    VoiceDecoderPanel(controller: c.controller, receiver: c.receiver);
+
+/// One panel per decoder id. Panels never share widgets: RDS/RBDS belongs
+/// to the WFM panel only, data decoders show only their own results.
+final Map<String, DecoderPanelBuilder> decoderPanels = {
+  for (final d in decoderCatalog)
+    if (d.voice && d.demodMode != DemodMode.wfm) d.id: _voicePanel,
+  decoderIdForMode(DemodMode.wfm): (c) => WfmDecoderPanel(
+    controller: c.controller,
+    receiver: c.receiver,
+    session: c.session,
+  ),
+  'rtl_433': (c) => Rtl433DecoderPanel(session: c.session),
+  'sstv': (c) =>
+      DecoderPlaceholderPanel(descriptor: c.descriptor, session: c.session),
+  'adsb': (c) =>
+      DecoderPlaceholderPanel(descriptor: c.descriptor, session: c.session),
+};
+
+/// Exactly one panel for [selectedId]; an unknown id falls back to the
+/// panel of the radio's current demodulator. The wrapper is keyed
+/// `decoderPanelFor-<id>` so tests can tell which panel is mounted.
+Widget buildDecoderPanel({
+  required String selectedId,
+  required RadioController controller,
+  required CenteredReceiver receiver,
+  required DecoderSession session,
+}) {
+  final descriptor =
+      decoderById(selectedId) ??
+      decoderById(decoderIdForMode(controller.mode))!;
+  final builder =
+      decoderPanels[descriptor.id] ??
+      (descriptor.voice
+          ? _voicePanel
+          : (c) => DecoderPlaceholderPanel(
+              descriptor: c.descriptor,
+              session: c.session,
+            ));
+  return KeyedSubtree(
+    key: ValueKey('decoderPanelFor-${descriptor.id}'),
+    child: builder(
+      DecoderPanelContext(
+        descriptor: descriptor,
+        controller: controller,
+        receiver: receiver,
+        session: session,
+      ),
+    ),
+  );
+}
 
 /// Scrollable menu keeps every choice accessible on the 344dp cover screen.
 class DecoderSelector extends StatelessWidget {
@@ -160,6 +230,28 @@ class VoiceDecoderPanel extends StatelessWidget {
   Widget _heading(String title) => Padding(
     padding: const EdgeInsets.fromLTRB(4, 4, 4, 8),
     child: Text(title, style: plex(size: 11, color: LegacyColors.accent)),
+  );
+}
+
+/// WFM decoder: voice controls plus RDS station details and the RBDS switch.
+class WfmDecoderPanel extends StatelessWidget {
+  const WfmDecoderPanel({
+    super.key,
+    required this.controller,
+    required this.receiver,
+    required this.session,
+  });
+  final RadioController controller;
+  final CenteredReceiver receiver;
+  final DecoderSession session;
+
+  @override
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      VoiceDecoderPanel(controller: controller, receiver: receiver),
+      RdsDetailsPanel(session: session),
+    ],
   );
 }
 
