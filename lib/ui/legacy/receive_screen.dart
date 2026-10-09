@@ -41,8 +41,9 @@ class ReceiveScreen extends StatefulWidget {
   final ChannelScanner scanner;
   final SignalMeter meter;
 
-  /// Forwarded to [ChannelsSection] so "save channel as preset" carries over
-  /// the previewed decoder (decoders/decoder_session.dart).
+  /// The one decoder selection: the mode chip shows its label (e.g.
+  /// `rtl_433`, not the underlying WFM demod) and [ChannelsSection] uses it
+  /// for the active tile and "save channel as preset".
   final DecoderSession? decoderSession;
   @override
   State<ReceiveScreen> createState() => _ReceiveScreenState();
@@ -87,7 +88,11 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
 
   @override
   Widget build(BuildContext context) => ListenableBuilder(
-    listenable: Listenable.merge([widget.controller, ?widget.bands]),
+    listenable: Listenable.merge([
+      widget.controller,
+      ?widget.bands,
+      ?widget.decoderSession,
+    ]),
     builder: (context, _) {
       final r = widget.controller;
       final f = widget.receiver;
@@ -193,8 +198,11 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: Text(
-                    r.mode.label,
+                    widget.decoderSession?.selectedLabel ?? r.mode.label,
                     key: const ValueKey('legacyModeStatus'),
+                    maxLines: 1,
+                    softWrap: false,
+                    overflow: TextOverflow.ellipsis,
                     style: plex(size: 14, color: LegacyColors.accent),
                   ),
                 ),

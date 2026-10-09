@@ -39,9 +39,9 @@ class ChannelsSection extends StatefulWidget {
   final RadioController radio;
   final SignalMeter meter;
 
-  /// Decoder currently previewed on the Decoder tab (shell-scoped); carried
-  /// over into a new preset when "Сохранить как пресет" is used. Null keeps
-  /// the pre-existing behaviour (plain voice/audio preset).
+  /// The one decoder selection (shell-scoped): the tuned active tile shows
+  /// its label, and "Сохранить как пресет" carries it over. Null keeps the
+  /// pre-existing behaviour (plain voice/audio preset, tile shows its mode).
   final DecoderSession? decoderSession;
 
   static const tileGap = 4.0;
@@ -69,6 +69,23 @@ class _ChannelsSectionState extends State<ChannelsSection> {
   static const _edgeSpeed = 9.0; // logical px per 16 ms tick
 
   ChannelsRepository get repo => widget.controller.channels;
+
+  /// Whether [c] is the channel the receiver is tuned to right now (not
+  /// scanning): only then does the shared decoder selection describe it.
+  bool _isCurrent(ReceiverChannel c) =>
+      !widget.scanner.active &&
+      repo.activeId == c.id &&
+      widget.radio.tunedFrequency.round() == c.frequencyHz &&
+      widget.radio.mode == c.mode;
+
+  /// Decoder label of [c]: the shared selection for the current channel,
+  /// else the slot's own mode.
+  String _decoderLabel(ReceiverChannel c) {
+    final session = widget.decoderSession;
+    return session != null && _isCurrent(c)
+        ? session.selectedLabel
+        : c.mode.label;
+  }
 
   @override
   void dispose() {
@@ -160,7 +177,8 @@ class _ChannelsSectionState extends State<ChannelsSection> {
             onChanged: (v) => name = v,
             decoration: InputDecoration(
               labelText: 'Название',
-              helperText: '${formatMhz(c.frequencyHz)} MHz · ${c.mode.label}',
+              helperText:
+                  '${formatMhz(c.frequencyHz)} MHz · ${_decoderLabel(c)}',
               errorText: error,
             ),
           ),
@@ -188,11 +206,7 @@ class _ChannelsSectionState extends State<ChannelsSection> {
     final session = widget.decoderSession;
     // A decoder preview describes the currently tuned channel only. Never
     // attach its options to a different (inactive or scanned) channel tile.
-    final currentChannel =
-        !widget.scanner.active &&
-        repo.activeId == c.id &&
-        widget.radio.tunedFrequency.round() == c.frequencyHz &&
-        widget.radio.mode == c.mode;
+    final currentChannel = _isCurrent(c);
     final decoderId = !currentChannel
         // Inactive channel (or a scan in progress): save uses the slot's
         // own stored mode only, never a preview belonging to the actively
@@ -297,6 +311,7 @@ class _ChannelsSectionState extends State<ChannelsSection> {
       repo,
       widget.scanner,
       widget.controller.favorites,
+      ?widget.decoderSession,
     ]),
     builder: (context, _) {
       final all = repo.channels;
@@ -458,6 +473,9 @@ class _ChannelsSectionState extends State<ChannelsSection> {
                                               name: widget.controller.tileName(
                                                 all[col * _rows + row],
                                               ),
+                                              decoderLabel: _decoderLabel(
+                                                all[col * _rows + row],
+                                              ),
                                               active:
                                                   all[col * _rows + row].id ==
                                                   repo.activeId,
@@ -521,6 +539,7 @@ class _ChannelTile extends StatefulWidget {
     super.key,
     required this.channel,
     required this.name,
+    required this.decoderLabel,
     required this.active,
     required this.tuned,
     required this.receiving,
@@ -535,6 +554,9 @@ class _ChannelTile extends StatefulWidget {
   });
   final ReceiverChannel channel;
   final String name;
+
+  /// Unified decoder label (shared selection for the tuned channel).
+  final String decoderLabel;
   final bool active;
   final bool tuned;
   final bool receiving;
@@ -669,8 +691,15 @@ class _ChannelTileState extends State<_ChannelTile> {
                 ),
               ),
               const SizedBox(width: 4),
+              // Longest catalog label is 7 characters (rtl_433); the name
+              // (Expanded) ellipsizes first.
               Text(
-                c.mode.label,
+                widget.decoderLabel,
+                key: active
+                    ? const ValueKey('channelSection-activeDecoder')
+                    : null,
+                maxLines: 1,
+                softWrap: false,
                 style: plex(
                   size: 10,
                   mono: true,

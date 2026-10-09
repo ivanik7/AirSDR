@@ -25,12 +25,17 @@ class LegacyAppShell extends StatefulWidget {
     this.channels,
     this.bands,
     this.openReceive,
+    this.decoderLabel,
   });
   final RadioController controller;
   final FavoritesRepository? favorites;
   final ChannelsRepository? channels;
   final BandsRepository? bands;
   final Listenable? openReceive;
+
+  /// Receives the label of the one selected decoder (for the background
+  /// notification); the shell owns the DecoderSession it comes from.
+  final ValueNotifier<String?>? decoderLabel;
   @override
   State<LegacyAppShell> createState() => _LegacyAppShellState();
 }
@@ -85,6 +90,8 @@ class _LegacyAppShellState extends State<LegacyAppShell> {
     scanner.addListener(_scannerChanged);
     meter = SignalMeter(widget.controller);
     decoderSession = DecoderSession(widget.controller, receiver: receiver);
+    decoderSession.addListener(_publishDecoderLabel);
+    _publishDecoderLabel();
     final radio = widget.controller;
     final slots = channelSlots;
     final bound = channels;
@@ -113,6 +120,9 @@ class _LegacyAppShellState extends State<LegacyAppShell> {
     radio.addListener(_radioChanged);
   }
 
+  void _publishDecoderLabel() =>
+      widget.decoderLabel?.value = decoderSession.selectedLabel;
+
   void _radioChanged() {
     // Resting receiver: LO centered on the VFO and on the step grid.
     if (radioReady && !receiver.dragging && receiver.needsRecenter) {
@@ -137,6 +147,7 @@ class _LegacyAppShellState extends State<LegacyAppShell> {
       oldWidget.openReceive?.removeListener(_showReceive);
       widget.openReceive?.addListener(_showReceive);
     }
+    if (oldWidget.decoderLabel != widget.decoderLabel) _publishDecoderLabel();
     if (oldWidget.controller == widget.controller &&
         oldWidget.favorites == widget.favorites &&
         oldWidget.channels == widget.channels &&

@@ -7,6 +7,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 
 import '../radio_controller.dart';
+import '../bands/bands.dart';
 import '../legacy/centered_receiver.dart';
 import 'decoder_contract.dart';
 import 'rds_station.dart';
@@ -57,6 +58,7 @@ class DecoderSession extends ChangeNotifier {
     _lastSampleRate = radio.sampleRate.round();
     _lastMode = radio.mode;
     radio.addListener(_radioChanged);
+    _receiver.onBandEntered = _bandEntered;
     if (radio.running && radio.mode == DemodMode.wfm) {
       _applyRbds();
       _startPolling();
@@ -80,6 +82,10 @@ class DecoderSession extends ChangeNotifier {
   String? _failure;
 
   String get selectedId => _selectedId;
+
+  /// Label of the one selected decoder, as every screen shows it.
+  String get selectedLabel =>
+      decoderById(_selectedId)?.label ?? radio.mode.label;
   bool get active => _attached && radio.running;
   String? get failureReason => _failure;
   int get droppedEvents => _droppedEvents;
@@ -102,6 +108,13 @@ class DecoderSession extends ChangeNotifier {
   };
   bool isAvailable(String id) => availableIds.contains(id);
   bool canConfigure(String id) => _canAttach(id);
+
+  /// A band with a data decoder selects it on entry; a voice-only band just
+  /// sets the mode, which a voice selection follows (see [_radioChanged]).
+  void _bandEntered(Band band) {
+    final id = band.decoderId;
+    if (id != null) selectPreview(id);
+  }
 
   bool _canAttach(String id) {
     final descriptor = decoderById(id);
@@ -291,6 +304,9 @@ class DecoderSession extends ChangeNotifier {
   void dispose() {
     _stopPolling();
     radio.removeListener(_radioChanged);
+    if (_receiver.onBandEntered == _bandEntered) {
+      _receiver.onBandEntered = null;
+    }
     super.dispose();
   }
 

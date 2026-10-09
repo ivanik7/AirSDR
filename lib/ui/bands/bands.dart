@@ -13,6 +13,7 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../favorites/favorites.dart';
+import '../decoders/decoder_contract.dart' show decoderById;
 import '../legacy/step_grid.dart' show formatMhz;
 import '../radio_controller.dart';
 
@@ -35,6 +36,16 @@ const bandMinHz = 1;
 const bandMaxHz = 6000000000;
 const bandMaxNameLength = 40;
 
+/// Unified decoder choice [decoderId] split into what a band stores: a
+/// voice (`demod:`) choice becomes the band's mode and no decoder id; a
+/// known data decoder keeps [mode] and its id; anything else is dropped.
+(DemodMode, String?) _resolveBandDecoder(DemodMode mode, String? decoderId) {
+  final asMode = demodModeFromDecoderId(decoderId);
+  if (asMode != null) return (asMode, null);
+  if (decoderId == null || decoderById(decoderId) == null) return (mode, null);
+  return (mode, decoderId);
+}
+
 @immutable
 class Band {
   const Band({
@@ -44,6 +55,7 @@ class Band {
     required this.endHz,
     required this.mode,
     required this.stepHz,
+    this.decoderId,
   });
   final String id;
   final String name;
@@ -53,6 +65,13 @@ class Band {
   final int endHz;
   final DemodMode mode;
   final int stepHz;
+
+  /// Data decoder (decoder_contract.dart id) selected on entering the band,
+  /// or null: the band's [mode] alone applies. Never a `demod:` id.
+  final String? decoderId;
+
+  /// The band's entry in the one decoder list (same ids as the Decoder tab).
+  String get decoderChoice => decoderId ?? decoderIdForMode(mode);
 
   bool contains(int hz) => hz >= startHz && hz <= endHz;
 
@@ -72,6 +91,7 @@ class Band {
     endHz: endHz ?? this.endHz,
     mode: mode ?? this.mode,
     stepHz: stepHz ?? this.stepHz,
+    decoderId: decoderId,
   );
 
   Map<String, Object> toJson() => {
@@ -81,6 +101,7 @@ class Band {
     'endHz': endHz,
     'mode': mode.label,
     'stepHz': stepHz,
+    'decoderId': ?decoderId,
   };
 }
 
@@ -249,6 +270,7 @@ class BandsRepository extends ChangeNotifier {
         final start = m['startHz'];
         final end = m['endHz'];
         final step = m['stepHz'];
+        final rawDecoder = m['decoderId'];
         if (mode == null ||
             name is! String ||
             start is! int ||
@@ -273,6 +295,10 @@ class BandsRepository extends ChangeNotifier {
             endHz: end,
             mode: mode,
             stepHz: step,
+            decoderId: _resolveBandDecoder(
+              mode,
+              rawDecoder is String ? rawDecoder : null,
+            ).$2,
           ),
         );
       }
@@ -365,12 +391,14 @@ class BandsRepository extends ChangeNotifier {
   }
 
   /// Throws [BandValidationException].
+  /// [decoderId]: a choice from the unified decoder list, see [Band.decoderId].
   Band add({
     required String name,
     required int startHz,
     required int endHz,
     required DemodMode mode,
     required int stepHz,
+    String? decoderId,
   }) {
     final err = check(
       name: name,
@@ -379,13 +407,18 @@ class BandsRepository extends ChangeNotifier {
       stepHz: stepHz,
     );
     if (err != null) throw err;
+    final (resolvedMode, resolvedDecoder) = _resolveBandDecoder(
+      mode,
+      decoderId,
+    );
     final b = Band(
       id: 'user-${_nextId++}',
       name: name.trim(),
       startHz: startHz,
       endHz: endHz,
-      mode: mode,
+      mode: resolvedMode,
       stepHz: stepHz,
+      decoderId: resolvedDecoder,
     );
     _entries.add(b);
     _save();
@@ -400,6 +433,7 @@ class BandsRepository extends ChangeNotifier {
     required int endHz,
     required DemodMode mode,
     required int stepHz,
+    String? decoderId,
   }) {
     final i = _entries.indexWhere((b) => b.id == id);
     if (i < 0) throw ArgumentError.value(id, 'id');
@@ -411,12 +445,18 @@ class BandsRepository extends ChangeNotifier {
       stepHz: stepHz,
     );
     if (err != null) throw err;
-    _entries[i] = _entries[i].copyWith(
+    final (resolvedMode, resolvedDecoder) = _resolveBandDecoder(
+      mode,
+      decoderId,
+    );
+    _entries[i] = Band(
+      id: id,
       name: name.trim(),
       startHz: startHz,
       endHz: endHz,
-      mode: mode,
+      mode: resolvedMode,
       stepHz: stepHz,
+      decoderId: resolvedDecoder,
     );
     _save();
   }

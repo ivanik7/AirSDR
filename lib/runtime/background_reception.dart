@@ -3,6 +3,7 @@
 // DSP start and releases the service after native USB/audio teardown.
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 import '../ui/radio_controller.dart';
@@ -13,9 +14,11 @@ class BackgroundReception {
     this.channel = const MethodChannel('sdr/background'),
     this.updateInterval = const Duration(seconds: 1),
     this.onOpenReceive,
+    this.decoderLabel,
   }) {
     channel.setMethodCallHandler(_fromNative);
     radio.addListener(_changed);
+    decoderLabel?.addListener(_changed);
     _changed(); // auto-connect can finish before the bridge is attached
   }
 
@@ -23,6 +26,11 @@ class BackgroundReception {
   final MethodChannel channel;
   final Duration updateInterval;
   final VoidCallback? onOpenReceive;
+
+  /// Label of the one selected decoder (DecoderSession, published by the
+  /// shell). The notification shows it instead of the raw demod mode, so a
+  /// data decoder reads e.g. `rtl_433`, same as the Receive screen.
+  final ValueListenable<String?>? decoderLabel;
   Future<void> _serial = Future<void>.value();
   Timer? _updateTimer;
   bool _active = false;
@@ -31,7 +39,7 @@ class BackgroundReception {
 
   Map<String, Object> get _details => <String, Object>{
     'frequency': radio.tunedFrequency.round(),
-    'mode': radio.mode.label,
+    'mode': decoderLabel?.value ?? radio.mode.label,
   };
 
   void _enqueue(String method, [Map<String, Object>? args]) {
@@ -60,8 +68,10 @@ class BackgroundReception {
     final key = '${details['frequency']}:${details['mode']}';
     if (!_active) {
       _active = true;
-      _lastDetails = key;
-    } else if (key != _lastDetails && _updateTimer == null) {
+      // The native promotion carried the raw demod label.
+      _lastDetails = '${details['frequency']}:${radio.mode.label}';
+    }
+    if (key != _lastDetails && _updateTimer == null) {
       _updateTimer = Timer(updateInterval, () {
         _updateTimer = null;
         if (!radio.running || _disposed) return;
@@ -90,6 +100,7 @@ class BackgroundReception {
 
   void dispose() {
     radio.removeListener(_changed);
+    decoderLabel?.removeListener(_changed);
     _updateTimer?.cancel();
     channel.setMethodCallHandler(null);
 

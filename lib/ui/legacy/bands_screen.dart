@@ -5,6 +5,7 @@
 import 'package:flutter/material.dart';
 
 import '../bands/bands.dart';
+import '../decoders/decoder_contract.dart';
 import '../radio_controller.dart';
 import 'step_grid.dart' show formatMhz;
 import 'theme.dart';
@@ -110,7 +111,7 @@ class BandsScreen extends StatelessWidget {
                                 ),
                               ),
                               Text(
-                                '${b.mode.label} · шаг ${formatStepKhz(b.stepHz)}',
+                                '${decoderById(b.decoderChoice)?.label ?? b.mode.label} · шаг ${formatStepKhz(b.stepHz)}',
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: plex(
@@ -157,6 +158,9 @@ class _BandFormState extends State<BandForm> {
   late final TextEditingController start;
   late final TextEditingController end;
   late DemodMode mode;
+
+  /// Choice from the one decoder list (same ids as the Decoder tab).
+  late String decoder;
   late int step;
   String? error;
 
@@ -168,6 +172,7 @@ class _BandFormState extends State<BandForm> {
     start = TextEditingController(text: b == null ? '' : formatMhz(b.startHz));
     end = TextEditingController(text: b == null ? '' : formatMhz(b.endHz));
     mode = b?.mode ?? DemodMode.nfm;
+    decoder = b?.decoderChoice ?? decoderIdForMode(mode);
     step = b?.stepHz ?? 12500;
   }
 
@@ -199,6 +204,7 @@ class _BandFormState extends State<BandForm> {
           endHz: e,
           mode: mode,
           stepHz: step,
+          decoderId: decoder,
         );
       } else {
         widget.bands.edit(
@@ -208,6 +214,7 @@ class _BandFormState extends State<BandForm> {
           endHz: e,
           mode: mode,
           stepHz: step,
+          decoderId: decoder,
         );
       }
       Navigator.pop(context);
@@ -264,16 +271,27 @@ class _BandFormState extends State<BandForm> {
           Row(
             children: [
               Expanded(
-                child: DropdownButton<DemodMode>(
+                // The same flat decoder list as the Decoder tab: a voice
+                // choice is the band's mode, a data decoder keeps the mode
+                // and is selected on entering the band.
+                child: DropdownButton<String>(
                   key: const ValueKey('bandMode'),
                   isExpanded: true,
-                  value: mode,
+                  value: decoder,
                   items: [
-                    for (final m in DemodMode.values)
-                      DropdownMenuItem(value: m, child: Text(m.label)),
+                    for (final d in decoderCatalog)
+                      DropdownMenuItem(
+                        key: ValueKey('bandDecoder-${d.id}'),
+                        value: d.id,
+                        child: Text(d.label, overflow: TextOverflow.ellipsis),
+                      ),
                   ],
-                  onChanged: (m) {
-                    if (m != null) setState(() => mode = m);
+                  onChanged: (id) {
+                    if (id == null) return;
+                    setState(() {
+                      decoder = id;
+                      mode = demodModeFromDecoderId(id) ?? mode;
+                    });
                   },
                 ),
               ),
