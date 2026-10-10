@@ -100,6 +100,11 @@ internal interface that bridges these drivers into the engine.
     `libusb_init()`-time device enumeration that fails on unrooted Android.
   - Our adapter (`native/src/usb_hackrf_adapter.cpp`) `dup()`s the fd before
     calling this, for the same reason as the rtlsdr adapter.
+- **Patch applied (local)**: `patches/hackrf-static-windows.patch` guards
+  hackrf.h's Windows `__declspec(dllexport/dllimport)` with
+  `!defined(HACKRF_STATIC)`. The build sets `HACKRF_STATIC`, so the
+  statically linked libhackrf API is not exported from `sdrcore.dll`. There
+  is no behaviour change on other targets.
 
 ## License compatibility
 
