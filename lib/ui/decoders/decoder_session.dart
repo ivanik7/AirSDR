@@ -11,6 +11,7 @@ import '../bands/bands.dart';
 import '../legacy/centered_receiver.dart';
 import 'decoder_contract.dart';
 import 'rds_station.dart';
+import 'sstv_image.dart';
 
 class DecoderMessage {
   const DecoderMessage(
@@ -76,6 +77,10 @@ class DecoderSession extends ChangeNotifier {
   late int _lastSampleRate;
   late DemodMode _lastMode;
   final RdsStation rds = RdsStation();
+
+  /// SSTV picture in progress plus the bounded session gallery; fed only
+  /// by real native image events of the selected `sstv` decoder.
+  final SstvReceiver sstv = SstvReceiver();
   int _afterSequence = 0;
   int? _streamGeneration;
   int _droppedEvents = 0;
@@ -123,7 +128,38 @@ class DecoderSession extends ChangeNotifier {
         radio.running &&
         (descriptor.requiredMode == null ||
             descriptor.requiredMode == radio.mode.id) &&
+        (descriptor.underlyingModes == null ||
+            descriptor.underlyingModes!.contains(radio.mode)) &&
         isAvailable(id);
+  }
+
+  /// Whether a decoder's own settings may be edited. Audio-tap decoders
+  /// with selectable underlying demods stay editable in an incompatible
+  /// mode: choosing the demod is how the user makes the receiver ready.
+  bool canEditSettings(String id) {
+    final descriptor = decoderById(id);
+    if (descriptor?.underlyingModes != null) {
+      return !descriptor!.exclusiveReceiver && isAvailable(id);
+    }
+    return _canAttach(id);
+  }
+
+  /// Stores the running demod as the `underlying` choice when it is one of
+  /// the decoder's modes, so the config always names the applied mode.
+  void _syncUnderlying(String id) {
+    final modes = decoderById(id)?.underlyingModes;
+    if (modes == null || !modes.contains(radio.mode)) return;
+    _settings.putIfAbsent(id, () => <String, Object>{})['underlying'] =
+        _underlyingName(radio.mode);
+  }
+
+  static String _underlyingName(DemodMode mode) => mode.name;
+
+  static DemodMode? _underlyingMode(Object? name) {
+    for (final mode in DemodMode.values) {
+      if (mode.name == name) return mode;
+    }
+    return null;
   }
 
   void _radioChanged() {
@@ -134,8 +170,10 @@ class DecoderSession extends ChangeNotifier {
     if (modeChanged) {
       _lastMode = radio.mode;
       rds.clear();
+      sstv.abort('mode');
     }
     if (frequency != _lastTunedFrequency || rate != _lastSampleRate) {
+      sstv.abort(frequency != _lastTunedFrequency ? 'retune' : 'restart');
       _lastTunedFrequency = frequency;
       _lastSampleRate = rate;
       rds.clear();
@@ -155,6 +193,7 @@ class DecoderSession extends ChangeNotifier {
     if (!running && _wasRunning) {
       _stopPolling();
       _attached = false;
+      sstv.abort('stop');
       _resetEvents();
       rds.clear();
     }
@@ -166,7 +205,13 @@ class DecoderSession extends ChangeNotifier {
       final next = decoderIdForMode(radio.mode);
       if (_selectedId != next) _selectedId = next;
     }
-    if (modeChanged && running) {
+    if (modeChanged &&
+        running &&
+        decoderById(_selectedId)?.underlyingModes != null) {
+      // The audio tap follows one demod: reattach (or report not ready).
+      _syncUnderlying(_selectedId);
+      _attachSelected();
+    } else if (modeChanged && running) {
       _stopPolling();
       if (radio.mode == DemodMode.wfm) {
         _applyRbds();
@@ -222,7 +267,11 @@ class DecoderSession extends ChangeNotifier {
     }
     if (!_canAttach(id) || backend == null) {
       if (isAvailable(id) && radio.running) {
-        _failure = 'Несовместимый режим приёма';
+        final modes = decoderById(id)?.underlyingModes;
+        _failure = modes != null
+            ? 'Не готов: нужен режим ${modes.map((m) => m.label).join(', ')} '
+                  '(сейчас ${radio.mode.label})'
+            : 'Несовместимый режим приёма';
       }
       backend?.select(null, const <String, Object>{});
       return;
@@ -232,6 +281,7 @@ class DecoderSession extends ChangeNotifier {
       backend.select(null, const <String, Object>{});
       return;
     }
+    _syncUnderlying(id);
     final ok = backend.select(id, _config(id));
     if (!ok) {
       backend.select(null, const <String, Object>{});
@@ -248,20 +298,44 @@ class DecoderSession extends ChangeNotifier {
     final backend = radio.decoderBackend;
     if (backend == null) return;
     var changed = false;
+    final tunedHz = radio.tunedFrequency.round();
     // Bounded per tick: avoids holding the UI thread if a producer outruns it.
     for (var i = 0; i < 1024; i++) {
       final event = backend.poll(_afterSequence);
       if (event == null || event.sequence <= _afterSequence) break;
       _afterSequence = event.sequence;
+      final lost = event.droppedEvents > _droppedEvents;
       if (_droppedEvents != event.droppedEvents) changed = true;
       _droppedEvents = event.droppedEvents;
       if (_streamGeneration != null &&
           event.streamGeneration != _streamGeneration) {
         _messages.clear();
         rds.clear();
+        sstv.abort('restart');
         changed = true;
       }
       _streamGeneration = event.streamGeneration;
+      if ((event.kind == DecoderResult.imageProgress ||
+              event.kind == DecoderResult.imageComplete) &&
+          event.payload.length <= 65536) {
+        if (!active || _selectedId != 'sstv') continue;
+        try {
+          final data = jsonDecode(utf8.decode(event.payload));
+          if (data is Map<String, dynamic> &&
+              sstv.handle(
+                event.kind,
+                data,
+                tunedFrequencyHz: tunedHz,
+                eventsLost: lost,
+              )) {
+            changed = true;
+          }
+        } on FormatException {
+          // A malformed native payload breaks the frame being assembled.
+          if (sstv.abort('lost')) changed = true;
+        }
+        continue;
+      }
       if (event.kind != DecoderResult.message || event.payload.length > 65536) {
         continue;
       }
@@ -300,9 +374,15 @@ class DecoderSession extends ChangeNotifier {
     notifyListeners();
   }
 
+  void clearSstvGallery() {
+    sstv.clearGallery();
+    notifyListeners();
+  }
+
   @override
   void dispose() {
     _stopPolling();
+    sstv.clear();
     radio.removeListener(_radioChanged);
     if (_receiver.onBandEntered == _bandEntered) {
       _receiver.onBandEntered = null;
@@ -330,6 +410,7 @@ class DecoderSession extends ChangeNotifier {
   void selectPreview(String id) {
     final descriptor = decoderById(id);
     if (descriptor == null || id == _selectedId) return;
+    sstv.abort('deselect');
     _selectedId = id;
     _resetEvents();
     if (descriptor.demodMode != null) {
@@ -347,6 +428,18 @@ class DecoderSession extends ChangeNotifier {
       return;
     }
     _settings.putIfAbsent(id, () => <String, Object>{})[key] = value;
+    if (key == 'underlying' &&
+        id == _selectedId &&
+        descriptor?.underlyingModes != null) {
+      // An explicit demod choice uses the normal centered mode control;
+      // the mode listener then reattaches the decoder in that mode.
+      final mode = _underlyingMode(value);
+      if (mode != null && mode != radio.mode) {
+        _receiver.changeMode(mode);
+        notifyListeners();
+        return;
+      }
+    }
     if (id == decoderIdForMode(DemodMode.wfm) && key == 'rbds') {
       if (rbdsAvailable &&
           radio.running &&
@@ -383,7 +476,10 @@ class DecoderSession extends ChangeNotifier {
             ? settings[spec.key]!
             : spec.defaultValue,
     };
+    if (resolvedId != _selectedId) sstv.abort('deselect');
     _selectedId = resolvedId;
+    // A preset's own mode wins over a stored underlying demod.
+    _syncUnderlying(resolvedId);
     _resetEvents();
     _attachSelected();
     _applyRbds();

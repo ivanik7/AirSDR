@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'decoder_contract.dart';
 import 'decoder_session.dart';
 import 'rds_widgets.dart';
+import 'sstv_panel.dart';
 import '../legacy/centered_receiver.dart';
 import '../legacy/squelch_controls.dart';
 import '../legacy/theme.dart';
@@ -47,8 +48,7 @@ final Map<String, DecoderPanelBuilder> decoderPanels = {
     session: c.session,
   ),
   'rtl_433': (c) => Rtl433DecoderPanel(session: c.session),
-  'sstv': (c) =>
-      DecoderPlaceholderPanel(descriptor: c.descriptor, session: c.session),
+  'sstv': (c) => SstvDecoderPanel(session: c.session),
   'adsb': (c) =>
       DecoderPlaceholderPanel(descriptor: c.descriptor, session: c.session),
 };
@@ -258,11 +258,6 @@ class WfmDecoderPanel extends StatelessWidget {
 /// Per-id icon/title/empty-state text for the data decoders
 /// (decoder_contract.dart `DecoderResult`). Keyed by [DecoderDescriptor.id].
 const Map<String, (IconData, String, String)> _placeholderMeta = {
-  'sstv': (
-    Icons.image_outlined,
-    'SSTV · изображение',
-    'Изображение пока не получено.',
-  ),
   'rtl_433': (Icons.sensors, 'rtl_433 · сообщения', 'Сообщений пока нет.'),
   'adsb': (
     Icons.flight_outlined,
@@ -466,43 +461,23 @@ class DecoderPlaceholderPanel extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 8),
-        if (descriptor.id == 'sstv')
-          AspectRatio(
-            aspectRatio: 4 / 3,
-            child: KeyedSubtree(
-              key: const ValueKey('decoderResult-sstv'),
-              child: legacyCard(
-                child: const Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.image_not_supported_outlined, size: 42),
-                      SizedBox(height: 8),
-                      Text('Изображение не получено'),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          )
-        else
-          SizedBox(
-            height: 130,
-            child: KeyedSubtree(
-              key: ValueKey('decoderResult-${descriptor.id}'),
-              child: legacyCard(
-                child: Align(
-                  alignment: Alignment.topLeft,
-                  child: Text(
-                    descriptor.id == 'rtl_433'
-                        ? 'Журнал сообщений пуст'
-                        : 'Список самолётов пуст',
-                    style: plex(size: 12, color: LegacyColors.muted),
-                  ),
+        SizedBox(
+          height: 130,
+          child: KeyedSubtree(
+            key: ValueKey('decoderResult-${descriptor.id}'),
+            child: legacyCard(
+              child: Align(
+                alignment: Alignment.topLeft,
+                child: Text(
+                  descriptor.id == 'rtl_433'
+                      ? 'Журнал сообщений пуст'
+                      : 'Список самолётов пуст',
+                  style: plex(size: 12, color: LegacyColors.muted),
                 ),
               ),
             ),
           ),
+        ),
         if (descriptor.settings.isNotEmpty) ...[
           const SizedBox(height: 8),
           legacyCard(

@@ -279,7 +279,7 @@ void main() {
       (entry) => entry.id == preset.id,
     );
     expect(saved.decoderId, 'sstv');
-    expect(saved.decoderSettings, {'mode': 'auto'});
+    expect(saved.decoderSettings, {'mode': 'auto', 'underlying': 'usb'});
     expect(radio.mode, DemodMode.wfm);
     await tester.pumpWidget(const SizedBox());
     radio.dispose();
@@ -296,7 +296,7 @@ void main() {
       mode: DemodMode.am,
       category: 'UHF',
       decoderId: 'sstv',
-      decoderSettings: const {'mode': 'martin_m1'},
+      decoderSettings: const {'mode': 'auto', 'underlying': 'lsb'},
     );
     repo.add(
       frequencyHz: 868000000,
@@ -304,7 +304,7 @@ void main() {
       mode: DemodMode.am,
       category: 'UHF',
       decoderId: 'sstv',
-      decoderSettings: const {'mode': 'scottie_s1'},
+      decoderSettings: const {'mode': 'auto', 'underlying': 'nfm'},
     );
     await repo.flush();
 
@@ -312,8 +312,8 @@ void main() {
     await reopened.load();
     final a = reopened.entries.firstWhere((e) => e.name == 'A');
     final b = reopened.entries.firstWhere((e) => e.name == 'B');
-    expect(a.decoderSettings, {'mode': 'martin_m1'});
-    expect(b.decoderSettings, {'mode': 'scottie_s1'});
+    expect(a.decoderSettings, {'mode': 'auto', 'underlying': 'lsb'});
+    expect(b.decoderSettings, {'mode': 'auto', 'underlying': 'nfm'});
     expect(a.frequencyHz, 433920000);
     expect(b.frequencyHz, 868000000);
   });
