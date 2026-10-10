@@ -181,3 +181,14 @@ git ls-remote https://github.com/AlexandreRouma/hackrf.git   # HEAD b1275e9c240b
 ```
 
 The exact unified diffs applied are kept in `patches/` for audit/reproduction.
+
+## miniaudio — `miniaudio/`
+
+- Upstream: https://github.com/mackron/miniaudio, tag **0.11.25**; only
+  `miniaudio.h` and `LICENSE`, unmodified (hashes in
+  `miniaudio/PROVENANCE.md`).
+- License: Public Domain (Unlicense) or MIT No Attribution, at the
+  recipient's choice; GPL-3.0-compatible.
+- Desktop playback only (`native/src/audio/miniaudio_sink.cpp`): CoreAudio on
+  macOS, WASAPI on Windows, PulseAudio/ALSA (dlopen'ed) or the null backend on
+  Linux. Compiled with hidden visibility; not part of Android builds.
