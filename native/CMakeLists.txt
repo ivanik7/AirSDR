@@ -133,7 +133,9 @@ if(NOT ANDROID AND PROJECT_IS_TOP_LEVEL)
     target_sources(sdrcore_rtl433_engine_test PRIVATE
         src/decoder/rtl433.cpp src/decoder/sstv.cpp src/decoder/registry.cpp)
     target_link_libraries(sdrcore_rtl433_engine_test PRIVATE sdrcore_csdr_sstv)
-    target_include_directories(sdrcore_rtl433_engine_test PRIVATE include)
+    # third_party: the SSTV adapter linked in via registry.cpp uses the
+    # vendored nlohmann/json.hpp (normally reached through sdrcore_redsea).
+    target_include_directories(sdrcore_rtl433_engine_test PRIVATE include third_party)
     target_compile_features(sdrcore_rtl433_engine_test PRIVATE cxx_std_17)
     target_compile_options(sdrcore_rtl433_engine_test PRIVATE -UNDEBUG)
     target_link_options(sdrcore_rtl433_engine_test PRIVATE -Wl,--gc-sections)
