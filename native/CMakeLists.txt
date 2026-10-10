@@ -181,6 +181,9 @@ if(NOT ANDROID AND PROJECT_IS_TOP_LEVEL)
     add_executable(sdrcore_host_usb_test tests/host_usb_test.c)
     target_link_libraries(sdrcore_host_usb_test PRIVATE sdrcore)
     add_test(NAME sdrcore_host_usb COMMAND sdrcore_host_usb_test)
+    add_executable(sdrcore_host_usb_direct_test tests/host_usb_direct_test.c)
+    target_link_libraries(sdrcore_host_usb_direct_test PRIVATE sdrcore)
+    add_test(NAME sdrcore_host_usb_direct COMMAND sdrcore_host_usb_direct_test)
     add_executable(sdrcore_rtl_gain_list_test
         tests/rtl_gain_list_test.cpp
         tests/decoder_registry_stub.cpp
@@ -219,6 +222,9 @@ if(NOT ANDROID AND PROJECT_IS_TOP_LEVEL)
     add_executable(sdrcore_host_rtl_gain_test tests/host_rtl_gain_test.c)
     target_link_libraries(sdrcore_host_rtl_gain_test PRIVATE sdrcore)
     add_test(NAME sdrcore_host_rtl_gain COMMAND sdrcore_host_rtl_gain_test)
+    # Tests that may open the attached SDR hardware must not run concurrently.
+    set_tests_properties(sdrcore_host_usb sdrcore_host_usb_direct
+        sdrcore_host_rtl_gain PROPERTIES RESOURCE_LOCK sdr_usb_device)
     add_executable(sdrcore_host_rx_diag tests/host_rx_diag.c)
     target_link_libraries(sdrcore_host_rx_diag PRIVATE sdrcore)
     # Manual real-hardware diagnostic (needs an attached RTL-SDR); not a ctest.

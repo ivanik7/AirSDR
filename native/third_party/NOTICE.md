@@ -61,6 +61,15 @@ internal interface that bridges these drivers into the engine.
   - Our adapter (`native/src/usb_rtlsdr_adapter.cpp`) `dup()`s the fd before
     calling this, because `libusb_wrap_sys_device()` stores the fd verbatim
     and neither duplicates nor closes it — see that file's ownership comment.
+- **Patch applied (local, additive)**: `patches/rtlsdr-open-bus-address.patch`
+  adds `int rtlsdr_open_bus_address(rtlsdr_dev_t **dev, uint8_t bus,
+  uint8_t address)` for the desktop direct open path
+  (`sdr_host_open_usb_direct`; the only path on macOS and Windows, which have
+  no usbfs file descriptors). It is `rtlsdr_open()` with the device matched by
+  libusb bus number / device address instead of by index, and returns the raw
+  libusb error (`LIBUSB_ERROR_NOT_FOUND` when no supported device is there)
+  so the host layer can report access denied / busy / missing WinUSB.
+  Existing functions are unchanged. Not used on Android.
 
 ## libhackrf — `hackrf/libhackrf/`
 

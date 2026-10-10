@@ -7,7 +7,10 @@
 
 // HackRF (One/Jawbreaker/rad1o) receive adapter over the vendored libhackrf
 // (third_party/hackrf), opened from a caller-owned fd via
-// hackrf_open_by_fd() -> libusb_wrap_sys_device(). RX only; TX is not wired.
+// hackrf_open_by_fd() -> libusb_wrap_sys_device() (Android, Linux), or on
+// desktops by bus/address via hackrf_device_list() + hackrf_device_list_open()
+// -> libusb_open() (macOS, Windows; see sdr_host_open_usb_direct). RX only;
+// TX is not wired.
 //
 // Ownership: libusb_wrap_sys_device() stores the fd as-is and does not dup()
 // or close() it. open() dup()s the caller's fd and passes the dup to
@@ -17,6 +20,7 @@ class HackRfAdapter final : public UsbRxAdapter {
  public:
   ~HackRfAdapter() override;
   int open(int fd) override;
+  int open_bus_address(uint8_t bus, uint8_t address) override;
   int configure(uint64_t frequency_hz, uint32_t sample_rate,
                  int32_t gain_tenths_db) override;
   int start(PushFn push, void* ctx) override;
