@@ -368,6 +368,16 @@ void SstvDecoder<T>::finishFrame()
             printBmpEmptyLines(curMode, curMode->LINE_COUNT - curState);
         if(onFinishFrame) onFinishFrame(naturalEnd);
     }
+    // sdr_flutter: instrumentation hook (patch 5). A mode with a start
+    // sync (Scottie) emits its BMP header on VIS and then waits in
+    // STATE_SYNC; when that wait times out, upstream abandons the frame
+    // here with curState==STATE_SYNC (<0), writing no rows. Report it as an
+    // unnatural end so the adapter can close the announced frame. Does not
+    // alter control flow or output bytes.
+    else if(curMode && (curState==STATE_SYNC))
+    {
+        if(onFinishFrame) onFinishFrame(false);
+    }
 
     curState = STATE_HEADER;
     curMode  = 0;

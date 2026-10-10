@@ -69,6 +69,14 @@ struct EncodeOptions {
   // Flips the VIS parity bit so decodeVIS() must reject the header
   // (negative test case).
   bool corrupt_parity = false;
+  // Transmits this 7-bit VIS code (with correct parity unless
+  // corrupt_parity) instead of the mode's own, e.g. an unmapped code.
+  int vis_override = -1;
+  // When true the returned samples are the oscillator's phase in radians
+  // (wrapped to [0, 2*pi)) instead of sin(phase), so a test can build the
+  // analytic USB/LSB/FM IQ signal of exactly the same transmission. Noise
+  // is never added to phase output.
+  bool output_phase = false;
 };
 
 // Deterministic, parameter-seeded test pattern: eight vertical color bars
@@ -108,27 +116,38 @@ namespace detail {
 // Phase-continuous sine oscillator: frequency may change between emit()
 // calls but phase never jumps, avoiding spurious FFT energy at segment
 // boundaries (matching how a real FM/AFSK SSTV transmitter behaves).
+// Durations are accumulated on an ideal (double) timeline and each segment
+// ends at the rounded sample index of its ideal end time, so per-segment
+// rounding never accumulates: a 320-pixel Robot 36 Y scan (6.6 samples per
+// pixel at 24 kHz) lasts exactly 88 ms instead of 320*7 samples.
 class PhaseOscillator {
  public:
-  explicit PhaseOscillator(double sample_rate) : sample_rate_(sample_rate) {}
+  PhaseOscillator(double sample_rate, bool output_phase, double clock_ratio)
+      : sample_rate_(sample_rate), output_phase_(output_phase), clock_ratio_(clock_ratio) {}
 
-  void emit(std::vector<float>& out, double freq_hz, size_t sample_count) {
+  // Emits `freq_hz` for `seconds` of nominal transmitter time (scaled by
+  // 1/clock_ratio to real time).
+  void emit(std::vector<float>& out, double freq_hz, double seconds) {
+    ideal_time_ += seconds / clock_ratio_;
+    const size_t end = static_cast<size_t>(std::llround(ideal_time_ * sample_rate_));
+    const size_t sample_count = end > emitted_ ? end - emitted_ : 0;
     const double step = 2.0 * kPi * freq_hz / sample_rate_;
     for (size_t i = 0; i < sample_count; ++i) {
-      out.push_back(static_cast<float>(std::sin(phase_)));
+      out.push_back(static_cast<float>(output_phase_ ? phase_ : std::sin(phase_)));
       phase_ += step;
+      if (phase_ >= 2.0 * kPi) phase_ -= 2.0 * kPi;
     }
-    phase_ = std::fmod(phase_, 2.0 * kPi);
+    emitted_ += sample_count;
   }
 
  private:
   double sample_rate_;
+  bool output_phase_;
+  double clock_ratio_;
   double phase_ = 0.0;
+  double ideal_time_ = 0.0;
+  size_t emitted_ = 0;
 };
-
-inline size_t samples_for(double seconds, double sample_rate, double clock_ratio) {
-  return static_cast<size_t>(std::llround(seconds * sample_rate / clock_ratio));
-}
 
 // Standard SSTV luminance tone mapping: 1500 Hz = black (0), 2300 Hz =
 // white (255), linear in between. Independently stated here from the
@@ -157,11 +176,9 @@ inline YuvPixel rgb_to_yuv(uint8_t r, uint8_t g, uint8_t b) {
 }
 
 inline void emit_vis_header(std::vector<float>& out, detail::PhaseOscillator& osc,
-                             int vis, double sample_rate, const EncodeOptions& opts) {
+                             int vis, const EncodeOptions& opts) {
   const double off = opts.freq_offset_hz;
-  auto tone = [&](double freq, double seconds) {
-    osc.emit(out, freq + off, samples_for(seconds, sample_rate, opts.clock_ratio));
-  };
+  auto tone = [&](double freq, double seconds) { osc.emit(out, freq + off, seconds); };
   tone(1900.0, 0.300);  // Leader 1
   tone(1200.0, 0.010);  // Break
   tone(1900.0, 0.300);  // Leader 2
@@ -179,7 +196,7 @@ inline void emit_vis_header(std::vector<float>& out, detail::PhaseOscillator& os
 }
 
 inline void apply_noise(std::vector<float>& samples, const EncodeOptions& opts) {
-  if (!opts.add_noise || samples.empty()) return;
+  if (!opts.add_noise || opts.output_phase || samples.empty()) return;
   double sum_sq = 0.0;
   for (float s : samples) sum_sq += static_cast<double>(s) * s;
   const double rms = std::sqrt(sum_sq / samples.size());
@@ -202,12 +219,11 @@ inline std::vector<float> encode(Mode mode, const std::vector<uint8_t>& rgb, int
   using detail::luminance_freq;
   using detail::PhaseOscillator;
   using detail::rgb_to_yuv;
-  using detail::samples_for;
 
   std::vector<float> out;
-  PhaseOscillator osc(sample_rate);
+  PhaseOscillator osc(sample_rate, opts.output_phase, opts.clock_ratio);
   const ModeInfo info = mode_info(mode);
-  emit_vis_header(out, osc, info.vis, sample_rate, opts);
+  emit_vis_header(out, osc, opts.vis_override >= 0 ? opts.vis_override : info.vis, opts);
 
   auto pixel_at = [&](int x, int y, int ch) -> uint8_t {
     const size_t idx = (static_cast<size_t>(std::clamp(y, 0, height - 1)) * width +
@@ -215,8 +231,7 @@ inline std::vector<float> encode(Mode mode, const std::vector<uint8_t>& rgb, int
     return rgb[idx + ch];
   };
   auto tone = [&](double freq, double seconds) {
-    osc.emit(out, freq + opts.freq_offset_hz,
-             samples_for(seconds, sample_rate, opts.clock_ratio));
+    osc.emit(out, freq + opts.freq_offset_hz, seconds);
   };
   auto scan_row_channel = [&](int y, int ch, double scan_seconds, int px_count) {
     const double px_time = scan_seconds / px_count;
@@ -228,9 +243,9 @@ inline std::vector<float> encode(Mode mode, const std::vector<uint8_t>& rgb, int
   switch (mode) {
     case Mode::kMartin1:
     case Mode::kScottie1: {
-      // GBR scan order (channel 0 = Green, 1 = Blue, 2 = Red), matching
-      // convertGBR's byte mapping in sstv.cpp (output BGR = buf[1],
-      // buf[0], buf[2] => buf[0]=G, buf[1]=B, buf[2]=R).
+      // Published Martin/Scottie scan order is green, blue, red. The source
+      // image is interleaved R,G,B, so those are RGB channel indices 1, 2, 0.
+      constexpr int kG = 1, kB = 2, kR = 0;
       const bool scottie = mode == Mode::kScottie1;
       const double scan_time = scottie ? 0.13824 : 0.146432;
       const double sync_pulse = scottie ? 0.009 : 0.004862;
@@ -240,20 +255,20 @@ inline std::vector<float> encode(Mode mode, const std::vector<uint8_t>& rgb, int
       for (int y = 0; y < height; ++y) {
         if (scottie) {
           tone(1500.0, sep_pulse);
-          scan_row_channel(y, 0, scan_time, width);  // G
+          scan_row_channel(y, kG, scan_time, width);
           tone(1500.0, sep_pulse);
-          scan_row_channel(y, 1, scan_time, width);  // B
+          scan_row_channel(y, kB, scan_time, width);
           tone(1200.0, sync_pulse);
           tone(1500.0, sync_porch);
-          scan_row_channel(y, 2, scan_time, width);  // R
+          scan_row_channel(y, kR, scan_time, width);
         } else {
           tone(1200.0, sync_pulse);
           tone(1500.0, sync_porch);
-          scan_row_channel(y, 0, scan_time, width);  // G
+          scan_row_channel(y, kG, scan_time, width);
           tone(1500.0, sep_pulse);
-          scan_row_channel(y, 1, scan_time, width);  // B
+          scan_row_channel(y, kB, scan_time, width);
           tone(1500.0, sep_pulse);
-          scan_row_channel(y, 2, scan_time, width);  // R
+          scan_row_channel(y, kR, scan_time, width);
         }
       }
       break;
@@ -282,6 +297,8 @@ inline std::vector<float> encode(Mode mode, const std::vector<uint8_t>& rgb, int
     }
     case Mode::kPd90:
     case Mode::kPd290: {
+      // Standard PD line pair (published PD spec): sync, porch, Y of the
+      // first row, R-Y and B-Y averaged over both rows, Y of the second row.
       const double scan_time = mode == Mode::kPd290 ? 0.2288 : 0.17024;
       constexpr double kSyncPulse = 0.02, kSyncPorch = 0.00208;
       for (int y = 0; y + 1 < height; y += 2) {
@@ -293,20 +310,13 @@ inline std::vector<float> encode(Mode mode, const std::vector<uint8_t>& rgb, int
         tone(1200.0, kSyncPulse);
         tone(1500.0, kSyncPorch);
         const double px_time = scan_time / width;
-        // decodeLine/convertPD only scans one Y per transmitted "line" and
-        // reuses it for both physical output rows of the pair (see
-        // native/third_party/csdr_sstv/PROVENANCE.md and
-        // native/src/decoder/sstv.cpp): transmit the pair-average Y to
-        // minimize squared error on both reconstructed rows, and transmit
-        // the SECOND row's true V/U (used verbatim by the decoder's
-        // "straight" row; the "averaged" first row gets this value
-        // blended with the previous transmission by the decoder itself).
-        for (int x = 0; x < width; ++x) {
-          const double avg_y = (static_cast<int>(a[x].y) + b[x].y) / 2.0;
-          tone(luminance_freq(static_cast<uint8_t>(std::lround(avg_y))), px_time);
-        }
-        for (int x = 0; x < width; ++x) tone(luminance_freq(b[x].v), px_time);
-        for (int x = 0; x < width; ++x) tone(luminance_freq(b[x].u), px_time);
+        auto avg = [](uint8_t p, uint8_t q) {
+          return static_cast<uint8_t>((static_cast<int>(p) + q + 1) / 2);
+        };
+        for (int x = 0; x < width; ++x) tone(luminance_freq(a[x].y), px_time);
+        for (int x = 0; x < width; ++x) tone(luminance_freq(avg(a[x].v, b[x].v)), px_time);
+        for (int x = 0; x < width; ++x) tone(luminance_freq(avg(a[x].u, b[x].u)), px_time);
+        for (int x = 0; x < width; ++x) tone(luminance_freq(b[x].y), px_time);
       }
       break;
     }

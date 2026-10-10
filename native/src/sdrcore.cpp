@@ -1152,13 +1152,18 @@ extern "C" int32_t sdr_decoder_select(SdrHandle* h, const char* id,
       if (!candidate) return SDR_UNSUPPORTED;
       if (!candidate->configure(std::string_view(config ? config : "", config_bytes)))
         return SDR_INVALID_ARGUMENT;
+      // Audio-tap backends (SSTV: USB/LSB/NFM, optionally pinned to one
+      // configured underlying demod) must accept the applied mode now;
+      // selection never changes the mode itself (decoder.hpp).
+      if (reg.descriptor.input == sdrcore::decoder::Input::audio &&
+          !candidate->accepts_mode(h->controls.mode)) return SDR_UNSUPPORTED;
       // Commit only after every validation succeeds. No second tuner or
       // control change; receiver owns a borrowed pointer under dsp_mutex.
       h->receiver->set_decoder(nullptr);
       h->decoder = std::move(candidate);
       h->decoder_input = reg.descriptor.input;
       h->decoder_attached = true;
-      h->receiver->set_decoder(h->decoder.get());
+      h->receiver->set_decoder(h->decoder.get(), h->decoder_input);
       h->invalidate_decoder_events();
       h->decoder_dropped = 0;
       return SDR_OK;

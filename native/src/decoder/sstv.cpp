@@ -227,10 +227,26 @@ bool parse_bmp_header(const std::vector<uint8_t>& buf, HeaderInfo& out) {
 }
 
 // --- The adapter itself --------------------------------------------------
-constexpr size_t kQueueCapacity = 1024;      // Frozen v1 contract: "e.g. 1024".
+// Backend-local staging queue. The handle drains up to 256 events per DSP
+// block into the public FIFO; the largest frame (PD-290) is 616 rows + 2.
+constexpr size_t kQueueCapacity = 1024;
 constexpr size_t kMaxPayloadBytes = 65536;   // SDR_DECODER_MAX_PAYLOAD.
-constexpr size_t kOutputCapacityBytes = 4 * 1024 * 1024;  // Headroom for one row.
-constexpr size_t kMaxInputSamples = 20'000'000;  // ~833 s at 24 kHz; safety cap.
+// Output bytes are parsed after every upstream process() call, so only a
+// few rows are ever pending; upstream canProcess() needs 2*800*3 writable.
+// Upstream finishFrame() pads a missing tail in one all-or-nothing
+// printBmpEmptyLines() call, but it only reaches that with rows missing
+// after decodeLine() returns 0, which cannot happen once process() has
+// checked size >= 2*lineSize. If it ever did, the frame would close as
+// partial/sync_lost with fewer rows (honest, never fabricated).
+// OutputWriter zero-fills up to capacity per write, so keep this small.
+constexpr size_t kOutputCapacityBytes = 256 * 1024;
+// Upstream canProcess() wants 2 s (48000 samples) buffered; anything beyond
+// 10 s can only accumulate if the iteration cap below is hit, and is
+// dropped oldest-first as a discontinuity.
+constexpr size_t kMaxInputSamples = 10 * 24000;
+// Compact the consumed input prefix only once it is this large, so a DSP
+// block does not memmove the whole 2 s lookahead every call.
+constexpr size_t kCompactThreshold = 24000;
 constexpr int kMaxIterationsPerProcess = 200000;  // Defensive loop-safety cap.
 
 class SstvBackend final : public Decoder {
@@ -308,21 +324,17 @@ class SstvBackend final : public Decoder {
   void process(const float* samples, size_t frames, uint32_t sample_rate_hz) override {
     if (!samples || frames == 0 || sample_rate_hz != 24000) return;
     input_buf_.insert(input_buf_.end(), samples, samples + frames);
-    if (input_buf_.size() > kMaxInputSamples) {
-      const size_t drop = input_buf_.size() - kMaxInputSamples;
-      const size_t erase_n = std::min(drop, read_pos_);
-      if (erase_n > 0) {
-        input_buf_.erase(input_buf_.begin(), input_buf_.begin() + erase_n);
-        read_pos_ -= erase_n;
-      }
-    }
     int iterations = 0;
     while (engine_->canProcess() && iterations < kMaxIterationsPerProcess) {
       engine_->process();
       ++iterations;
       drain_output();
     }
-    if (read_pos_ > 0) {
+    if (input_buf_.size() - read_pos_ > kMaxInputSamples) {
+      // Unreachable while upstream makes progress; bounded memory if not.
+      read_pos_ = input_buf_.size() - kMaxInputSamples;
+    }
+    if (read_pos_ >= kCompactThreshold || read_pos_ == input_buf_.size()) {
       input_buf_.erase(input_buf_.begin(), input_buf_.begin() + read_pos_);
       read_pos_ = 0;
     }
@@ -385,22 +397,14 @@ class SstvBackend final : public Decoder {
           finalize_frame(natural ? "end" : "sync_lost");
           continue;
         }
-        if (hook_events_.empty() && out_buf_.size() >= 54) {
-          HeaderInfo probe;
-          if (parse_bmp_header(out_buf_, probe)) {
-            // Upstream abandoned the previous frame without ever firing
-            // onFinishFrame (STATE_SYNC's start-sync timeout path, which
-            // bails out while curState==-1<0, bypassing the patched
-            // finishFrame() hook guard; see PROVENANCE.md). Treat the
-            // unexpected new header as an implicit sync-loss completion
-            // of the old frame, then let the next loop iteration parse
-            // these same bytes as a fresh header.
-            finalize_frame("sync_lost");
-            continue;
-          }
-        }
         break;
       } else {
+        // Row/finish hooks can only follow a header; a stray one would mean
+        // the hook stream and byte stream disagree. Never guess: drop it.
+        if (!hook_events_.empty()) {
+          hook_events_.pop_front();
+          continue;
+        }
         if (out_buf_.size() < 54) break;
         HeaderInfo info;
         if (!parse_bmp_header(out_buf_, info)) {

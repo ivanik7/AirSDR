@@ -555,6 +555,9 @@ namespace Csdr {
             // before curState/curMode are reset, so it is true exactly when
             // every scanline of the frame was accounted for (decoded or
             // padded) and false for early/interrupted termination.
+            // It also fires with naturalEnd=false when a start-sync mode
+            // (Scottie) times out in STATE_SYNC after its header was
+            // written, so every emitted BMP header is eventually closed.
             std::function<void(bool naturalEnd)> onFinishFrame;
 
         private:

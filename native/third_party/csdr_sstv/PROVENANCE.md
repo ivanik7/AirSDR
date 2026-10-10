@@ -53,8 +53,9 @@ amounts, compact after `canProcess()`" usage pattern as directly.
    audit (`STATUS-sstv-audit.md` §"Framing, fidelity...") flags: "Do not ship
    or test PD 290 with the unmodified upstream bound"). Fixed by raising the
    bound to the largest mapped `LINE_WIDTH` (800, used only by PD-290).
-   Verified with a PD-290 ASan run creating/destroying 20+ decoders (see test
-   report) and zero ASan reports.
+   Verified by a full PD-290 decode (616 rows, byte-identical to the patched
+   upstream engine) in `sdrcore_sstv_test`, also run under ASan/UBSan (see
+   `STATUS-sstv.md`).
 
 2. **`decodeLine` output-capacity guard `LINE_WIDTH*LINE_STEP` ->
    `LINE_WIDTH*LINE_STEP*3`.** The guard checked `writer->writeable() >=
@@ -112,6 +113,17 @@ amounts, compact after `canProcess()`" usage pattern as directly.
    v1 contract explicitly requires: "BMP row bytes alone cannot reveal this
    distinction").
 
+   `onFinishFrame(false)` additionally fires from `finishFrame()` when
+   `curMode && curState==STATE_SYNC`: a start-sync mode (Scottie 1/2/3/4,
+   Scottie DX) writes its BMP header on VIS and then waits in `STATE_SYNC`;
+   when that wait times out, upstream abandons the frame without rows and
+   without ever reaching the `curState>=0` branch. The extra `else if`
+   only observes that case so the adapter can close the announced frame as
+   `partial`/`sync_lost`; output bytes and control flow are unchanged
+   (covered by `test_scottie_start_sync_timeout` in
+   `native/tests/sstv_test.cpp`, which also checks the upstream engine
+   wrote only the 54-byte header).
+
 ## Explicitly NOT patched (per task constraints)
 
 - **`SYNC_PULSE*32.0` / `LINE_TIME*8.0` timeouts** in `process()`'s
@@ -121,14 +133,15 @@ amounts, compact after `canProcess()`" usage pattern as directly.
   `LINE_TIME`), multiplied by small constants (32, 8) with no unit
   conversion — i.e. `msecs() > lastLineT + round(SYNC_PULSE_IN_SECONDS *
   32.0)` compares milliseconds against a bare number derived from seconds.
-  This is an upstream quirk (effectively a much shorter timeout than a naive
-  reading of the formula suggests, since e.g. Martin1's SYNC_PULSE=0.004862s
-  times 32 = 0.1556, i.e. ~156 "ms" by the arithmetic, which is tiny compared
-  to a ~587 ms LINE_TIME; practically this makes the sync-search timeout very
-  aggressive but it is bounded on the other side by the adapter's own 2-second
-  `canProcess()` lookahead, which guarantees at least 2 seconds of buffered
-  input/output margin before `process()` is even called). Left unmodified
-  and documented, as instructed.
+  This is an upstream quirk: the added slack is a few milliseconds, not the
+  intended multiple of a pulse/line. For Martin 1, `round(0.004862*32.0)` =
+  `round(0.156)` = 0 ms and `round(LINE_TIME*8.0)` = `round(3.57)` = 4 ms.
+  In practice the timeout fires on the first failed search once the stream
+  time has passed `lastLineT`. Upstream `canProcess()` only runs `process()`
+  with at least 2 s (`sampleRate*2`) of buffered input, so each search covers
+  that window before giving up. `test_scottie_start_sync_timeout` exercises
+  the `STATE_SYNC` path, and the byte-identical row comparisons exercise the
+  scanline path. Left unmodified and documented, as instructed.
 - **Forced-VIS option**: not added. Only `mode=auto` is accepted by the
   adapter's `configure()` (see decoder.hpp contract / audit §"Actual chain").
 - **`createPlans`/`destroyPlans` cache-ordering "bug"**: `createPlans` caches
@@ -140,9 +153,9 @@ amounts, compact after `canProcess()`" usage pattern as directly.
   very first `createPlans()` call per `SstvMode` instance, inside
   `SstvDecoder`'s own constructor, where it is harmless because each
   `SstvMode` is freshly constructed and only `createPlans()`'d once per
-  `SstvDecoder` instance). Not modified, per task constraint. Exercised under
-  ASan with 20+ decoder construct/destroy cycles (zero reports, see test
-  report) to confirm this is actually harmless in the adapter's lifecycle.
+  `SstvDecoder` instance). Not modified, per task constraint. The ASan/UBSan
+  run of `sdrcore_sstv_test` constructs and destroys a fresh decoder for
+  every test case (several dozen instances) with no reports.
 - **Destructor**: unmodified.
 - **FFTW**: not dropped; linked via `sdrcore_fftw3f` (see
   `native/third_party/fftw.cmake`, built from vendored source).
