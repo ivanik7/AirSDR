@@ -6,9 +6,13 @@ csdr-plus VIS list (including disabled AVT-90 and a required PD 290 fix), the
 24 kHz audio boundary, source licenses/FFTW build gap, and the bounded
 progress/completion schema.
 This is a design handoff, not an SSTV implementation or availability claim.
+The native backend (vendored csdr-plus `SstvDecoder`, adapter, 24 kHz
+receiver audio tap) is described with its verification in
+[`STATUS-sstv.md`](../STATUS-sstv.md); the Dart UI is a separate card.
 
 Status: `rtl_433` is an in-process upstream engine on the single native
-receiver's tuned complex-IQ branch. `sstv` and `adsb` remain unavailable.
+receiver's tuned complex-IQ branch. `sstv` is an in-process upstream engine
+on the receiver's 24 kHz USB/LSB/NFM audio tap; `adsb` remains unavailable.
 The v1 decoder extension sends only bounded low-rate JSON events to Dart.
 
 ## One decoder list (UI contract)

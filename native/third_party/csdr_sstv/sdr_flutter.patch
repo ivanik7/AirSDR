@@ -1,0 +1,215 @@
+# sdr_flutter patch against csdr-plus commit f26b52071c4a127fc8193d058c249cac57585de4
+# Unified diff of the vendored include/sstv.hpp and src/sstv.cpp against the
+# pristine upstream files at that commit. Every hunk is additionally marked
+# in-line with a "// sdr_flutter:" comment; see PROVENANCE.md for the full
+# rationale and the list of five allowed patch categories. Apply with
+# `patch -p1 < sdr_flutter.patch` from a csdr-plus checkout at that commit.
+--- a/include/sstv.hpp
++++ b/include/sstv.hpp
+@@ -33,6 +33,10 @@
+ #include "module.hpp"
+ 
+ #include <fftw3.h>
++// sdr_flutter: <functional> for the instrumentation hooks added below
++// (patch 5 in sdr_flutter.patch / PROVENANCE.md). Does not change the
++// decoding algorithm.
++#include <functional>
+ 
+ namespace Csdr {
+     // SSTV color modes
+@@ -532,9 +536,37 @@
+             bool canProcess() override;
+             void process() override;
+ 
++            // sdr_flutter: instrumentation hooks for the native adapter
++            // (native/src/decoder/sstv.cpp). Default empty (no-op); invoked
++            // synchronously from process(), never altering output bytes or
++            // control flow (patch 5 in sdr_flutter.patch / PROVENANCE.md).
++            //
++            // onRowWritten(padded) fires exactly once per scanline-sized row
++            // write (LINE_WIDTH*3 bytes); the 54-byte BMP header write never
++            // matches this size for any mapped mode (minimum LINE_WIDTH=160)
++            // and is excluded. `padded` is true only for rows written by
++            // printBmpEmptyLines (missed-line fill or finishFrame's tail
++            // fill), false for genuinely decoded rows.
++            std::function<void(bool padded)> onRowWritten;
++            // onFinishFrame(naturalEnd) fires once whenever finishFrame()
++            // tears down a frame that had an actively selected SSTV mode
++            // (VIS successfully decoded), i.e. once per emitted BMP header.
++            // naturalEnd is (curState >= curMode->LINE_COUNT), evaluated
++            // before curState/curMode are reset, so it is true exactly when
++            // every scanline of the frame was accounted for (decoded or
++            // padded) and false for early/interrupted termination.
++            // It also fires with naturalEnd=false when a start-sync mode
++            // (Scottie) times out in STATE_SYNC after its header was
++            // written, so every emitted BMP header is eventually closed.
++            std::function<void(bool naturalEnd)> onFinishFrame;
++
+         private:
+             // Maximum scanline width
+-            enum { MAX_LINE_WIDTH = 640 };
++            // sdr_flutter: raised 640 -> 800 (patch 1). PD-290 is 800 wide
++            // (see PD290 class above); the unmodified upstream bound of 640
++            // overflows linebuf[] below and decodeLine()'s temporary
++            // per-channel buffers for PD-290. See PROVENANCE.md.
++            enum { MAX_LINE_WIDTH = 800 };
+ 
+             // Configurable input parameters
+             unsigned int sampleRate;   // Input sampling rate (Hz)
+--- a/src/lib/sstv.cpp
++++ b/src/lib/sstv.cpp
+@@ -234,6 +234,9 @@
+                 skipInput(i);
+             }
+             // If have not received sync for a while...
++            // sdr_flutter: upstream quirk, intentionally kept (compares ms
++            // with a seconds-derived threshold; bounded by the adapter's 2s
++            // canProcess() lookahead; see PROVENANCE.md / STATUS-sstv-audit.md).
+             else if(msecs() > lastLineT + round(curMode->SYNC_PULSE*32.0))
+             {
+                 // Go back to header detection, skip all input
+@@ -274,6 +277,8 @@
+                 if(curState>=curMode->LINE_COUNT) finishFrame();
+             }
+             // If have not decoded a scanline for a while...
++            // sdr_flutter: upstream quirk, intentionally kept (same ms-vs-
++            // seconds-derived comparison as above; see PROVENANCE.md).
+             else if(msecs() > lastLineT + round(curMode->LINE_TIME*8.0))
+             {
+                 // Go back to header detection, skip all input
+@@ -353,8 +358,25 @@
+ {
+     if(curMode && (curState>=0))
+     {
++        // sdr_flutter: instrumentation hook (patch 5). naturalEnd must be
++        // computed from curState/curMode before they are reset below, and
++        // this if-block is exactly the upstream condition for "a frame was
++        // actually in progress" (curMode assigned by a successful VIS decode
++        // and at least one scanline attempted). Does not alter control flow.
++        bool naturalEnd = curState >= curMode->LINE_COUNT;
+         if(curState < curMode->LINE_COUNT)
+             printBmpEmptyLines(curMode, curMode->LINE_COUNT - curState);
++        if(onFinishFrame) onFinishFrame(naturalEnd);
++    }
++    // sdr_flutter: instrumentation hook (patch 5). A mode with a start
++    // sync (Scottie) emits its BMP header on VIS and then waits in
++    // STATE_SYNC; when that wait times out, upstream abandons the frame
++    // here with curState==STATE_SYNC (<0), writing no rows. Report it as an
++    // unnatural end so the adapter can close the announced frame. Does not
++    // alter control flow or output bytes.
++    else if(curMode && (curState==STATE_SYNC))
++    {
++        if(onFinishFrame) onFinishFrame(false);
+     }
+ 
+     curState = STATE_HEADER;
+@@ -370,8 +392,19 @@
+     // If there is enough output buffer available...
+     if(this->writer->writeable() >= lines*size)
+     {
+-        char buf[size] = {0};
+-        for(int i=0 ; i<lines ; ++i) writeData(buf, size);
++        // sdr_flutter: VLA `char buf[size] = {0}` (size depends on a
++        // runtime mode->LINE_WIDTH) is a variable-length-array zero
++        // initializer, rejected by clang/NDK (patch 3). Use a fixed-size
++        // buffer sized by the raised MAX_LINE_WIDTH (patch 1) and write
++        // exactly `size` bytes, matching the original byte content/count.
++        unsigned char buf[3*MAX_LINE_WIDTH] = {0};
++        for(int i=0 ; i<lines ; ++i)
++        {
++            writeData(buf, size);
++            // sdr_flutter: instrumentation hook (patch 5): every row from
++            // this function is a padded (missed-line / tail) fill.
++            if(onRowWritten) onRowWritten(true);
++        }
+     }
+ }
+ 
+@@ -389,7 +422,9 @@
+ 
+     va_list args;
+     va_start(args, format);
+-    vsprintf(buf, format, args);
++    // sdr_flutter: vsprintf -> vsnprintf(buf, sizeof buf, ...) (patch 4):
++    // bound the write to the fixed-size stack buffer.
++    vsnprintf(buf, sizeof buf, format, args);
+     printString(buf);
+     va_end(args);
+ }
+@@ -573,7 +608,11 @@
+     }
+ 
+     // If there is enough output space available for this scanline...
+-    if(this->writer->writeable()>=mode->LINE_WIDTH*mode->LINE_STEP)
++    // sdr_flutter: guard corrected from `LINE_WIDTH*LINE_STEP` to
++    // `LINE_WIDTH*LINE_STEP*3` (patch 2): the actual write below is BGR
++    // bytes (3 bytes/pixel), so the unmodified upstream guard under-counts
++    // by a factor of 3 and can let convert*() write past `writeable()`.
++    if(this->writer->writeable()>=mode->LINE_WIDTH*mode->LINE_STEP*3)
+     {
+         unsigned char *outPtr[3];
+         for(int j=0 ; j<3 ; j++)
+@@ -636,6 +675,8 @@
+     }
+ 
+     writeData(bmp, sizeof(bmp));
++    // sdr_flutter: instrumentation hook (patch 5): a genuinely decoded row.
++    if(onRowWritten) onRowWritten(false);
+ }
+ 
+ template <typename T>
+@@ -653,6 +694,8 @@
+     }
+ 
+     writeData(bmp, sizeof(bmp));
++    // sdr_flutter: instrumentation hook (patch 5): a genuinely decoded row.
++    if(onRowWritten) onRowWritten(false);
+ }
+ 
+ template <typename T>
+@@ -670,6 +713,8 @@
+     }
+ 
+     writeData(bmp, sizeof(bmp));
++    // sdr_flutter: instrumentation hook (patch 5): a genuinely decoded row.
++    if(onRowWritten) onRowWritten(false);
+ }
+ 
+ template <typename T>
+@@ -695,6 +740,8 @@
+     memcpy(linebuf[0], buf[1], mode->LINE_WIDTH);
+ 
+     writeData(bmp, sizeof(bmp));
++    // sdr_flutter: instrumentation hook (patch 5): a genuinely decoded row.
++    if(onRowWritten) onRowWritten(false);
+ }
+ 
+ template <typename T>
+@@ -717,6 +764,8 @@
+             *p++ = (rgb >> 16) & 0xFF;
+         }
+         writeData(bmp, sizeof(bmp));
++        // sdr_flutter: instrumentation hook (patch 5): a genuinely decoded row.
++        if(onRowWritten) onRowWritten(false);
+     }
+ 
+     // Draw odd scanline
+@@ -728,9 +777,17 @@
+         *p++ = (rgb >> 16) & 0xFF;
+     }
+     writeData(bmp, sizeof(bmp));
++    // sdr_flutter: instrumentation hook (patch 5): a genuinely decoded row.
++    if(onRowWritten) onRowWritten(false);
+ 
+     // First line gets duplicated, since there is no previous line yet
+-    if(line == 0) writeData(bmp, sizeof(bmp));
++    if(line == 0)
++    {
++        writeData(bmp, sizeof(bmp));
++        // sdr_flutter: instrumentation hook (patch 5): the duplicated first
++        // row is still a genuinely decoded row, not a padded fill.
++        if(onRowWritten) onRowWritten(false);
++    }
+ 
+     // Retain U/V values until the next scanline
+     memcpy(linebuf[0], buf[1], mode->LINE_WIDTH);

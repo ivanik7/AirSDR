@@ -2,6 +2,7 @@
 #include "receiver.h"
 #include "decoder.hpp"
 #include "../rds/rds.h"
+#include "csdr_nfm_deemphasis_24000.h"
 
 #include <algorithm>
 #include <array>
@@ -9,11 +10,159 @@
 #include <complex>
 #include <cstdint>
 #include <limits>
+#include <vector>
 
 namespace sdrcore {
 namespace dsp {
 namespace {
 constexpr double kPi = 3.14159265358979323846;
+// Input::audio data-decoder tap (see receiver.h set_decoder doc). Fixed
+// output rate matching OpenWebRX+'s digimodes.py SSTV chain (24000 S/s
+// real mono). Independent of the 48 kHz voice audio resampler below: a
+// dedicated RealResampler/NfmTapDeemphasis instance owns its own state so
+// attaching/detaching a data decoder cannot perturb voice audio output.
+constexpr uint32_t kAudioTapRateHz = 24000;
+// Anti-alias passband edge for the tap resampler. csdr-plus's own chain
+// (openwebrx-plus csdr/chain/analog.py Ssb/NFm) channel-filters to 24 kS/s
+// *before* FmDemod/RealPart, so its downstream SSTV/audio stages never see
+// content above that chain's own channel filter. We instead demodulate at
+// if_rate_ (>=24 kS/s, see receiver.h) and apply the anti-alias filter
+// during the tap's own rate conversion to 24000 S/s, so the choice of
+// cutoff here stands in for that upstream channel filter. 10.5 kHz leaves
+// a safety margin below the 12 kHz output Nyquist while easily passing the
+// SSTV VIS/tone range (1100-2300 Hz) flat. NFM capture bandwidth (12500 Hz
+// default) benefits from the full range; SSB's narrower default bandwidth
+// (2800 Hz) does not need it, and a lower cutoff gives the resampler a
+// wider guard band against the real-projection's frequency-doubled image,
+// so SSB uses a deliberately lower cutoff per the task's explicit allowance.
+constexpr double kAudioTapCutoffNfmHz = 10500.0;
+constexpr double kAudioTapCutoffSsbHz = 9500.0;
+// pycsdr's Limit() module default maxAmplitude (pycsdr/src/limit.cpp
+// Limit_init: "|f", default 1.0f) -- csdr-plus's NFm chain applies Limit()
+// with no explicit argument between FmDemod and NfmDeemphasis.
+constexpr float kAudioTapLimitMaxAmplitude = 1.0f;
+
+// Tuned frequency per receiver.h/decoder.hpp: hardware LO plus the VFO
+// reference-point displacement, matching sdrcore.cpp's own application of
+// these two fields. Computed as int64 then reinterpreted per the frozen
+// Decoder::set_tuning(uint64_t, ...) signature.
+uint64_t tuned_frequency_hz(const SdrV3Controls& c) {
+  return static_cast<uint64_t>(static_cast<int64_t>(c.center_frequency_hz) + c.vfo_offset_hz);
+}
+
+// Band-limited fractional-rate resampler dedicated to the Input::audio tap.
+// Structurally mirrors the shared 48 kHz voice audio resampler further down
+// in this file (phase-interpolated windowed-sinc polyphase bank driven by a
+// double-precision fractional time accumulator, which is what keeps the
+// long-term output sample count from drifting for an arbitrary, possibly
+// non-integer input/output rate ratio) but owns separate coefficients and
+// ring-buffer state so it never reads or mutates the voice chain's.
+// Filter length scales with the input rate so the *absolute* transition
+// bandwidth in Hz (and thus stopband attenuation) stays roughly constant
+// regardless of if_rate_, instead of widening as if_rate_ grows (see
+// ComplexDecimator::configure() above for the same scaling idea, applied
+// there to integer decimation instead of phase-interpolated resampling).
+class RealResampler {
+ public:
+  void configure(double input_rate, double output_rate, double cutoff_hz) {
+    input_rate_ = input_rate;
+    output_rate_ = output_rate;
+    // Stopband edge is the true output Nyquist: content folding back from
+    // above that frequency is what aliases into the resampled band, so the
+    // filter only needs to have fully attenuated by the time it gets there
+    // (not some tighter, arbitrary guard below it -- an earlier version of
+    // this function subtracted an extra 10%-of-rate guard here, which
+    // forced a needlessly narrow transition band and a correspondingly
+    // oversized filter whenever input_rate was already close to
+    // output_rate, as this receiver's own IF-rate selection logic tends to
+    // produce for narrow-bandwidth USB/LSB channels).
+    const double stop_hz = 0.5 * output_rate;
+    const double transition_hz = std::max(100.0, stop_hz - cutoff_hz);
+    // 5.5/N is the standard approximation for a Blackman-family window's
+    // main-lobe transition width as a fraction of the sample rate; a factor
+    // of 6.5 adds margin so the measured THD+N stays under -40 dB with
+    // room to spare rather than sitting right at the edge of spec.
+    const size_t raw_count = static_cast<size_t>(std::ceil(6.5 * input_rate / transition_hz));
+    const size_t count = std::min(kMaxTaps, std::max<size_t>(9, raw_count | 1u));
+    tap_count_ = count;
+    const double fc = std::min(cutoff_hz, 0.5 * output_rate - 50.0) / input_rate;
+    for (size_t phase = 0; phase < kPhases; ++phase) {
+      const double fraction = static_cast<double>(phase) / kPhases;
+      double sum = 0;
+      for (size_t tap = 0; tap < count; ++tap) {
+        const double x = static_cast<double>(tap) - static_cast<double>(count - 1) / 2 - fraction;
+        const double sinc = x == 0 ? 2 * fc : std::sin(2 * kPi * fc * x) / (kPi * x);
+        const double window = 0.42 - 0.5 * std::cos(2 * kPi * tap / (count - 1)) +
+                              0.08 * std::cos(4 * kPi * tap / (count - 1));
+        taps_[phase][tap] = static_cast<float>(sinc * window);
+        sum += taps_[phase][tap];
+      }
+      for (size_t tap = 0; tap < count; ++tap) taps_[phase][tap] = static_cast<float>(taps_[phase][tap] / sum);
+    }
+    reset_state();
+  }
+  // Clears ring-buffer/phase-accumulator state without touching coefficients
+  // (used on tuned-frequency/mode/sample-rate resets where the filter design
+  // itself is unchanged); configure() above also calls this after a redesign.
+  void reset_state() {
+    history_.fill(0);
+    index_ = 0;
+    input_count_ = 0;
+    next_output_time_ = 0;
+  }
+  void put(float sample, std::vector<float>& out) {
+    history_[index_ & kHistoryMask] = sample;
+    ++index_;
+    ++input_count_;
+    const double spacing = input_rate_ / output_rate_;
+    while (next_output_time_ <= static_cast<double>(input_count_ - 1)) {
+      const double lag = static_cast<double>(input_count_ - 1) - next_output_time_;
+      if (lag < 0 || lag >= 1) break;
+      const size_t phase = std::min<size_t>(kPhases - 1, static_cast<size_t>(lag * kPhases));
+      float value = 0;
+      size_t idx = index_ - 1;
+      for (size_t tap = 0; tap < tap_count_; ++tap) {
+        value += history_[idx & kHistoryMask] * taps_[phase][tap];
+        --idx;
+      }
+      out.push_back(value);
+      next_output_time_ += spacing;
+    }
+  }
+ private:
+  static constexpr size_t kPhases = 128;
+  static constexpr size_t kMaxTaps = 401;
+  static constexpr size_t kHistorySize = 512;  // power of 2, >= kMaxTaps.
+  static constexpr size_t kHistoryMask = kHistorySize - 1;
+  double input_rate_ = 24000, output_rate_ = 24000;
+  size_t tap_count_ = kMaxTaps;
+  std::array<std::array<float, kMaxTaps>, kPhases> taps_{};
+  std::array<float, kHistorySize> history_{};
+  size_t index_ = 0, input_count_ = 0;
+  double next_output_time_ = 0;
+};
+
+// Direct-form FIR applying csdr-plus's NfmDeemphasis 24 kHz coefficients
+// (see csdr_nfm_deemphasis_24000.h) to an already-24000 S/s stream. Runs
+// once per *output* (24 kHz) sample, never per if_rate_ input sample, so
+// its cost is independent of the receiver's IF rate.
+class NfmTapDeemphasis {
+ public:
+  void reset() { history_.fill(0); index_ = 0; }
+  float put(float sample) {
+    history_[index_ & kMask] = sample;
+    float sum = 0;
+    for (int tap = 0; tap < kCsdrNfmDeemphasis24000Taps; ++tap)
+      sum += kCsdrNfmDeemphasis24000Fir[tap] * history_[(index_ - static_cast<size_t>(tap)) & kMask];
+    ++index_;
+    return sum;
+  }
+ private:
+  static constexpr size_t kHistorySize = 256;  // power of 2, >= kCsdrNfmDeemphasis24000Taps (201).
+  static constexpr size_t kMask = kHistorySize - 1;
+  std::array<float, kHistorySize> history_{};
+  size_t index_ = 0;
+};
 // Dart IQFrontEnd default FFT size (8192, Nuttall, power / N^2) so that the
 // native rows use the same dBFS convention as RadioController.FftRow. Lower
 // sample rates use a smaller power-of-two size to keep >= 20 rows/s.
@@ -144,6 +293,15 @@ class ReceiverImpl final : public Receiver {
     const bool decoder_tune_change = initial || controls.sample_rate != controls_.sample_rate ||
         controls.vfo_offset_hz != controls_.vfo_offset_hz ||
         controls.center_frequency_hz != controls_.center_frequency_hz;
+    // Input::audio tap reset rule (receiver.h): reset only on an actual
+    // tuned-frequency move (center+offset, not either field individually --
+    // an LO recenter that keeps the sum must NOT reset), a mode change, or a
+    // sample-rate change. Deliberately narrower than decoder_tune_change
+    // above (which resets rtl_433's baseband branch on any LO/VFO field
+    // change, even one that nets to the same tuned frequency).
+    const bool audio_tuned_change = tuned_frequency_hz(controls) != tuned_frequency_hz(controls_);
+    const bool audio_mode_change = controls.mode != controls_.mode;
+    const bool audio_rate_change = controls.sample_rate != controls_.sample_rate;
     const bool rds_tune_change = !initial &&
         (static_cast<int64_t>(controls.center_frequency_hz) + controls.vfo_offset_hz !=
          static_cast<int64_t>(controls_.center_frequency_hz) + controls_.vfo_offset_hz);
@@ -236,11 +394,30 @@ class ReceiverImpl final : public Receiver {
       }
       reset_channel();
     }
+    // The audio tap's rate conversion depends only on if_rate_/mode, which
+    // channel_change may have just redesigned above (even for a
+    // bandwidth-only change, see receiver.h): keep the resampler current
+    // whenever the channel is reshaped, independent of the decoder-reset
+    // decision below (a bandwidth-only change intentionally skips that).
+    if (channel_change && decoder_input_ == sdrcore::decoder::Input::audio)
+      configure_audio_tap_branch();
     if (squelch_change && !channel_change) reset_squelch();
     if (display_change) fft_count_ = 0;
-    if (decoder_ && decoder_tune_change) {
+    if (decoder_ && decoder_input_ == sdrcore::decoder::Input::baseband && decoder_tune_change) {
       configure_decoder_branch();
       decoder_->reset();
+    }
+    // Input::audio tap reset rule (receiver.h): tuned-frequency, mode or
+    // sample-rate change resets the attached data decoder and clears tap
+    // filter/resampler state; a bandwidth-only channel_change (handled by
+    // configure_audio_tap_branch() above) and a same-tuned-frequency LO
+    // recenter do not reach here.
+    if (decoder_ && decoder_input_ == sdrcore::decoder::Input::audio &&
+        (initial || audio_tuned_change || audio_mode_change || audio_rate_change)) {
+      decoder_->set_tuning(tuned_frequency_hz(controls_), controls_.mode);
+      decoder_->reset();
+      audio_tap_resampler_.reset_state();
+      audio_tap_deemphasis_.reset();
     }
     if (rds_ && rds_tune_change && !channel_change) rds_->reset();
   }
@@ -276,22 +453,48 @@ class ReceiverImpl final : public Receiver {
   }
   bool rds_synced() const override { return rds_ && rds_->synced(); }
 
-  uint32_t set_decoder(sdrcore::decoder::Decoder* decoder) override {
-    if (decoder_ == decoder) return decoder_rate_hz();
+  uint32_t set_decoder(sdrcore::decoder::Decoder* decoder,
+                       sdrcore::decoder::Input input) override {
+    // Same pointer AND same input: no-op (receiver.h). A pointer swap or an
+    // input-type swap on the same pointer both count as a change below.
+    if (decoder_ == decoder && decoder_input_ == input) return decoder_rate_hz();
     decoder_ = decoder;
-    configure_decoder_branch();
-    if (decoder_) decoder_->reset();
+    decoder_input_ = input;
+    if (input == sdrcore::decoder::Input::audio) {
+      decoder_rate_ = 0;  // baseband-only counter; audio uses kAudioTapRateHz.
+      decoder_samples_.clear();
+      if (decoder_) {
+        configure_audio_tap_branch();
+        decoder_->set_tuning(tuned_frequency_hz(controls_), controls_.mode);
+        decoder_->reset();
+      }
+    } else {
+      configure_decoder_branch();
+      if (decoder_) decoder_->reset();
+    }
     return decoder_rate_hz();
   }
 
-  uint32_t decoder_rate_hz() const override { return decoder_ ? decoder_rate_ : 0; }
+  uint32_t decoder_rate_hz() const override {
+    if (!decoder_) return 0;
+    return decoder_input_ == sdrcore::decoder::Input::audio ? kAudioTapRateHz : decoder_rate_;
+  }
 
   void reset() override {
     if (rds_) rds_->reset();
     rds_suspended_ = false;
     decoder_decimator_.reset();
     decoder_oscillator_ = {1, 0};
-    if (decoder_) decoder_->reset();
+    if (decoder_ && decoder_input_ == sdrcore::decoder::Input::audio) {
+      // Stream reset (receiver.h): set_tuning(current) then reset(), and
+      // clear the tap's own filter/resampler state.
+      decoder_->set_tuning(tuned_frequency_hz(controls_), controls_.mode);
+      decoder_->reset();
+      audio_tap_resampler_.reset_state();
+      audio_tap_deemphasis_.reset();
+    } else if (decoder_) {
+      decoder_->reset();
+    }
     first_.reset();
     second_.reset();
     oscillator_ = {1, 0};
@@ -307,7 +510,18 @@ class ReceiverImpl final : public Receiver {
     if (rds_) rds_->reset();
     decoder_decimator_.reset();
     decoder_oscillator_ = {1, 0};
-    if (decoder_) decoder_->reset();
+    if (decoder_ && decoder_input_ == sdrcore::decoder::Input::audio) {
+      // retune() (receiver.h): set_tuning(current) then reset(), and clear
+      // the tap's own filter/resampler state, unconditionally (unlike the
+      // station_change_pending_ gate below, which only applies to the
+      // squelch/pilot state of the baseband/voice chain).
+      decoder_->set_tuning(tuned_frequency_hz(controls_), controls_.mode);
+      decoder_->reset();
+      audio_tap_resampler_.reset_state();
+      audio_tap_deemphasis_.reset();
+    } else if (decoder_) {
+      decoder_->reset();
+    }
     fft_count_ = 0;
     fft_since_row_ = 0;
     // Same station under a new LO (drag recenter): nothing else changes.
@@ -333,7 +547,18 @@ class ReceiverImpl final : public Receiver {
       rds_mpx_.clear();
       rds_mpx_.reserve(pairs / std::max(1u, first_factor_ * second_factor_) + 2);
     }
-    if (decoder_ && decoder_rate_) process_decoder(cu8, pairs);
+    const bool audio_tap_active = decoder_ && decoder_input_ == sdrcore::decoder::Input::audio;
+    audio_tap_mode_accepted_ = audio_tap_active && decoder_->accepts_mode(controls_.mode);
+    if (audio_tap_active) {
+      audio_tap_samples_.clear();
+      // Output count is bounded by pairs * (24000 / sample_rate) + a small
+      // margin for phase slack; reserved once per call, never per sample.
+      const size_t tap_estimate = static_cast<size_t>(
+          std::ceil(pairs * static_cast<double>(kAudioTapRateHz) / controls_.sample_rate)) + 8;
+      audio_tap_samples_.reserve(tap_estimate);
+    }
+    if (decoder_ && decoder_input_ == sdrcore::decoder::Input::baseband && decoder_rate_)
+      process_decoder(cu8, pairs);
     const size_t row_period = std::max<size_t>(fft_n_, (controls_.sample_rate + 29u) / 30u);
     for (size_t i = 0; i < pairs; ++i) {
       const Complex iq{(static_cast<float>(cu8[2 * i]) - 127.5f) / 127.5f,
@@ -363,6 +588,8 @@ class ReceiverImpl final : public Receiver {
     }
     if (rds_ && !rds_suspended_ && !rds_mpx_.empty())
       rds_->process(rds_mpx_.data(), rds_mpx_.size());
+    if (audio_tap_active && !audio_tap_samples_.empty())
+      decoder_->process(audio_tap_samples_.data(), audio_tap_samples_.size(), kAudioTapRateHz);
     result.signal_db = controls_.squelch == SDR_V3_SQUELCH_AUTO &&
         controls_.mode == SDR_V3_NFM ? metric_db_ :
         static_cast<float>(10 * std::log10(std::max(power_smooth_, kFloor)));
@@ -406,6 +633,17 @@ class ReceiverImpl final : public Receiver {
     decoder_step_ = std::polar(1.0f, static_cast<float>(
         -2 * kPi * controls_.vfo_offset_hz / controls_.sample_rate));
     decoder_oscillator_ = {1, 0};
+  }
+  // (Re)derives the tap resampler for the current if_rate_/mode. Called on
+  // every channel_change (including a bandwidth-only change, per
+  // receiver.h -- unlike configure_decoder_branch() above, this must NOT
+  // reset the attached decoder itself; the caller handles that separately).
+  // Cutoff differs by mode: see kAudioTapCutoffNfmHz/kAudioTapCutoffSsbHz.
+  void configure_audio_tap_branch() {
+    if (decoder_input_ != sdrcore::decoder::Input::audio) return;
+    const double cutoff = controls_.mode == SDR_V3_NFM ? kAudioTapCutoffNfmHz : kAudioTapCutoffSsbHz;
+    audio_tap_resampler_.configure(if_rate_, kAudioTapRateHz, cutoff);
+    audio_tap_deemphasis_.reset();
   }
   static constexpr size_t kAudioTaps = 32, kPhases = 64;
   // NCO frequency: SSB offsets name the lower/upper passband edge.
@@ -720,6 +958,36 @@ class ReceiverImpl final : public Receiver {
         value = 2 * sample.real();
         break;
     }
+    if (decoder_ && decoder_input_ == sdrcore::decoder::Input::audio && audio_tap_mode_accepted_ &&
+        (controls_.squelch == SDR_V3_SQUELCH_OFF || squelch_open_)) {
+      // Tap point: the demodulated mono sample before the 48 kHz resampler,
+      // deemphasis, DC block, AGC, squelch gate, volume and mute (receiver.h).
+      // USB/LSB feed the sideband-shifted sample's real part (csdr
+      // RealPart); NFM feeds the raw discriminator rescaled to csdr's
+      // FmDemod convention (2*f/24000) and amplitude-limited like
+      // csdr-plus's NFm chain (FmDemod -> Limit() -> NfmDeemphasis(24000))
+      // before the same rate conversion. Other modes are outside this
+      // receiver's documented audio-tap contract even if a (hypothetical)
+      // decoder's accepts_mode() claimed them.
+      float tap_input = 0;
+      bool tap_supported = true;
+      if (controls_.mode == SDR_V3_NFM) {
+        tap_input = std::clamp(discriminator * static_cast<float>(if_rate_ / (kPi * kAudioTapRateHz)),
+                               -kAudioTapLimitMaxAmplitude, kAudioTapLimitMaxAmplitude);
+      } else if (controls_.mode == SDR_V3_USB || controls_.mode == SDR_V3_LSB) {
+        tap_input = sample.real();
+      } else {
+        tap_supported = false;
+      }
+      if (tap_supported) {
+        const size_t before = audio_tap_samples_.size();
+        audio_tap_resampler_.put(tap_input, audio_tap_samples_);
+        if (controls_.mode == SDR_V3_NFM) {
+          for (size_t k = before; k < audio_tap_samples_.size(); ++k)
+            audio_tap_samples_[k] = audio_tap_deemphasis_.put(audio_tap_samples_[k]);
+        }
+      }
+    }
     if ((audio_input_count_ & 4095) == 0) {
       const float sideband_mag = std::abs(sideband_), cw_mag = std::abs(cw_);
       if (sideband_mag > 0) sideband_ /= sideband_mag;
@@ -803,6 +1071,9 @@ class ReceiverImpl final : public Receiver {
   bool station_change_pending_ = false;
   ComplexDecimator first_, second_;
   sdrcore::decoder::Decoder* decoder_ = nullptr;
+  // The requested Input kind of decoder_ (set_decoder()'s second argument);
+  // selects which of the two independent branches below is scheduled.
+  sdrcore::decoder::Input decoder_input_ = sdrcore::decoder::Input::baseband;
   std::unique_ptr<sdrcore::rds::Sink> rds_;
   std::vector<float> rds_mpx_;
   bool rbds_ = false;
@@ -811,6 +1082,15 @@ class ReceiverImpl final : public Receiver {
   uint32_t decoder_rate_ = 0;
   Complex decoder_oscillator_{1, 0}, decoder_step_{1, 0};
   std::vector<float> decoder_samples_;
+  // Input::audio tap state (see receiver.h, process_if()). Independent of
+  // the baseband branch above and of the 48 kHz voice chain below:
+  // RealResampler/NfmTapDeemphasis instances with their own ring buffers.
+  RealResampler audio_tap_resampler_;
+  NfmTapDeemphasis audio_tap_deemphasis_;
+  std::vector<float> audio_tap_samples_;
+  // Cached once per process() call (decoder_->accepts_mode() may not be
+  // cheap/pure); avoids calling it per-sample in the hot loop.
+  bool audio_tap_mode_accepted_ = false;
   unsigned first_factor_ = 1, second_factor_ = 1;
   double if_rate_ = 48000, audio_cutoff_ = 15000;
   Complex oscillator_{1, 0}, oscillator_step_{1, 0}, previous_{};

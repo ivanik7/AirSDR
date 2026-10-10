@@ -48,6 +48,19 @@ class Decoder {
   // Backends with an internal bounded staging queue report drops so they are
   // included in the same per-handle counter as the public FIFO's drops.
   virtual uint64_t take_dropped_count() { return 0; }
+  // Input::audio backends only. The receiver feeds the audio tap only while
+  // accepts_mode(current SdrV3Mode) is true; sdr_decoder_select rejects a
+  // backend that does not accept the currently applied mode (SDR_UNSUPPORTED)
+  // and leaves the previous decoder untouched. Default: any mode.
+  virtual bool accepts_mode(uint32_t /*sdr_v3_mode*/) const { return true; }
+  // Input::audio backends only. Applied tuned frequency (center_frequency_hz
+  // + vfo_offset_hz) and SdrV3Mode. The receiver calls this immediately
+  // before EVERY reset() it issues (attach, tuned-frequency/LO change, mode
+  // change, sample-rate change, stream reset/retune), so the backend can
+  // stamp frame metadata and name the reset: tuned frequency changed ->
+  // "retune", mode changed -> "mode", otherwise "stop".
+  virtual void set_tuning(uint64_t /*tuned_frequency_hz*/,
+                          uint32_t /*sdr_v3_mode*/) {}
 };
 
 using Factory = std::unique_ptr<Decoder> (*)();
