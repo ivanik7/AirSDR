@@ -136,7 +136,15 @@ class MediaStorePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
         if (!albumDir.exists() && !albumDir.mkdirs()) {
             throw IllegalStateException("Could not create directory ${albumDir.absolutePath}")
         }
-        val outFile = File(albumDir, displayName)
+        val stem = displayName.substringBeforeLast('.')
+        val ext = displayName.substringAfterLast('.', "")
+        var n = 1
+        var outFile = File(albumDir, displayName)
+        // createNewFile is atomic: never overwrite an earlier picture.
+        while (!outFile.createNewFile()) {
+            n++
+            outFile = File(albumDir, if (ext.isEmpty()) "$stem-$n" else "$stem-$n.$ext")
+        }
         outFile.writeBytes(bytes)
         return outFile.absolutePath
     }

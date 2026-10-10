@@ -143,9 +143,9 @@ then per-line sync/porch/pixel tones on an ideal time line. It checks:
   - Patch 4: the unbounded `vsprintf` is unreachable with dbgTime=0.
 
   All other modes produce identical bytes.
-- **No forced-mode setting** because upstream has none. The Dart catalog
-  still lists `martin_m1`/`scottie_s1`; native rejects them with
-  `SDR_INVALID_ARGUMENT`. `t_68a23f96` owns that UI change.
+- **No forced-mode setting** because upstream has none. Native rejects
+  anything but `auto`; since `t_68a23f96` the Dart catalog allows only
+  `auto` and normalizes stored `martin_m1`/`scottie_s1` to it.
 - **Audio path differs structurally from OpenWebRX+**. OpenWebRX+
   channel-filters to 24 kS/s before demodulation. This app demodulates at
   the receiver IF rate and band-limits during the 24 kHz conversion. The
@@ -161,4 +161,5 @@ then per-line sync/porch/pixel tones on an ideal time line. It checks:
   card. A direct NDK r28 CMake build of `libsdrcore.so` (arm64-v8a,
   android-24, Release) compiles and links the vendored SSTV/FFTW sources;
   the APK and on-device behaviour are unverified.
-- Dart UI for images (panel, gallery, save): `t_68a23f96`.
+- Dart UI for images (panel, gallery, save): done in `t_68a23f96`, see
+  `STATUS-sstv-ui.md`.
