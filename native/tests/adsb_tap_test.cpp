@@ -3,10 +3,18 @@
 #include "decoder.hpp"
 #include <algorithm>
 #include <cassert>
+#include <chrono>
 #include <cmath>
 #include <complex>
 #include <cstdint>
+#include <fstream>
+#include <iostream>
+#include <memory>
+#include <nlohmann/json.hpp>
+#include <thread>
 #include <vector>
+
+namespace sdrcore::decoder { std::unique_ptr<Decoder> create_adsb(); }
 
 namespace {
 class Probe final : public sdrcore::decoder::Decoder {
@@ -47,7 +55,53 @@ void feed(sdrcore::dsp::Receiver& rx, uint32_t rate, uint32_t tone, size_t sampl
 }
 } // namespace
 
-int main() {
+int main(int argc, char** argv) {
+  if (argc == 3) {
+    auto receiver = sdrcore::dsp::make_receiver();
+    auto decoder = sdrcore::decoder::create_adsb();
+    assert(decoder);
+    SdrV3Controls controls{};
+    controls.size = sizeof controls;
+    controls.revision = SDR_V3_REVISION;
+    controls.sample_rate = 2400000;
+    controls.bandwidth_hz = 12000;
+    controls.mode = SDR_V3_NFM;
+    SdrV3Display display{};
+    display.size = sizeof display;
+    display.revision = SDR_V3_REVISION;
+    display.width = 256;
+    display.view_bandwidth_hz = 2400000;
+    receiver->configure(controls, display);
+    assert(receiver->set_decoder(decoder.get(), sdrcore::decoder::Input::raw_iq) == 2400000);
+    std::ifstream input(argv[1], std::ios::binary);
+    assert(input);
+    std::vector<int16_t> iq;
+    int16_t sample;
+    while (input.read(reinterpret_cast<char*>(&sample), sizeof(sample))) iq.push_back(sample);
+    assert(iq.size() % 2 == 0);
+    sdrcore::dsp::ProcessResult result;
+    for (size_t offset = 0; offset < iq.size() / 2;) {
+      const auto frames = std::min<size_t>(4093, iq.size() / 2 - offset);
+      std::vector<uint8_t> cu8(frames * 2);
+      for (size_t i = 0; i < cu8.size(); ++i)
+        cu8[i] = static_cast<uint8_t>(std::lround(127.5 + 127.5 * iq[2 * offset + i] / 32767.0));
+      receiver->process(cu8.data(), cu8.size(), result);
+      offset += frames;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(1050));
+    const std::vector<uint8_t> silence(8192 * 2, 128);
+    receiver->process(silence.data(), silence.size(), result);
+    sdrcore::decoder::Event event{};
+    assert(decoder->take_event(event));
+    auto doc = nlohmann::json::parse(event.payload);
+    assert(doc["aircraft"].size() == 1);
+    assert(doc["aircraft"][0]["messages"] == std::stoi(argv[2]));
+    std::cout << doc.dump() << '\n';
+    receiver->retune();
+    assert(!decoder->take_event(event));
+    receiver->set_decoder(nullptr);
+    return 0;
+  }
   auto rx = sdrcore::dsp::make_receiver();
   Probe probe;
   SdrV3Controls c{};

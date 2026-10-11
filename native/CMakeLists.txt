@@ -279,10 +279,10 @@ if(NOT ANDROID AND PROJECT_IS_TOP_LEVEL)
     target_compile_features(sdrcore_baseband_tap_test PRIVATE cxx_std_17)
     add_test(NAME sdrcore_baseband_tap COMMAND sdrcore_baseband_tap_test)
     target_link_libraries(sdrcore_baseband_tap_test PRIVATE sdrcore_rds)
-    add_executable(sdrcore_adsb_tap_test tests/adsb_tap_test.cpp src/dsp/receiver.cpp)
+    add_executable(sdrcore_adsb_tap_test tests/adsb_tap_test.cpp src/dsp/receiver.cpp src/decoder/adsb.cpp)
     target_include_directories(sdrcore_adsb_tap_test PRIVATE include)
     target_compile_features(sdrcore_adsb_tap_test PRIVATE cxx_std_17)
-    target_link_libraries(sdrcore_adsb_tap_test PRIVATE sdrcore_rds)
+    target_link_libraries(sdrcore_adsb_tap_test PRIVATE sdrcore_rds sdrcore_dump1090)
     add_test(NAME sdrcore_adsb_tap COMMAND sdrcore_adsb_tap_test)
     add_executable(sdrcore_baseband_tap_abi_test
         tests/baseband_tap_abi_test.cpp src/dsp/receiver.cpp

@@ -16,7 +16,7 @@ Several files (`dump1090.h`, `mode_s.h`/`.c`, `track.h`/`.c`, `stats.h`/`.c`,
 `util.h`/`.c`) additionally incorporate 2012 BSD-style-licensed work by
 Salvatore Sanfilippo (reproduced in `LICENSE`); that attribution is retained
 in the per-file headers. Decode algorithms and tables are unchanged; the
-vendored `mode_s.c` network seam and `dump1090.h` C++ parsing shim are
+vendored `mode_s.c` network seam, `crc.c` reinitialization cleanup, and `dump1090.h` C++ parsing shim are
 documented below.
 
 ## Files in this directory
@@ -47,7 +47,7 @@ by vendoring their real implementations.
 | `demod_2400.c`/`.h` | 2.4 MS/s Mode S pulse-position demodulator (`demodulate2400`) and Mode A/C demodulator (`demodulate2400AC`). |
 | `mode_s.c`/`.h` | Mode S/ADS-B message decode (`decodeModesMessage`), scoring (`scoreModesMessage`), dispatch (`useModesMessage`). **One seam, see below.** |
 | `mode_ac.c` | Mode A/C <-> Mode C altitude conversion tables (`modeACInit`, `modeAToModeC`, `modeCToModeA`) and `decodeModeAMessage`. (`mode_ac.h` does not exist upstream; prototypes live in `dump1090.h`.) |
-| `crc.c`/`.h` | Mode S CRC/syndrome tables and optional 1/2-bit error correction (`modesChecksumInit`, `modesChecksum`, `modesChecksumDiagnose`, `modesChecksumFix`). |
+| `crc.c`/`.h` | Mode S CRC/syndrome tables and optional 1/2-bit error correction (`modesChecksumInit`, `modesChecksum`, `modesChecksumDiagnose`, `modesChecksumFix`). `modesChecksumInit` frees previous tables on repeated calls; upstream initializes only once. |
 | `cpr.c`/`.h` | Compact Position Reporting global/local/relative/surface decode. |
 | `track.c`/`.h` | Aircraft state tracking, per-field validity/reliability/TTL, CPR position resolution dispatch, `trackPeriodicUpdate`. |
 | `comm_b.c`/`.h` | Comm-B (BDS) message decode, used by `mode_s.c`. |
@@ -186,8 +186,10 @@ C file."
 `dump1090.h` has an additional C++-only `atomic_int` typedef for the
 unused `Modes.exit` field: the upstream C11 `<stdatomic.h>` typedef cannot
 be parsed inside the adapter's `extern "C"` include. The C ABI and all C
-translation units retain upstream's original atomic type. No other
-vendored `.c` file was patched. `mode_ac.c`, `crc.c`, `cpr.c`,
+translation units retain upstream's original atomic type. `crc.c` additionally
+releases its correction tables before reinitialization (on decoder reset);
+this changes memory ownership only, not the CRC algorithm. No other vendored
+`.c` file was patched. `mode_ac.c`, `cpr.c`,
 `comm_b.c`, `ais_charset.c`, `icao_filter.c`, `util.c`, `stats.c`,
 `convert.c`, `cpu.c`, every `dsp/` file, and every other header are
 byte-for-byte copies of the pinned commit.

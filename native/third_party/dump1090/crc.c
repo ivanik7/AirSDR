@@ -354,6 +354,11 @@ static struct errorinfo *prepareErrorTable(int bits, int max_correct, int max_de
 // Precompute syndrome tables for 56- and 112-bit messages.
 void modesChecksumInit(int fixBits)
 {
+    // AirSDR embedding reinitializes on retune; upstream initialized once.
+    // Release any optional correction tables before replacing them.
+    free(bitErrorTable_short);
+    free(bitErrorTable_long);
+    bitErrorTable_short = bitErrorTable_long = NULL;
     initLookupTables();
 
     switch (fixBits) {
