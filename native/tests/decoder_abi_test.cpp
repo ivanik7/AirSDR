@@ -106,8 +106,7 @@ int main() {
   for (const char* id : {"sstv", "rtl_433", "adsb"}) {
     assert(contains(id));
     SdrDecoderDescriptor d = find(id);
-    if (std::strcmp(id, "adsb") != 0) assert(d.available == 1);
-    else assert(d.available == 0);
+    assert(d.available == 1);
   }
   const auto adsb = find("adsb");
   assert(adsb.input == SDR_DECODER_RAW_IQ);

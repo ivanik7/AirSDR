@@ -7,6 +7,7 @@ include(third_party/fftw.cmake)
 # csdr-plus SSTV decoder sources (BSD-3) + SSTV-only Module shim; defines the
 # static target sdrcore_csdr_sstv (links sdrcore_fftw3f).
 include(third_party/csdr_sstv.cmake)
+include(third_party/dump1090.cmake)
 add_library(sdrcore_rds STATIC src/rds/rds.cpp)
 set_target_properties(sdrcore_rds PROPERTIES POSITION_INDEPENDENT_CODE ON)
 target_compile_features(sdrcore_rds PRIVATE cxx_std_17)
@@ -52,6 +53,7 @@ add_library(sdrcore SHARED
     src/decoder/registry.cpp
     src/decoder/rtl433.cpp
     src/decoder/sstv.cpp
+    src/decoder/adsb.cpp
     src/decoder/decoder_abi.cpp
 )
 if(ANDROID)
@@ -63,7 +65,7 @@ else()
 endif()
 target_compile_features(sdrcore PRIVATE cxx_std_17)
 find_package(Threads REQUIRED)
-target_link_libraries(sdrcore PRIVATE Threads::Threads sdrcore_rtlsdr sdrcore_hackrf sdrcore_rtl433 sdrcore_rds sdrcore_meshtastic sdrcore_csdr_sstv m)
+target_link_libraries(sdrcore PRIVATE Threads::Threads sdrcore_rtlsdr sdrcore_hackrf sdrcore_rtl433 sdrcore_rds sdrcore_meshtastic sdrcore_csdr_sstv sdrcore_dump1090 m)
 if(UNIX AND NOT APPLE)
     # Do not export upstream's API from libsdrcore: otherwise exported but
     # unused CLI/network sections keep unresolved CLI dependencies alive.
@@ -81,6 +83,10 @@ target_include_directories(sdrcore PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 # then overflow the IQ ring (tens of millions of drops in minutes). Optimise
 # only the sample path in every configuration; the rest stays debuggable.
 set_source_files_properties(src/dsp/receiver.cpp PROPERTIES
+    COMPILE_OPTIONS "$<$<CONFIG:Debug>:-O2>")
+# 2.4 MS/s IQ conversion and 1 Hz aircraft serialization run on the DSP
+# worker, not the UI thread; do not ship an -O0 decoder in Flutter debug.
+set_source_files_properties(src/decoder/adsb.cpp PROPERTIES
     COMPILE_OPTIONS "$<$<CONFIG:Debug>:-O2>")
 
 # Audio sink backends (null/WAV/ALSA); defines target sdrcore_audio and, for
@@ -131,8 +137,8 @@ if(NOT ANDROID AND PROJECT_IS_TOP_LEVEL)
     add_executable(sdrcore_rtl433_engine_test tests/rtl433_engine_test.cpp)
     target_link_libraries(sdrcore_rtl433_engine_test PRIVATE sdrcore_rtl433)
     target_sources(sdrcore_rtl433_engine_test PRIVATE
-        src/decoder/rtl433.cpp src/decoder/sstv.cpp src/decoder/registry.cpp)
-    target_link_libraries(sdrcore_rtl433_engine_test PRIVATE sdrcore_csdr_sstv)
+        src/decoder/rtl433.cpp src/decoder/sstv.cpp src/decoder/adsb.cpp src/decoder/registry.cpp)
+    target_link_libraries(sdrcore_rtl433_engine_test PRIVATE sdrcore_csdr_sstv sdrcore_dump1090)
     # third_party: the SSTV adapter linked in via registry.cpp uses the
     # vendored nlohmann/json.hpp (normally reached through sdrcore_redsea).
     target_include_directories(sdrcore_rtl433_engine_test PRIVATE include third_party)
@@ -143,11 +149,11 @@ if(NOT ANDROID AND PROJECT_IS_TOP_LEVEL)
     add_test(NAME sdrcore_rtl433_engine COMMAND sdrcore_rtl433_engine_test)
     add_executable(sdrcore_rtl433_tap_oracle
         tests/rtl433_tap_oracle.cpp src/dsp/receiver.cpp
-        src/decoder/rtl433.cpp src/decoder/sstv.cpp src/decoder/registry.cpp)
+        src/decoder/rtl433.cpp src/decoder/sstv.cpp src/decoder/adsb.cpp src/decoder/registry.cpp)
     target_include_directories(sdrcore_rtl433_tap_oracle PRIVATE include)
     target_compile_features(sdrcore_rtl433_tap_oracle PRIVATE cxx_std_17)
     target_compile_options(sdrcore_rtl433_tap_oracle PRIVATE -O2)
-    target_link_libraries(sdrcore_rtl433_tap_oracle PRIVATE sdrcore_rtl433 sdrcore_csdr_sstv m)
+    target_link_libraries(sdrcore_rtl433_tap_oracle PRIVATE sdrcore_rtl433 sdrcore_csdr_sstv sdrcore_dump1090 m)
     target_link_libraries(sdrcore_rtl433_tap_oracle PRIVATE sdrcore_rds)
     target_link_options(sdrcore_rtl433_tap_oracle PRIVATE -Wl,--gc-sections)
     add_executable(sdrcore_abi_test tests/abi_test.c)
@@ -156,6 +162,11 @@ if(NOT ANDROID AND PROJECT_IS_TOP_LEVEL)
     add_executable(sdrcore_decoder_abi_test tests/decoder_abi_test.cpp)
     target_link_libraries(sdrcore_decoder_abi_test PRIVATE sdrcore)
     add_test(NAME sdrcore_decoder_abi COMMAND sdrcore_decoder_abi_test)
+    add_executable(sdrcore_adsb_backend_test tests/adsb_backend_test.cpp src/decoder/adsb.cpp)
+    target_include_directories(sdrcore_adsb_backend_test PRIVATE include third_party)
+    target_compile_features(sdrcore_adsb_backend_test PRIVATE cxx_std_17)
+    target_link_libraries(sdrcore_adsb_backend_test PRIVATE sdrcore_dump1090)
+    add_test(NAME sdrcore_adsb_backend COMMAND sdrcore_adsb_backend_test)
     add_executable(sdrcore_wfm_stereo_abi_test tests/wfm_stereo_abi_test.cpp)
     target_link_libraries(sdrcore_wfm_stereo_abi_test PRIVATE sdrcore Threads::Threads)
     add_test(NAME sdrcore_wfm_stereo_abi COMMAND sdrcore_wfm_stereo_abi_test)

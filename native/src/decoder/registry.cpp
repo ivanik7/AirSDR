@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Static data-decoder registry. rtl_433 and SSTV (csdr-plus SstvDecoder) are
-// embedded in-process; ADS-B remains unavailable. Voice demodulators belong
+// embedded in-process, alongside dump1090 ADS-B. Voice demodulators belong
 // to v3, not this list.
 #include "decoder.hpp"
 
 namespace sdrcore::decoder {
 std::unique_ptr<Decoder> create_rtl433();
 std::unique_ptr<Decoder> create_sstv();
+std::unique_ptr<Decoder> create_adsb();
 
 const std::vector<Registration>& registry() {
   // Metadata mirrors the Dart decoder catalog.
@@ -44,7 +45,7 @@ const std::vector<Registration>& registry() {
               /*required_rate_hz=*/2400000,
               /*result=*/Result::aircraft,
           },
-          /*create=*/nullptr,
+          /*create=*/create_adsb,
       },
   };
   return kRegistry;

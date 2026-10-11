@@ -95,13 +95,17 @@ CU8 recordings with zero-order interpolation into the tuned 2.5 MS/s branch;
 the FIR can change marginal pulse detection, so its match rate is separately
 reported. Neither oracle subprocess is part of the app runtime.
 
-## ADS-B input and pending snapshot backend
+## ADS-B input and native snapshot backend
 
 `docs/adsb-snapshot-v1.md` fixes the tuned, undecimated 2.4 MS/s complex-IQ
 tap (with a native converter for feasible higher rates), SC16 boundary and
 bounded aircraft snapshot fields for the decoder/UI implementation cards.
-The DSP tap is implemented, but the dump1090 factory and aircraft panel are
-not installed yet; registry availability must remain false until they are.
+The DSP tap feeds the embedded FlightAware dump1090 core through a 2.4 MS/s
+SC16 magnitude converter. `native/src/decoder/adsb.cpp` uses upstream
+demodulation, CRC/CPR/Comm-B and track state, and emits a bounded snapshot
+about once per second; `adsb` is now available in the native registry. See
+`STATUS-adsb-backend.md` for the verified boundary and differences. The live
+Flutter aircraft panel remains a separate task; no reception is fabricated.
 
 ## Pieces
 
@@ -124,7 +128,7 @@ not installed yet; registry availability must remain false until they are.
   `lib/main.dart` probes the additive extension without changing v3 requirements.
 - `native/include/sdrcore_decoder_v1.h` and `decoder.hpp` define a separate
   versioned C ABI and native C++ processing interface. `native/src/decoder/`
-  exposes the in-process `rtl_433` factory and unavailable future entries.
+  exposes the in-process `rtl_433`, SSTV and ADS-B factories.
 - `lib/ui/favorites/favorites.dart` — storage v3: `Favorite.decoderId` +
   `Favorite.decoderSettings`, with migration/normalization on load (see
   below).
