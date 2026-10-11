@@ -3,10 +3,12 @@
 #include "sdrcore_decoder_v1.h"
 
 #include <cassert>
+#include <chrono>
 #include <cstdint>
 #include <cstring>
 #include <set>
 #include <string>
+#include <thread>
 
 namespace {
 
@@ -221,10 +223,30 @@ int main() {
   assert(sdr_decoder_poll(h, 0, &bad_event_size, payload, sizeof payload) == SDR_INVALID_ARGUMENT);
 
   assert(sdr_v3_stop(h) == SDR_INVALID_STATE);
+  // ADS-B uses the normal single receiver and sends only zeroed voice frames
+  // to the audio sink while selected, even though NFM remains the demod mode.
+  c.sample_rate = 2400000;
+  c.center_frequency_hz = 1090000000;
+  c.bandwidth_hz = 12000;
+  c.mode = SDR_V3_NFM;
+  assert(sdr_v3_set_controls(h, &c) == SDR_OK);
+  assert(sdr_decoder_select(h, "adsb", 4, valid_json, std::strlen(valid_json)) == SDR_OK);
+  const auto audio_before = snap_before();
+  assert(sdr_v3_start(h) == SDR_OK);
+  std::this_thread::sleep_for(std::chrono::milliseconds(300));
+  const auto silent = snap_before();
+  assert(silent.audio_frames > audio_before.audio_frames);
+  assert(silent.audio_nonsilent_frames == audio_before.audio_nonsilent_frames);
+  assert(sdr_v3_stop(h) == SDR_OK);
+  assert(sdr_decoder_select(h, nullptr, 0, nullptr, 0) == SDR_OK);
   assert(sdr_v2_close(h) == SDR_OK);
   sdr_destroy(h);
 
   // --- Each handle has an independent selected backend and queue.
+  c.sample_rate = 300000;
+  c.center_frequency_hz = 100000000;
+  c.bandwidth_hz = 150000;
+  c.mode = SDR_V3_WFM;
   SdrHandle* a = sdr_create();
   SdrHandle* b = sdr_create();
   assert(a && b && a != b);

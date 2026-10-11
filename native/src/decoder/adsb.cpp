@@ -18,6 +18,7 @@ void sdrcore_dump1090_reset_modeac(void);
 #include <cstring>
 #include <limits>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -114,7 +115,11 @@ class AdsbBackend final : public Decoder {
     Modes.adaptive_burst_control = Modes.adaptive_range_control = false;
     modesChecksumInit(0);
     icaoFilterInit();
-    modeACInit();
+    // Upstream's reverse Mode A/C table is process-global and built with an
+    // assertion that each slot is empty. Rebuilding it on retune or a new
+    // decoder session aborts Debug builds; its contents never change.
+    static std::once_flag mode_ac_initialized;
+    std::call_once(mode_ac_initialized, modeACInit);
     sdrcore_dump1090_reset_modeac();
     _messageNow = 0;
     iq_.clear();

@@ -1,6 +1,6 @@
 # ADS-B IQ and aircraft snapshot contract (v1)
 
-This is the contract for the embedded dump1090 backend and subsequent Flutter aircraft-list work. The native backend is linked and registry `available=1`; the live aircraft UI and recorded-IQ oracle remain downstream work. See `STATUS-adsb-audit.md` and `STATUS-adsb-backend.md` for pinned source behavior and verification boundaries.
+This is the contract for the embedded dump1090 backend and Flutter aircraft list. The native backend is linked and registry `available=1`; the live aircraft UI consumes its snapshots. The recorded-IQ oracle remains downstream work. See `STATUS-adsb-audit.md`, `STATUS-adsb-backend.md` and `STATUS-adsb-ui.md` for verification boundaries.
 
 ## Input and lifecycle
 

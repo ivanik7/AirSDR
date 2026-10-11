@@ -4,6 +4,7 @@
 import 'package:flutter/material.dart';
 
 import 'decoder_contract.dart';
+import 'adsb_panel.dart';
 import 'decoder_session.dart';
 import 'rds_widgets.dart';
 import 'sstv_panel.dart';
@@ -49,8 +50,7 @@ final Map<String, DecoderPanelBuilder> decoderPanels = {
   ),
   'rtl_433': (c) => Rtl433DecoderPanel(session: c.session),
   'sstv': (c) => SstvDecoderPanel(session: c.session),
-  'adsb': (c) =>
-      DecoderPlaceholderPanel(descriptor: c.descriptor, session: c.session),
+  'adsb': (c) => AdsbPanel(session: c.session, receiver: c.receiver),
 };
 
 /// Exactly one panel for [selectedId]; an unknown id falls back to the
