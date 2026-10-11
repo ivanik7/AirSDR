@@ -35,7 +35,7 @@ const std::vector<Registration>& registry() {
           Descriptor{
               /*id=*/"adsb",
               /*input=*/Input::raw_iq,
-              /*exclusive_receiver=*/true,  // Wideband capture displaces listening.
+              /*exclusive_receiver=*/false,  // Tuned IQ tap; no tuner handoff.
               /*required_mode=*/0xFFFFFFFFu,  // Independent of demod mode.
               /*required_rate_hz=*/2400000,
               /*result=*/Result::aircraft,

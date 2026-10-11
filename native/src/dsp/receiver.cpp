@@ -83,6 +83,61 @@ class ComplexDecimator {
   unsigned phase_ = 0, factor_ = 1;
 };
 
+// Streaming rational converter for the ADS-B full-band tap. The 128 phases
+// share a 48-tap, 1.05 MHz low-pass; history/clock persist across IQ blocks.
+class AdsbResampler {
+ public:
+  void configure(uint32_t input_rate) {
+    step_ = static_cast<double>(input_rate) / 2400000.0;
+    constexpr size_t taps = 48, phases = 128;
+    const double fc = 1050000.0 / input_rate;
+    for (size_t p = 0; p < phases; ++p) {
+      const double delay = static_cast<double>(p) / phases;
+      double total = 0;
+      for (size_t k = 0; k < taps; ++k) {
+        const double x = static_cast<double>(k) - delay;
+        const double sinc = x == 0 ? 2 * fc : std::sin(2 * kPi * fc * x) / (kPi * x);
+        const double window = 0.42 - 0.5 * std::cos(2 * kPi * k / (taps - 1)) +
+                              0.08 * std::cos(4 * kPi * k / (taps - 1));
+        coeffs_[p][k] = static_cast<float>(sinc * window);
+        total += coeffs_[p][k];
+      }
+      for (float& tap : coeffs_[p]) tap = static_cast<float>(tap / total);
+    }
+    reset();
+  }
+  void reset() {
+    history_.fill({});
+    count_ = index_ = 0;
+    next_time_ = 0;
+  }
+  template <class Emit>
+  void put(Complex sample, Emit&& emit) {
+    history_[index_] = sample;
+    index_ = (index_ + 1) & 63;
+    ++count_;
+    while (next_time_ <= static_cast<double>(count_ - 1)) {
+      const double delay = static_cast<double>(count_ - 1) - next_time_;
+      const size_t whole = static_cast<size_t>(delay);
+      const size_t phase = std::min<size_t>(127,
+          static_cast<size_t>((delay - whole) * 128));
+      Complex output{};
+      size_t j = (index_ - 1 - whole) & 63;
+      for (const float tap : coeffs_[phase]) {
+        output += history_[j] * tap;
+        j = (j - 1) & 63;
+      }
+      emit(output);
+      next_time_ += step_;
+    }
+  }
+ private:
+  std::array<Complex, 64> history_{};
+  std::array<std::array<float, 48>, 128> coeffs_{};
+  size_t count_ = 0, index_ = 0;
+  double next_time_ = 0, step_ = 1;
+};
+
 void fft(Complex* data, size_t n) {
   for (size_t i = 1, j = 0; i < n; ++i) {
     size_t bit = n >> 1;
@@ -142,6 +197,7 @@ class ReceiverImpl final : public Receiver {
     const bool lo_change = !initial &&
         controls.center_frequency_hz != controls_.center_frequency_hz;
     const bool decoder_tune_change = initial || controls.sample_rate != controls_.sample_rate ||
+        controls.mode != controls_.mode ||
         controls.vfo_offset_hz != controls_.vfo_offset_hz ||
         controls.center_frequency_hz != controls_.center_frequency_hz;
     const bool rds_tune_change = !initial &&
@@ -276,9 +332,11 @@ class ReceiverImpl final : public Receiver {
   }
   bool rds_synced() const override { return rds_ && rds_->synced(); }
 
-  uint32_t set_decoder(sdrcore::decoder::Decoder* decoder) override {
-    if (decoder_ == decoder) return decoder_rate_hz();
+  uint32_t set_decoder(sdrcore::decoder::Decoder* decoder,
+      sdrcore::decoder::Input input) override {
+    if (decoder_ == decoder && (!decoder || decoder_input_ == input)) return decoder_rate_hz();
     decoder_ = decoder;
+    decoder_input_ = input;
     configure_decoder_branch();
     if (decoder_) decoder_->reset();
     return decoder_rate_hz();
@@ -290,6 +348,7 @@ class ReceiverImpl final : public Receiver {
     if (rds_) rds_->reset();
     rds_suspended_ = false;
     decoder_decimator_.reset();
+    adsb_resampler_.reset();
     decoder_oscillator_ = {1, 0};
     if (decoder_) decoder_->reset();
     first_.reset();
@@ -306,6 +365,7 @@ class ReceiverImpl final : public Receiver {
   void retune() override {
     if (rds_) rds_->reset();
     decoder_decimator_.reset();
+    adsb_resampler_.reset();
     decoder_oscillator_ = {1, 0};
     if (decoder_) decoder_->reset();
     fft_count_ = 0;
@@ -379,10 +439,17 @@ class ReceiverImpl final : public Receiver {
     for (size_t i = 0; i < pairs; ++i) {
       const Complex iq{(static_cast<float>(cu8[2*i]) - 127.5f) / 127.5f,
                        (static_cast<float>(cu8[2*i+1]) - 127.5f) / 127.5f};
-      Complex filtered;
-      if (decoder_decimator_.put(iq * decoder_oscillator_, filtered)) {
-        decoder_samples_.push_back(filtered.real());
-        decoder_samples_.push_back(filtered.imag());
+      const Complex shifted = iq * decoder_oscillator_;
+      auto append = [this](Complex value) {
+        decoder_samples_.push_back(value.real());
+        decoder_samples_.push_back(value.imag());
+      };
+      if (decoder_input_ == sdrcore::decoder::Input::raw_iq) {
+        if (controls_.sample_rate == 2400000) append(shifted);
+        else adsb_resampler_.put(shifted, append);
+      } else {
+        Complex filtered;
+        if (decoder_decimator_.put(shifted, filtered)) append(filtered);
       }
       decoder_oscillator_ *= decoder_step_;
       if ((i & 4095u) == 4095u) {
@@ -396,7 +463,25 @@ class ReceiverImpl final : public Receiver {
   void configure_decoder_branch() {
     decoder_rate_ = 0;
     decoder_samples_.clear();
-    if (!decoder_ || controls_.sample_rate < 200000) return;
+    decoder_decimator_.reset();
+    adsb_resampler_.reset();
+    if (!decoder_) return;
+    if (decoder_input_ == sdrcore::decoder::Input::raw_iq) {
+      // The +/-1.2 MHz decoder window must fit inside the user's tuned
+      // source bandwidth. A low rate or an offset near an edge is not ready.
+      const int64_t half = static_cast<int64_t>(controls_.sample_rate) / 2;
+      if (controls_.sample_rate < 2400000 ||
+          std::abs(static_cast<int64_t>(controls_.vfo_offset_hz)) + 1200000 > half)
+        return;
+      decoder_rate_ = 2400000;
+      if (controls_.sample_rate != decoder_rate_)
+        adsb_resampler_.configure(controls_.sample_rate);
+      decoder_step_ = std::polar(1.0f, static_cast<float>(
+          -2 * kPi * controls_.vfo_offset_hz / controls_.sample_rate));
+      decoder_oscillator_ = {1, 0};
+      return;
+    }
+    if (controls_.sample_rate < 200000) return;
     // Choose the integer ratio nearest rtl_433's 250 kS/s reference rate.
     const unsigned factor = std::max(1u, (controls_.sample_rate + 125000u) / 250000u);
     const uint32_t rate = controls_.sample_rate / factor;
@@ -803,11 +888,13 @@ class ReceiverImpl final : public Receiver {
   bool station_change_pending_ = false;
   ComplexDecimator first_, second_;
   sdrcore::decoder::Decoder* decoder_ = nullptr;
+  sdrcore::decoder::Input decoder_input_ = sdrcore::decoder::Input::baseband;
   std::unique_ptr<sdrcore::rds::Sink> rds_;
   std::vector<float> rds_mpx_;
   bool rbds_ = false;
   bool rds_suspended_ = false;
   ComplexDecimator decoder_decimator_;
+  AdsbResampler adsb_resampler_;
   uint32_t decoder_rate_ = 0;
   Complex decoder_oscillator_{1, 0}, decoder_step_{1, 0};
   std::vector<float> decoder_samples_;

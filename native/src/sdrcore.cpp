@@ -521,7 +521,7 @@ struct SdrHandle {
         // Stale ring/USB transfers must never enter the decoder. Detach
         // during the gap and reattach only on a clean block of the new tune.
         if (decoder && (stale || !decoder_attached)) {
-          receiver->set_decoder(stale ? nullptr : decoder.get());
+          receiver->set_decoder(stale ? nullptr : decoder.get(), decoder_input);
           decoder_attached = !stale;
         }
         receiver->set_rds_suspended(stale);
@@ -892,7 +892,8 @@ extern "C" int32_t sdr_v3_set_controls(SdrHandle* h, const SdrV3Controls* in) {
     h->receiver->set_rds_rbds(h->rbds);
     if (h->decoder && (h->dsp_controls.center_frequency_hz != in->center_frequency_hz ||
                        h->dsp_controls.vfo_offset_hz != in->vfo_offset_hz ||
-                       h->dsp_controls.sample_rate != in->sample_rate))
+                       h->dsp_controls.sample_rate != in->sample_rate ||
+                       h->dsp_controls.mode != in->mode))
       h->invalidate_decoder_events();
     h->controls = *in;
     h->dsp_controls = *in;
@@ -1138,8 +1139,10 @@ extern "C" int32_t sdr_decoder_select(SdrHandle* h, const char* id,
            sample_rate / std::max(1u, (sample_rate + 125000u) / 250000u) < 200000))
         return SDR_UNSUPPORTED;
       if (reg.descriptor.input == sdrcore::decoder::Input::raw_iq &&
-          reg.descriptor.required_rate_hz &&
-          sample_rate != reg.descriptor.required_rate_hz) return SDR_UNSUPPORTED;
+          (sample_rate < reg.descriptor.required_rate_hz ||
+           std::abs(static_cast<int64_t>(h->controls.vfo_offset_hz)) +
+               static_cast<int64_t>(reg.descriptor.required_rate_hz) / 2 >
+               static_cast<int64_t>(sample_rate) / 2)) return SDR_UNSUPPORTED;
       auto candidate = reg.create();
       if (!candidate) return SDR_UNSUPPORTED;
       if (!candidate->configure(std::string_view(config ? config : "", config_bytes)))
@@ -1150,7 +1153,7 @@ extern "C" int32_t sdr_decoder_select(SdrHandle* h, const char* id,
       h->decoder = std::move(candidate);
       h->decoder_input = reg.descriptor.input;
       h->decoder_attached = true;
-      h->receiver->set_decoder(h->decoder.get());
+      h->receiver->set_decoder(h->decoder.get(), h->decoder_input);
       h->invalidate_decoder_events();
       h->decoder_dropped = 0;
       return SDR_OK;

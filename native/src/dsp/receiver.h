@@ -3,14 +3,13 @@
 #define SDRCORE_DSP_RECEIVER_H
 
 #include "sdrcore_v3.h"
+#include "decoder.hpp"
 
 #include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <string>
 #include <vector>
-
-namespace sdrcore::decoder { class Decoder; }
 
 namespace sdrcore {
 namespace dsp {
@@ -43,10 +42,12 @@ class Receiver {
   virtual void set_rds_suspended(bool suspended) = 0;
   virtual bool take_rds_group(std::string& json) = 0;
   virtual bool rds_synced() const = 0;
-  // Borrowed, DSP-lock protected. The branch is filtered and integer-decimated
-  // to a complex 200-300 kS/s tuned VFO; zero means source rate is unsuitable.
+  // Borrowed, DSP-lock protected. Baseband uses the 200-300 kS/s VFO branch;
+  // raw IQ uses the full tuned 2.4 MS/s ADS-B branch (resampled if needed).
+  // Zero means the selected input cannot be supplied at this rate/offset.
   // Attach/detach, retune, rate and stream generation changes reset the branch.
-  virtual uint32_t set_decoder(sdrcore::decoder::Decoder* decoder) = 0;
+  virtual uint32_t set_decoder(sdrcore::decoder::Decoder* decoder,
+      sdrcore::decoder::Input input = sdrcore::decoder::Input::baseband) = 0;
   virtual uint32_t decoder_rate_hz() const = 0;
   virtual void reset() = 0;
   // Live LO retune on a continuing stream: forgets what belonged to the old

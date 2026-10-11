@@ -83,6 +83,14 @@ CU8 recordings with zero-order interpolation into the tuned 2.5 MS/s branch;
 the FIR can change marginal pulse detection, so its match rate is separately
 reported. Neither oracle subprocess is part of the app runtime.
 
+## ADS-B input and pending snapshot backend
+
+`docs/adsb-snapshot-v1.md` fixes the tuned, undecimated 2.4 MS/s complex-IQ
+tap (with a native converter for feasible higher rates), SC16 boundary and
+bounded aircraft snapshot fields for the decoder/UI implementation cards.
+The DSP tap is implemented, but the dump1090 factory and aircraft panel are
+not installed yet; registry availability must remain false until they are.
+
 ## Pieces
 
 - `lib/ui/decoders/decoder_contract.dart` — shared Dart contract

@@ -109,6 +109,11 @@ int main() {
     if (std::strcmp(id, "rtl_433") == 0) assert(d.available == 1);
     else assert(d.available == 0);
   }
+  const auto adsb = find("adsb");
+  assert(adsb.input == SDR_DECODER_RAW_IQ);
+  assert(adsb.exclusive_receiver == 0);
+  assert(adsb.required_rate_hz == 2400000);
+  assert(adsb.result == SDR_DECODER_AIRCRAFT);
 
   // --- Selection cannot mutate an unopened handle; NULL/empty deselects.
   assert(sdr_decoder_select(nullptr, "sstv", 4, nullptr, 0) == SDR_INVALID_ARGUMENT);

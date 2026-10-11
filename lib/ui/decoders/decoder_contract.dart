@@ -110,7 +110,7 @@ final decoderCatalog = <DecoderDescriptor>[
     id: 'adsb',
     label: 'ADS-B',
     input: DecoderInput.rawIq,
-    exclusiveReceiver: true,
+    exclusiveReceiver: false,
     requiredMode: null,
     requiredRateHz: 2400000,
     result: DecoderResult.aircraft,
