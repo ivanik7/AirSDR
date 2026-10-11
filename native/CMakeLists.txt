@@ -3,10 +3,26 @@ project(sdrcore VERSION 1.0.0 LANGUAGES C CXX)
 
 add_subdirectory(third_party)
 include(third_party/rds.cmake)
+include(third_party/fftw.cmake)
+# csdr-plus SSTV decoder sources (BSD-3) + SSTV-only Module shim; defines the
+# static target sdrcore_csdr_sstv (links sdrcore_fftw3f).
+include(third_party/csdr_sstv.cmake)
 add_library(sdrcore_rds STATIC src/rds/rds.cpp)
 set_target_properties(sdrcore_rds PROPERTIES POSITION_INDEPENDENT_CODE ON)
 target_compile_features(sdrcore_rds PRIVATE cxx_std_17)
 target_link_libraries(sdrcore_rds PUBLIC sdrcore_redsea)
+
+# Meshtastic packet layer (header/keys/AES-CTR/nanopb payloads). Pure library;
+# the LoRa PHY and decoder backend wiring are separate cards.
+include(third_party/meshtastic.cmake)
+add_library(sdrcore_meshtastic STATIC
+    src/meshtastic/meshtastic.cpp
+    src/meshtastic/pb_reflect.cpp)
+set_target_properties(sdrcore_meshtastic PROPERTIES POSITION_INDEPENDENT_CODE ON)
+target_compile_features(sdrcore_meshtastic PUBLIC cxx_std_17)
+target_include_directories(sdrcore_meshtastic PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR}/third_party)
+target_link_libraries(sdrcore_meshtastic PUBLIC sdrcore_meshtastic_pb)
 
 # rtl_433 upstream sources are embedded, not run as a subprocess. Preserve
 # upstream source verbatim; link only the engine/API and protocol decoders.
@@ -35,6 +51,7 @@ add_library(sdrcore SHARED
     src/usb_hackrf_adapter.cpp
     src/decoder/registry.cpp
     src/decoder/rtl433.cpp
+    src/decoder/sstv.cpp
     src/decoder/decoder_abi.cpp
 )
 if(ANDROID)
@@ -46,7 +63,7 @@ else()
 endif()
 target_compile_features(sdrcore PRIVATE cxx_std_17)
 find_package(Threads REQUIRED)
-target_link_libraries(sdrcore PRIVATE Threads::Threads sdrcore_rtlsdr sdrcore_hackrf sdrcore_rtl433 sdrcore_rds m)
+target_link_libraries(sdrcore PRIVATE Threads::Threads sdrcore_rtlsdr sdrcore_hackrf sdrcore_rtl433 sdrcore_rds sdrcore_meshtastic sdrcore_csdr_sstv m)
 if(UNIX AND NOT APPLE)
     # Do not export upstream's API from libsdrcore: otherwise exported but
     # unused CLI/network sections keep unresolved CLI dependencies alive.
@@ -87,6 +104,24 @@ if(NOT ANDROID AND PROJECT_IS_TOP_LEVEL)
     target_link_libraries(sdrcore_rds_abi_test PRIVATE sdrcore)
     target_compile_options(sdrcore_rds_abi_test PRIVATE -UNDEBUG)
     add_test(NAME sdrcore_rds_abi COMMAND sdrcore_rds_abi_test)
+    # Host-only oracle runner; feed the same external upstream MPX recording
+    # to redsea's original Channel/Subcarrier and our WFM RDS adapter.
+    add_executable(sdrcore_rds_mpx_oracle tests/rds_mpx_oracle.cpp)
+    target_link_libraries(sdrcore_rds_mpx_oracle PRIVATE sdrcore_rds)
+    target_compile_features(sdrcore_rds_mpx_oracle PRIVATE cxx_std_17)
+    add_executable(sdrcore_rds_wfm_bench tests/rds_wfm_bench.cpp src/dsp/receiver.cpp)
+    target_include_directories(sdrcore_rds_wfm_bench PRIVATE include)
+    target_link_libraries(sdrcore_rds_wfm_bench PRIVATE sdrcore_rds)
+    target_compile_options(sdrcore_rds_wfm_bench PRIVATE -O2)
+    add_executable(sdrcore_rds_mpx_receiver tests/rds_mpx_receiver.cpp src/dsp/receiver.cpp)
+    target_include_directories(sdrcore_rds_mpx_receiver PRIVATE include)
+    target_link_libraries(sdrcore_rds_mpx_receiver PRIVATE sdrcore_rds)
+    target_compile_options(sdrcore_rds_mpx_receiver PRIVATE -O2)
+    add_executable(sdrcore_meshtastic_packet_test tests/meshtastic_packet_test.cpp)
+    target_link_libraries(sdrcore_meshtastic_packet_test PRIVATE sdrcore_meshtastic)
+    target_compile_definitions(sdrcore_meshtastic_packet_test PRIVATE
+        MESHTASTIC_VECTORS="${CMAKE_CURRENT_SOURCE_DIR}/tests/data/meshtastic_vectors.json")
+    add_test(NAME sdrcore_meshtastic_packet COMMAND sdrcore_meshtastic_packet_test)
     # Check the N2 header layouts independently of the DSP implementation.
     # The integrator advances sdr_version only after all N2 layers are ready.
     add_library(sdrcore_v3_contract_compile OBJECT tests/v3_contract_compile.c)
@@ -96,8 +131,11 @@ if(NOT ANDROID AND PROJECT_IS_TOP_LEVEL)
     add_executable(sdrcore_rtl433_engine_test tests/rtl433_engine_test.cpp)
     target_link_libraries(sdrcore_rtl433_engine_test PRIVATE sdrcore_rtl433)
     target_sources(sdrcore_rtl433_engine_test PRIVATE
-        src/decoder/rtl433.cpp src/decoder/registry.cpp)
-    target_include_directories(sdrcore_rtl433_engine_test PRIVATE include)
+        src/decoder/rtl433.cpp src/decoder/sstv.cpp src/decoder/registry.cpp)
+    target_link_libraries(sdrcore_rtl433_engine_test PRIVATE sdrcore_csdr_sstv)
+    # third_party: the SSTV adapter linked in via registry.cpp uses the
+    # vendored nlohmann/json.hpp (normally reached through sdrcore_redsea).
+    target_include_directories(sdrcore_rtl433_engine_test PRIVATE include third_party)
     target_compile_features(sdrcore_rtl433_engine_test PRIVATE cxx_std_17)
     target_compile_options(sdrcore_rtl433_engine_test PRIVATE -UNDEBUG)
     target_link_options(sdrcore_rtl433_engine_test PRIVATE -Wl,--gc-sections)
@@ -105,11 +143,11 @@ if(NOT ANDROID AND PROJECT_IS_TOP_LEVEL)
     add_test(NAME sdrcore_rtl433_engine COMMAND sdrcore_rtl433_engine_test)
     add_executable(sdrcore_rtl433_tap_oracle
         tests/rtl433_tap_oracle.cpp src/dsp/receiver.cpp
-        src/decoder/rtl433.cpp src/decoder/registry.cpp)
+        src/decoder/rtl433.cpp src/decoder/sstv.cpp src/decoder/registry.cpp)
     target_include_directories(sdrcore_rtl433_tap_oracle PRIVATE include)
     target_compile_features(sdrcore_rtl433_tap_oracle PRIVATE cxx_std_17)
     target_compile_options(sdrcore_rtl433_tap_oracle PRIVATE -O2)
-    target_link_libraries(sdrcore_rtl433_tap_oracle PRIVATE sdrcore_rtl433 m)
+    target_link_libraries(sdrcore_rtl433_tap_oracle PRIVATE sdrcore_rtl433 sdrcore_csdr_sstv m)
     target_link_libraries(sdrcore_rtl433_tap_oracle PRIVATE sdrcore_rds)
     target_link_options(sdrcore_rtl433_tap_oracle PRIVATE -Wl,--gc-sections)
     add_executable(sdrcore_abi_test tests/abi_test.c)
@@ -173,6 +211,19 @@ if(NOT ANDROID AND PROJECT_IS_TOP_LEVEL)
     target_link_libraries(sdrcore_live_retune_test PRIVATE sdrcore_rtlsdr sdrcore_hackrf sdrcore_audio Threads::Threads)
     target_link_libraries(sdrcore_live_retune_test PRIVATE sdrcore_rds)
     add_test(NAME sdrcore_live_retune COMMAND sdrcore_live_retune_test)
+    # White-box: discrete LO switches on a real-time paced fake RTL against an
+    # AAudio callback model of the playback ring (t_8063d101).
+    add_executable(sdrcore_retune_switch_gap_test
+        tests/retune_switch_gap_test.cpp
+        tests/decoder_registry_stub.cpp
+        src/dsp/receiver.cpp
+        src/usb_rtlsdr_adapter.cpp
+        src/usb_hackrf_adapter.cpp)
+    target_include_directories(sdrcore_retune_switch_gap_test PRIVATE include)
+    target_compile_features(sdrcore_retune_switch_gap_test PRIVATE cxx_std_17)
+    target_link_libraries(sdrcore_retune_switch_gap_test PRIVATE sdrcore_rtlsdr sdrcore_hackrf
+        sdrcore_audio sdrcore_rds Threads::Threads)
+    add_test(NAME sdrcore_retune_switch_gap COMMAND sdrcore_retune_switch_gap_test)
     add_executable(sdrcore_host_rtl_gain_test tests/host_rtl_gain_test.c)
     target_link_libraries(sdrcore_host_rtl_gain_test PRIVATE sdrcore)
     add_test(NAME sdrcore_host_rtl_gain COMMAND sdrcore_host_rtl_gain_test)
@@ -231,4 +282,7 @@ if(NOT ANDROID AND PROJECT_IS_TOP_LEVEL)
         sdrcore_rtlsdr sdrcore_hackrf sdrcore_audio Threads::Threads)
     target_link_libraries(sdrcore_baseband_tap_abi_test PRIVATE sdrcore_rds)
     add_test(NAME sdrcore_baseband_tap_abi COMMAND sdrcore_baseband_tap_abi_test)
+    # SSTV backend (adapter + upstream decoder) and receiver audio-tap tests.
+    include(tests/sstv_tests.cmake)
+    include(tests/audio_tap_tests.cmake)
 endif()

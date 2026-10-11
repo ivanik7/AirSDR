@@ -80,7 +80,15 @@ int main(int argc, char** argv) {
     assert(groups > 0);
     sink.reset();
     assert(!sink.synced() && !sink.take_group(event));
-    std::cerr << "RDS decoded groups: " << groups << '\n';
+    // reset() keeps the filter banks (t_8063d101); the same signal must
+    // decode again after it, at least as well as from a cold start (warm
+    // filters skip the start-up transient, so one extra group is normal).
+    for (size_t i = 0; i < samples.size(); i += 4096)
+      sink.process(samples.data() + i, std::min<size_t>(4096, samples.size() - i));
+    unsigned again = 0;
+    while (sink.take_group(event)) ++again;
+    assert(again >= groups);
+    std::cerr << "RDS decoded groups: " << groups << " (after reset: " << again << ")\n";
   }
   return 0;
 }

@@ -1,7 +1,19 @@
 # Decoder architecture (native contract and UI)
 
+SSTV source audit and the shared native/UI line-event contract are in
+[`STATUS-sstv-audit.md`](../STATUS-sstv-audit.md). It documents the mapped
+csdr-plus VIS list (including disabled AVT-90 and a required PD 290 fix), the
+24 kHz audio boundary, source licenses/FFTW build gap, and the bounded
+progress/completion schema.
+This is a design handoff, not an SSTV implementation or availability claim.
+The native backend (vendored csdr-plus `SstvDecoder`, adapter, 24 kHz
+receiver audio tap) is described with its verification in
+[`STATUS-sstv.md`](../STATUS-sstv.md); the Dart UI (live picture, gallery,
+saving, underlying demod) is in [`STATUS-sstv-ui.md`](../STATUS-sstv-ui.md).
+
 Status: `rtl_433` is an in-process upstream engine on the single native
-receiver's tuned complex-IQ branch. `sstv` and `adsb` remain unavailable.
+receiver's tuned complex-IQ branch. `sstv` is an in-process upstream engine
+on the receiver's 24 kHz USB/LSB/NFM audio tap; `adsb` remains unavailable.
 The v1 decoder extension sends only bounded low-rate JSON events to Dart.
 
 ## One decoder list (UI contract)
@@ -209,7 +221,10 @@ edit: its row is generated from `DemodMode` order in `decoderCatalog`.
 
 ## Known limitations (by design, today)
 
-- **Only rtl_433 has real decode output.** SSTV and ADS-B are preview-only.
+- **rtl_433 and SSTV have selectable data-decoder output.** Implicit WFM RDS
+  metadata is active alongside audio; ADS-B is preview-only. SSTV pictures
+  are assembled in Dart from bounded per-row events (`lib/ui/decoders/
+  sstv_image.dart`); voice audio keeps playing.
 - **No Start/Stop control.** Decoder lifecycle (when a backend exists) is
   expected to be driven by `DecoderBackend.select` as a side effect of
   `DecoderSession.selectPreview`/`applyStored`, not a separate user action —
@@ -223,17 +238,18 @@ edit: its row is generated from `DemodMode` order in `decoderCatalog`.
   preview; it is not possible to preview two different decoders
   simultaneously in one shell instance (matches the "one real receive
   channel" UI invariant).
-- **Settings UI is generic, not decoder-tailored.** The remaining SSTV `mode`
-  setting renders as a dropdown of
-  `DecoderSetting.allowed` values. A decoder needing a different control
-  (free-text, slider, etc.) will need a bespoke branch in
-  `decoder_panels.dart`, not just a new `decoderCatalog` entry.
+- **Settings UI is generic except for bespoke panels.** Placeholder panels
+  render each setting as a dropdown of `DecoderSetting.allowed` values.
+  SSTV has its own panel (`sstv_panel.dart`): the `underlying` setting
+  (`usb|lsb|nfm`) is a segmented control that switches the receiver through
+  the normal mode control (`DecoderDescriptor.underlyingModes`), and `mode`
+  allows only `auto` because upstream has no forced picture mode.
 - **No device-visible receiver acceptance in this task.** The host did not
   enumerate a Blog V4 during the final checks. Native/Flutter/Linux host
   gates are reported separately in the task handoff; subjective Android audio
   quality and phone screen appearance are not inferred from host tests.
 
-## WFM RDS integration contract (design; not yet implemented)
+## WFM RDS integration contract (implemented; validation in STATUS-rds.md)
 
 This section supersedes the historical RDS/SDR++ suggestion in
 `~/prj/docs/30-openwebrx-decoders-plan.md`. The implementation target is the

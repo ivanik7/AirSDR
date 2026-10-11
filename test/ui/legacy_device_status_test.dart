@@ -137,7 +137,7 @@ void main() {
       await tester.pump();
       expect(tester.widget<Text>(status).data, 'нет разрешения USB');
       expect(retry, findsNothing, reason: 'USB controls belong in Settings');
-      await tester.tap(find.byKey(const ValueKey('tab-2')));
+      await tester.tap(find.byKey(const ValueKey('tab-3')));
       await tester.pump();
       await tester.scrollUntilVisible(
         retry,

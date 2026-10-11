@@ -79,6 +79,21 @@ void main() {
     expect(f.decoderSettings, isEmpty);
   });
 
+  test('legacy forced SSTV modes from older presets normalize to VIS auto '
+      'and gain the default underlying demod', () async {
+    final repo = FavoritesRepository();
+    await repo.load();
+    final f = repo.add(
+      frequencyHz: 14230000,
+      name: 'old',
+      mode: DemodMode.usb,
+      category: 'UHF',
+      decoderId: 'sstv',
+      decoderSettings: const {'mode': 'martin_m1'},
+    );
+    expect(f.decoderSettings, {'mode': 'auto', 'underlying': 'usb'});
+  });
+
   test('edit leaves the decoder selection untouched unless explicitly '
       'passed', () async {
     final repo = FavoritesRepository();
@@ -118,7 +133,7 @@ void main() {
       mode: DemodMode.am,
       category: 'UHF',
       decoderId: 'sstv',
-      decoderSettings: const {'mode': 'martin_m1'},
+      decoderSettings: const {'mode': 'auto', 'underlying': 'lsb'},
     );
     final b = repo.add(
       frequencyHz: 868000000,
@@ -126,12 +141,12 @@ void main() {
       mode: DemodMode.am,
       category: 'UHF',
       decoderId: 'sstv',
-      decoderSettings: const {'mode': 'scottie_s1'},
+      decoderSettings: const {'mode': 'auto', 'underlying': 'nfm'},
     );
     // Mutating one entry's map (defensively, as if a caller tried) must
     // never be possible to observe on the other.
-    expect(a.decoderSettings, {'mode': 'martin_m1'});
-    expect(b.decoderSettings, {'mode': 'scottie_s1'});
+    expect(a.decoderSettings, {'mode': 'auto', 'underlying': 'lsb'});
+    expect(b.decoderSettings, {'mode': 'auto', 'underlying': 'nfm'});
     expect(
       identical(a.decoderSettings, b.decoderSettings),
       isFalse,

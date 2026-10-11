@@ -72,7 +72,7 @@ void main() {
       await tester.pump();
       await radio.start();
       final hz = radio.tunedFrequency;
-      await tester.tap(find.byKey(const ValueKey('tab-3')));
+      await tester.tap(find.byKey(const ValueKey('tab-1')));
       await tester.pump();
       expect(find.text('Decoder'), findsNWidgets(2));
       expect(find.byType(SquelchControls), findsOneWidget);
@@ -131,10 +131,10 @@ void main() {
       expect(find.byKey(const ValueKey('legacyMute')), findsOneWidget);
       expect(radio.tunedFrequency, hz);
       expect(radio.running, isTrue);
-      await tester.tap(find.byKey(const ValueKey('tab-2')));
+      await tester.tap(find.byKey(const ValueKey('tab-3')));
       await tester.pump();
       expect(find.text('Настройки приёмника'), findsOneWidget);
-      await tester.tap(find.byKey(const ValueKey('tab-3')));
+      await tester.tap(find.byKey(const ValueKey('tab-1')));
       await tester.pump();
       expect(radio.mode, DemodMode.nfm);
       expect(radio.squelchType, SquelchType.auto);
@@ -150,7 +150,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(home: LegacyAppShell(controller: radio)),
     );
-    await tester.tap(find.byKey(const ValueKey('tab-3')));
+    await tester.tap(find.byKey(const ValueKey('tab-1')));
     await tester.pump();
     expect(find.byKey(const ValueKey('decoderSelector')), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('decoderSelector')));
@@ -177,7 +177,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(home: LegacyAppShell(controller: radio)),
     );
-    await tester.tap(find.byKey(const ValueKey('tab-3')));
+    await tester.tap(find.byKey(const ValueKey('tab-1')));
     await tester.pump();
     await tester.tap(find.byKey(const ValueKey('decoderSelector')));
     await tester.pumpAndSettle();
@@ -215,7 +215,7 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(home: LegacyAppShell(controller: radio)),
       );
-      await tester.tap(find.byKey(const ValueKey('tab-3')));
+      await tester.tap(find.byKey(const ValueKey('tab-1')));
       await tester.pump();
       await tester.tap(find.byKey(const ValueKey('decoderSelector')));
       await tester.pumpAndSettle();
@@ -250,7 +250,7 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(home: LegacyAppShell(controller: radio)),
       );
-      await tester.tap(find.byKey(const ValueKey('tab-3')));
+      await tester.tap(find.byKey(const ValueKey('tab-1')));
       await tester.pump();
       await tester.tap(find.byKey(const ValueKey('decoderSelector')));
       await tester.pumpAndSettle();
@@ -283,7 +283,7 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(home: LegacyAppShell(controller: radio)),
       );
-      await tester.tap(find.byKey(const ValueKey('tab-3')));
+      await tester.tap(find.byKey(const ValueKey('tab-1')));
       await tester.pump();
       await tester.tap(find.byKey(const ValueKey('decoderSelector')));
       await tester.pumpAndSettle();
@@ -323,7 +323,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(home: LegacyAppShell(controller: radio)),
     );
-    await tester.tap(find.byKey(const ValueKey('tab-3')));
+    await tester.tap(find.byKey(const ValueKey('tab-1')));
     await tester.pump();
     await tester.tap(find.byKey(const ValueKey('decoderSelector')));
     await tester.pumpAndSettle();
@@ -363,7 +363,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(home: LegacyAppShell(controller: radio)),
     );
-    await tester.tap(find.byKey(const ValueKey('tab-3')));
+    await tester.tap(find.byKey(const ValueKey('tab-1')));
     await tester.pump();
     expect(
       tester
@@ -396,7 +396,7 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(home: LegacyAppShell(controller: radio)),
       );
-      await tester.tap(find.byKey(const ValueKey('tab-3')));
+      await tester.tap(find.byKey(const ValueKey('tab-1')));
       await tester.pump();
       expect(find.byType(DecoderScreen), findsOneWidget);
       expect(tester.takeException(), isNull);
@@ -418,7 +418,7 @@ void main() {
         await tester.pumpWidget(
           MaterialApp(home: LegacyAppShell(controller: radio)),
         );
-        await tester.tap(find.byKey(const ValueKey('tab-3')));
+        await tester.tap(find.byKey(const ValueKey('tab-1')));
         await tester.pump();
         await tester.tap(find.byKey(const ValueKey('decoderSelector')));
         await tester.pumpAndSettle();

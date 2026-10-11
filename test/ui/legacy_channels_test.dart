@@ -303,7 +303,7 @@ void main() {
     expect(env.radio.vfoOffset, 0);
     expect(env.radio.mode, DemodMode.wfm);
     // The Decoder mode control changes only the active channel.
-    await tester.tap(find.byKey(const ValueKey('tab-3')));
+    await tester.tap(find.byKey(const ValueKey('tab-1')));
     await tester.pump();
     await tester.tap(find.byKey(const ValueKey('decoderSelector')));
     await tester.pumpAndSettle();

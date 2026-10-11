@@ -25,17 +25,26 @@ class LegacyAppShell extends StatefulWidget {
     this.channels,
     this.bands,
     this.openReceive,
+    this.decoderLabel,
   });
   final RadioController controller;
   final FavoritesRepository? favorites;
   final ChannelsRepository? channels;
   final BandsRepository? bands;
   final Listenable? openReceive;
+
+  /// Receives the label of the one selected decoder (for the background
+  /// notification); the shell owns the DecoderSession it comes from.
+  final ValueNotifier<String?>? decoderLabel;
   @override
   State<LegacyAppShell> createState() => _LegacyAppShellState();
 }
 
 class _LegacyAppShellState extends State<LegacyAppShell> {
+  /// Bottom tab order: Receive, Decoder, Presets, Settings.
+  static const _receiveTab = 0;
+  static const _tabLabels = ['Приём', 'Decoder', 'Пресеты', 'Настройки'];
+
   late CenteredReceiver receiver;
   late SdrUiState spectrum;
   late FavoritesRepository favorites;
@@ -49,7 +58,7 @@ class _LegacyAppShellState extends State<LegacyAppShell> {
   bool ownChannels = false;
   bool ownBands = false;
   bool radioReady = false;
-  int tab = 0;
+  int tab = _receiveTab;
   @override
   void initState() {
     super.initState();
@@ -57,7 +66,7 @@ class _LegacyAppShellState extends State<LegacyAppShell> {
     _init();
   }
 
-  void _showReceive() => setState(() => tab = 0);
+  void _showReceive() => setState(() => tab = _receiveTab);
 
   void _init() {
     radioReady = true;
@@ -81,6 +90,8 @@ class _LegacyAppShellState extends State<LegacyAppShell> {
     scanner.addListener(_scannerChanged);
     meter = SignalMeter(widget.controller);
     decoderSession = DecoderSession(widget.controller, receiver: receiver);
+    decoderSession.addListener(_publishDecoderLabel);
+    _publishDecoderLabel();
     final radio = widget.controller;
     final slots = channelSlots;
     final bound = channels;
@@ -109,6 +120,9 @@ class _LegacyAppShellState extends State<LegacyAppShell> {
     radio.addListener(_radioChanged);
   }
 
+  void _publishDecoderLabel() =>
+      widget.decoderLabel?.value = decoderSession.selectedLabel;
+
   void _radioChanged() {
     // Resting receiver: LO centered on the VFO and on the step grid.
     if (radioReady && !receiver.dragging && receiver.needsRecenter) {
@@ -133,6 +147,7 @@ class _LegacyAppShellState extends State<LegacyAppShell> {
       oldWidget.openReceive?.removeListener(_showReceive);
       widget.openReceive?.addListener(_showReceive);
     }
+    if (oldWidget.decoderLabel != widget.decoderLabel) _publishDecoderLabel();
     if (oldWidget.controller == widget.controller &&
         oldWidget.favorites == widget.favorites &&
         oldWidget.channels == widget.channels &&
@@ -188,12 +203,17 @@ class _LegacyAppShellState extends State<LegacyAppShell> {
                   meter: meter,
                   decoderSession: decoderSession,
                 ),
+                DecoderScreen(
+                  controller: widget.controller,
+                  receiver: receiver,
+                  session: decoderSession,
+                ),
                 PresetsScreen(
                   controller: widget.controller,
                   receiver: receiver,
                   favorites: favorites,
                   bands: bands,
-                  onApplied: () => setState(() => tab = 0),
+                  onApplied: _showReceive,
                   decoderSession: decoderSession,
                 ),
                 SettingsScreen(
@@ -201,11 +221,6 @@ class _LegacyAppShellState extends State<LegacyAppShell> {
                   receiver: receiver,
                   spectrum: spectrum,
                   bands: bands,
-                ),
-                DecoderScreen(
-                  controller: widget.controller,
-                  receiver: receiver,
-                  session: decoderSession,
                 ),
               ],
             ),
@@ -217,7 +232,7 @@ class _LegacyAppShellState extends State<LegacyAppShell> {
             ),
             child: Row(
               children: [
-                for (var i = 0; i < 4; i++)
+                for (var i = 0; i < _tabLabels.length; i++)
                   Expanded(
                     child: InkWell(
                       key: ValueKey('tab-$i'),
@@ -236,7 +251,7 @@ class _LegacyAppShellState extends State<LegacyAppShell> {
                           FittedBox(
                             fit: BoxFit.scaleDown,
                             child: Text(
-                              ['Приём', 'Пресеты', 'Настройки', 'Decoder'][i],
+                              _tabLabels[i],
                               maxLines: 1,
                               softWrap: false,
                               style: plex(

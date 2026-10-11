@@ -145,11 +145,9 @@ class _PresetsScreenState extends State<PresetsScreen> {
         // The unified choice is stored as-is: an explicit voice/demod-mode
         // pick persists its `demod:` id (so the editor can show exactly
         // what was chosen next time, via [Favorite.decoderChoice]); a
-        // real data decoder persists its own id. Neither ever needs
-        // settings for the voice case — [decoderCatalog]'s per-mode
-        // identity has none.
+        // real data decoder persists its own id. WFM is a voice mode but
+        // carries the RBDS station preference.
         final storedId = decoderChoice;
-        final isVoiceChoice = demodModeFromDecoderId(storedId) != null;
         if (existing == null) {
           final hz = widget.controller.tunedFrequency.round();
           widget.favorites.add(
@@ -166,9 +164,7 @@ class _PresetsScreenState extends State<PresetsScreen> {
             // Carries over whatever is currently previewed on the Decoder
             // tab, same as the channel "save as preset" menu.
             decoderId: storedId,
-            decoderSettings: isVoiceChoice
-                ? null
-                : session?.settingsFor(storedId),
+            decoderSettings: session?.settingsFor(storedId),
           );
         } else {
           widget.favorites.edit(
@@ -177,9 +173,7 @@ class _PresetsScreenState extends State<PresetsScreen> {
             mode: mode,
             category: existing.category,
             decoderId: storedId,
-            decoderSettings: isVoiceChoice
-                ? null
-                : storedId == existing.decoderId
+            decoderSettings: storedId == existing.decoderId
                 ? existing.decoderSettings
                 : session?.settingsFor(storedId),
           );
@@ -281,7 +275,8 @@ class _PresetsScreenState extends State<PresetsScreen> {
                 style: plex(size: 14),
               ),
               Text(
-                '${formatMhz(f.frequencyHz)} MHz · ${f.mode.label}',
+                '${formatMhz(f.frequencyHz)} MHz · '
+                '${decoderById(f.decoderChoice)?.label ?? f.mode.label}',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: plex(size: 11, mono: true, color: LegacyColors.muted),

@@ -28,6 +28,7 @@ class DecoderDescriptor {
     this.settings = const [],
     this.voice = false,
     this.demodMode,
+    this.underlyingModes,
   });
   final String id, label;
   final DecoderInput input;
@@ -38,6 +39,12 @@ class DecoderDescriptor {
 
   /// Native v3 demod mode ID, or null if independent of demodulation.
   final int? requiredMode;
+
+  /// Audio-tap decoders that run on one of several ordinary demodulators
+  /// (OpenWebRX+ "underlying" modes). The choice is stored in the
+  /// `underlying` setting and applied through the normal mode control;
+  /// the decoder is only attached while the radio runs in that mode.
+  final List<DemodMode>? underlyingModes;
 
   /// Native input sample rate; null until a real backend negotiates it.
   final int? requiredRateHz;
@@ -79,21 +86,27 @@ final decoderCatalog = <DecoderDescriptor>[
       result: DecoderResult.none,
       voice: true,
       demodMode: mode,
+      settings: mode == DemodMode.wfm
+          ? const [
+              DecoderSetting('rbds', false, allowed: [false, true]),
+            ]
+          : const [],
     ),
+  // OpenWebRX+ `sstv`: underlying usb/lsb/nfm, 24 kHz audio, VIS auto-detect.
+  // Upstream has no forced picture mode (STATUS-sstv-audit.md), so `mode`
+  // only allows `auto`; stale `martin_m1`/`scottie_s1` values normalize to it.
   DecoderDescriptor(
     id: 'sstv',
     label: 'SSTV',
     input: DecoderInput.audio,
     exclusiveReceiver: false,
-    requiredMode: 4,
+    requiredMode: null,
     requiredRateHz: 24000,
     result: DecoderResult.imageComplete,
-    settings: [
-      DecoderSetting(
-        'mode',
-        'auto',
-        allowed: ['auto', 'martin_m1', 'scottie_s1'],
-      ),
+    underlyingModes: const [DemodMode.usb, DemodMode.lsb, DemodMode.nfm],
+    settings: const [
+      DecoderSetting('mode', 'auto', allowed: ['auto']),
+      DecoderSetting('underlying', 'usb', allowed: ['usb', 'lsb', 'nfm']),
     ],
   ),
   DecoderDescriptor(
@@ -150,4 +163,10 @@ abstract interface class DecoderBackend {
   /// Only implemented engines may be selected; failure must leave RX unchanged.
   bool select(String? id, Map<String, Object> versionedConfig);
   DecoderEvent? poll(int afterSequence);
+}
+
+/// Optional WFM metadata control; not a selectable data decoder.
+abstract interface class RbdsDecoderBackend {
+  bool get rbdsAvailable;
+  bool setRbds(bool enabled);
 }

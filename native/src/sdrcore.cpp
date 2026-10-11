@@ -541,7 +541,11 @@ struct SdrHandle {
             while (receiver->take_rds_group(discarded_rds)) {}
           }
         }
-        if (decoder) std::fill(result.audio.begin(), result.audio.end(), 0.0f);
+        // Baseband decoders (rtl_433) keep their mute-while-decoding policy.
+        // Audio-tap decoders (SSTV) listen alongside the operator, as in
+        // OpenWebRX+: selection never mutes voice audio implicitly.
+        if (decoder && decoder_input != sdrcore::decoder::Input::audio)
+          std::fill(result.audio.begin(), result.audio.end(), 0.0f);
         if (!result.audio.empty())
           audio_sink->write(result.audio.data(), result.audio.size() / 2);
         audio_stats = audio_sink->stats();
@@ -831,7 +835,9 @@ extern "C" int32_t sdr_v3_set_controls(SdrHandle* h, const SdrV3Controls* in) {
       const bool rds_mode_changed = h->controls.mode != in->mode;
       h->controls = *in;
       if (h->dsp_controls.center_frequency_hz != in->center_frequency_hz ||
-          h->dsp_controls.vfo_offset_hz != in->vfo_offset_hz)
+          h->dsp_controls.vfo_offset_hz != in->vfo_offset_hz ||
+          (h->decoder_input == sdrcore::decoder::Input::audio &&
+           h->dsp_controls.mode != in->mode))
         h->invalidate_decoder_events();
       if (rds_tune_changed || rds_mode_changed)
         h->reset_rds(rds_mode_changed ? "mode" : "retune");
@@ -1147,6 +1153,11 @@ extern "C" int32_t sdr_decoder_select(SdrHandle* h, const char* id,
       if (!candidate) return SDR_UNSUPPORTED;
       if (!candidate->configure(std::string_view(config ? config : "", config_bytes)))
         return SDR_INVALID_ARGUMENT;
+      // Audio-tap backends (SSTV: USB/LSB/NFM, optionally pinned to one
+      // configured underlying demod) must accept the applied mode now;
+      // selection never changes the mode itself (decoder.hpp).
+      if (reg.descriptor.input == sdrcore::decoder::Input::audio &&
+          !candidate->accepts_mode(h->controls.mode)) return SDR_UNSUPPORTED;
       // Commit only after every validation succeeds. No second tuner or
       // control change; receiver owns a borrowed pointer under dsp_mutex.
       h->receiver->set_decoder(nullptr);

@@ -161,7 +161,7 @@ void main() {
       expect(tester.takeException(), isNull);
       await tester.tapAt(const Offset(2, 200));
       await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const ValueKey('tab-1')));
+      await tester.tap(find.byKey(const ValueKey('tab-2')));
       await tester.pump();
       expect(find.text('Применить'), findsNothing);
       expect(find.byIcon(Icons.check), findsWidgets);

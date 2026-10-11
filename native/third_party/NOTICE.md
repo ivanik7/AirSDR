@@ -100,6 +100,61 @@ a GPL-3.0-or-later project (`docs/native-n1-status.md`) — compatible: the
 combined work may be distributed under GPL-3.0-or-later, the strictest
 applicable term among the four.
 
+## Meshtastic packet layer (`meshtastic.cmake`)
+
+Built into the static target `sdrcore_meshtastic_pb` and linked into
+`libsdrcore`. Only the protobuf decoder runtime is compiled (no encoder, no
+`PB_ENABLE_MALLOC`); nothing here runs protoc or Python at app build time.
+
+### nanopb — `nanopb/`
+
+- Upstream: https://github.com/nanopb/nanopb, tag `nanopb-0.4.9.2`,
+  commit `160d4f09e5fabb2b66aa2dea32d4f38ace2c4b3f`.
+- License: **zlib** (`nanopb/LICENSE.txt`).
+- Vendored verbatim: `pb.h pb_common.c pb_common.h pb_decode.c pb_decode.h`.
+  The encoder and generator are not vendored; the generator from the same
+  tag is fetched on demand by `meshtastic-protobufs/regen.sh`.
+- Why nanopb: a ~2 kLoC C runtime with static, size-bounded structs; the
+  Meshtastic firmware itself uses it with the same `.options` files. A full
+  protobuf runtime (libprotobuf/protobuf-lite) was rejected by the task.
+
+### Meshtastic protobufs — `meshtastic-protobufs/`
+
+- Upstream: https://github.com/meshtastic/protobufs, commit
+  `95c5f8c1c4223bb27faa81417b90560037f8ad31` (2026-10-03).
+- License: **GPL-3.0** (`meshtastic-protobufs/LICENSE`).
+- Vendored verbatim under `proto/meshtastic/`: `mesh channel config
+  device_ui module_config atak xmodem telemetry portnums paxcount
+  storeforward remote_hardware field_metadata` (`.proto` and `.options`
+  where present) — `mesh.proto` and its import closure plus the app payload
+  messages. Not vendored: admin, deviceonly, localonly, powermon, mqtt,
+  apponly, cannedmessages, rtttl, clientonly, interdevice, nanopb.proto.
+- `generated/meshtastic/*.pb.{c,h}`: committed output of
+  `meshtastic-protobufs/regen.sh` (nanopb 0.4.9.2 generator,
+  `-s enum_to_string:true`). Regenerate with that script; do not hand-edit.
+
+### crypto-algorithms AES — `crypto-algorithms/`
+
+- Upstream: https://github.com/B-Con/crypto-algorithms, commit
+  `cfbde48414baacf51fc7c74f275190881f037d32` (2015-04-26).
+- License: **public domain** (`crypto-algorithms/README.md`).
+- Vendored: `aes.c aes.h README.md`. Only `aes_key_setup` and
+  `aes_encrypt` are used; Meshtastic's CTR mode (32-bit big-endian counter
+  in the last 4 nonce bytes, firmware `CryptoEngine` with
+  `setCounterSize(4)`) is implemented in `native/src/meshtastic`.
+- Patched: `patches/crypto-algorithms-aes-shift-ub.patch` casts two
+  `BYTE << 24` shifts to `WORD` (signed-int overflow found by UBSan in
+  `meshtastic_packet_test`; results unchanged on all real targets).
+- Side channels: table-based AES, not constant time. Acceptable here: the
+  decoder only decrypts received broadcast traffic with keys typed by the
+  user; nothing is encrypted or transmitted.
+
+### License compatibility
+
+zlib (nanopb) and public domain (AES) are GPL-compatible. The Meshtastic
+protobufs are GPL-3.0 and this project is GPL-3.0-or-later, so the combined
+`libsdrcore` is distributed under GPL-3.0.
+
 ## Reproducing the pin / patch provenance
 
 ```

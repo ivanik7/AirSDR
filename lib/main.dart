@@ -132,6 +132,8 @@ class _SdrAppState extends State<SdrApp> with WidgetsBindingObserver {
     systemNavigationBarContrastEnforced: false,
   );
   final ValueNotifier<int> _openReceive = ValueNotifier<int>(0);
+  // Label of the one selected decoder, published by the shell.
+  final ValueNotifier<String?> _decoderLabel = ValueNotifier<String?>(null);
   late BackgroundReception _background;
 
   @override
@@ -143,6 +145,7 @@ class _SdrAppState extends State<SdrApp> with WidgetsBindingObserver {
     _background = BackgroundReception(
       widget.controller,
       onOpenReceive: () => _openReceive.value++,
+      decoderLabel: _decoderLabel,
     );
   }
 
@@ -154,6 +157,7 @@ class _SdrAppState extends State<SdrApp> with WidgetsBindingObserver {
       _background = BackgroundReception(
         widget.controller,
         onOpenReceive: () => _openReceive.value++,
+        decoderLabel: _decoderLabel,
       );
     }
   }
@@ -170,6 +174,7 @@ class _SdrAppState extends State<SdrApp> with WidgetsBindingObserver {
     WidgetsBinding.instance.removeObserver(this);
     _background.dispose();
     _openReceive.dispose();
+    _decoderLabel.dispose();
     super.dispose();
   }
 
@@ -189,6 +194,7 @@ class _SdrAppState extends State<SdrApp> with WidgetsBindingObserver {
       home: LegacyAppShell(
         controller: widget.controller,
         openReceive: _openReceive,
+        decoderLabel: _decoderLabel,
       ),
     );
   }

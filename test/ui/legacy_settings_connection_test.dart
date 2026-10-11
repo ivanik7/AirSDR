@@ -52,7 +52,7 @@ void main() {
         MaterialApp(home: LegacyAppShell(controller: radio)),
       );
       await tester.pump();
-      await tester.tap(find.byKey(const ValueKey('tab-2')));
+      await tester.tap(find.byKey(const ValueKey('tab-3')));
       await tester.pump();
       expect(find.text('ПОДКЛЮЧЕНИЕ К SDR'), findsOneWidget);
       expect(find.text('USB параметры'), findsNothing);

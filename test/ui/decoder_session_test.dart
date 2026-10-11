@@ -141,7 +141,7 @@ void main() {
     expect(backend.selectCalls.last.$1, 'sstv');
     expect(backend.selectCalls.last.$2, {
       'version': 1,
-      'settings': {'mode': 'auto'},
+      'settings': {'mode': 'auto', 'underlying': 'usb'},
     });
     await radio.stop();
     radio.dispose();
@@ -212,7 +212,7 @@ void main() {
   test('settingsFor resolves defaults for an untouched decoder', () {
     final radio = DemoRadioController();
     final session = DecoderSession(radio);
-    expect(session.settingsFor('sstv'), {'mode': 'auto'});
+    expect(session.settingsFor('sstv'), {'mode': 'auto', 'underlying': 'usb'});
     expect(session.settingsFor('adsb'), isEmpty);
     expect(session.settingsFor('unknown-id'), isEmpty);
     radio.dispose();
@@ -223,9 +223,9 @@ void main() {
     final backend = _FakeBackend({'sstv'});
     final radio = _BackedRadio(backend);
     final session = DecoderSession(radio);
-    session.applyStored('sstv', {'mode': 'martin_m1'});
+    session.applyStored('sstv', {'mode': 'auto', 'underlying': 'lsb'});
     expect(session.selectedId, 'sstv');
-    expect(session.currentSettings['mode'], 'martin_m1');
+    expect(session.currentSettings['underlying'], 'lsb');
     expect(backend.selectCalls.last.$1, isNull, reason: 'no running USB demod');
 
     session.applyStored('no-such-decoder', {'x': 1});

@@ -78,7 +78,7 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(home: LegacyAppShell(controller: radio)),
       );
-      await tester.tap(find.byKey(const ValueKey('tab-3')));
+      await tester.tap(find.byKey(const ValueKey('tab-1')));
       await tester.pump();
       expect(find.byKey(const ValueKey('legacyModeSelect')), findsNothing);
       expect(find.text('Режим приёма'), findsNothing);
@@ -113,7 +113,7 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(home: LegacyAppShell(controller: radio)),
       );
-      await tester.tap(find.byKey(const ValueKey('tab-3')));
+      await tester.tap(find.byKey(const ValueKey('tab-1')));
       await tester.pump();
       await tester.tap(find.byKey(const ValueKey('decoderSelector')));
       await tester.pumpAndSettle();

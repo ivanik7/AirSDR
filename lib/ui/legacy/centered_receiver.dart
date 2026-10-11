@@ -29,10 +29,17 @@ import 'step_grid.dart';
 ///    release together with the final retune;
 ///  * restoring state ([restore]: active channel at startup, channel
 ///    scanning) never applies band settings.
+///  * a plain tune entering a band also reports it via [onBandEntered], so
+///    the one decoder selection (DecoderSession) takes the band's choice
+///    from the unified decoder list ([Band.decoderChoice]).
 class CenteredReceiver {
   CenteredReceiver(this.radio);
   final RadioController radio;
   void Function()? onManualChange;
+
+  /// Called after a user tune (not a preset/channel with its own mode)
+  /// entered [band] and its mode was applied.
+  void Function(Band band)? onBandEntered;
   String entry = '';
   void Function()? onEntryExpired;
   Timer? _entryTimer;
@@ -251,10 +258,14 @@ class CenteredReceiver {
     // when rounded on the current grid. In that case it enters the band too.
     final band = bands?.bandAt(raw) ?? bands?.bandAt(_snapIn(raw, null));
     var newMode = mode;
+    Band? entered;
     if (band != null && band.id != _bandId) {
       final i = steps.indexOf(band.stepHz);
       if (i >= 0 && i != stepIndex) _selectStep(i);
-      newMode ??= band.mode;
+      if (mode == null) {
+        newMode = band.mode;
+        entered = band;
+      }
     }
     final target = _snapIn(raw, band);
     _bandId = band?.id;
@@ -265,6 +276,7 @@ class CenteredReceiver {
       radio.setMode(newMode);
       resetOffset();
     }
+    if (entered != null) onBandEntered?.call(entered);
   }
 
   void _checkRange(double hz) {
