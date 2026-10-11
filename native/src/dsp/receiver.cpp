@@ -590,6 +590,7 @@ class ReceiverImpl final : public Receiver {
       rds_->process(rds_mpx_.data(), rds_mpx_.size());
     if (audio_tap_active && !audio_tap_samples_.empty())
       decoder_->process(audio_tap_samples_.data(), audio_tap_samples_.size(), kAudioTapRateHz);
+    if (decoder_ && decoder_->provides_audio()) replace_with_decoder_audio(result.audio);
     result.signal_db = controls_.squelch == SDR_V3_SQUELCH_AUTO &&
         controls_.mode == SDR_V3_NFM ? metric_db_ :
         static_cast<float>(10 * std::log10(std::max(power_smooth_, kFloor)));
@@ -599,6 +600,23 @@ class ReceiverImpl final : public Receiver {
   }
 
  private:
+  // Voice decoders (DMR): the attached backend's 48 kHz mono PCM replaces the
+  // demodulator output sample for sample, so the block keeps exactly the
+  // frame count the normal chain produced and the AudioSink/AAudio clock is
+  // undisturbed. Only the ordinary volume*volume / mute stage applies; the
+  // squelch gate does not (OpenWebRX+ DMR: supportsSquelch() = False).
+  // Underrun -> silence. No mixing with the analog demodulator output.
+  void replace_with_decoder_audio(std::vector<float>& audio) {
+    const size_t frames = audio.size() / 2;
+    decoder_audio_.assign(frames, 0.0f);
+    const size_t got = frames ? std::min(frames, decoder_->read_audio(decoder_audio_.data(), frames)) : 0;
+    const float gain = controls_.muted ? 0.0f : controls_.volume * controls_.volume;
+    for (size_t i = 0; i < frames; ++i) {
+      const float pcm = i < got ? std::clamp(decoder_audio_[i] * gain, -1.0f, 1.0f) : 0.0f;
+      audio[2 * i] = pcm;
+      audio[2 * i + 1] = pcm;
+    }
+  }
   void process_decoder(const uint8_t* cu8, size_t pairs) {
     decoder_samples_.clear();
     decoder_samples_.reserve(2 * (pairs * static_cast<size_t>(decoder_rate_) /
@@ -1082,6 +1100,7 @@ class ReceiverImpl final : public Receiver {
   uint32_t decoder_rate_ = 0;
   Complex decoder_oscillator_{1, 0}, decoder_step_{1, 0};
   std::vector<float> decoder_samples_;
+  std::vector<float> decoder_audio_;  // replace_with_decoder_audio() scratch
   // Input::audio tap state (see receiver.h, process_if()). Independent of
   // the baseband branch above and of the 48 kHz voice chain below:
   // RealResampler/NfmTapDeemphasis instances with their own ring buffers.

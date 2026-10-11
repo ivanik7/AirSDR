@@ -7,6 +7,9 @@ include(third_party/fftw.cmake)
 # csdr-plus SSTV decoder sources (BSD-3) + SSTV-only Module shim; defines the
 # static target sdrcore_csdr_sstv (links sdrcore_fftw3f).
 include(third_party/csdr_sstv.cmake)
+# DMR AMBE+2 voice output (mbelib + csdr Agc + digiham DigitalVoiceFilter);
+# defines sdrcore_dmr_voice and the SDRCORE_ENABLE_MBELIB option.
+include(src/dmr/dmr_voice.cmake)
 add_library(sdrcore_rds STATIC src/rds/rds.cpp)
 set_target_properties(sdrcore_rds PROPERTIES POSITION_INDEPENDENT_CODE ON)
 target_compile_features(sdrcore_rds PRIVATE cxx_std_17)
@@ -64,6 +67,7 @@ endif()
 target_compile_features(sdrcore PRIVATE cxx_std_17)
 find_package(Threads REQUIRED)
 target_link_libraries(sdrcore PRIVATE Threads::Threads sdrcore_rtlsdr sdrcore_hackrf sdrcore_rtl433 sdrcore_rds sdrcore_meshtastic sdrcore_csdr_sstv m)
+target_link_libraries(sdrcore PRIVATE sdrcore_dmr_voice)
 if(UNIX AND NOT APPLE)
     # Do not export upstream's API from libsdrcore: otherwise exported but
     # unused CLI/network sections keep unresolved CLI dependencies alive.
@@ -280,4 +284,5 @@ if(NOT ANDROID AND PROJECT_IS_TOP_LEVEL)
     # SSTV backend (adapter + upstream decoder) and receiver audio-tap tests.
     include(tests/sstv_tests.cmake)
     include(tests/audio_tap_tests.cmake)
+    include(tests/dmr_voice_tests.cmake)
 endif()
