@@ -85,9 +85,12 @@ HackRF need the WinUSB driver (Zadig).
 
 ### `release` (tags `v*` only) and `nightly` (pushes to master)
 
-Both need `test`, `android` and `linux-install` to pass. `macos` and
-`windows` are optional while those builds are experimental: if they fail,
-their files are left out.
+Tagged releases need `test`, `android` and `linux-install` to pass;
+`macos` and `windows` are optional while experimental.
+Nightly needs `test` and at least one successful platform build. A failed
+Android, Linux, macOS, Windows or Linux install-check job does not block
+publishing the available packages. Cancelled runs and runs with no successful
+platform builds leave the previous nightly in place.
 
 - `release` checks the tag against `version:` in `pubspec.yaml` and creates
   the GitHub release `AirSDR vX.Y.Z` (marked latest) with notes generated
@@ -97,6 +100,11 @@ their files are left out.
   at the pushed commit, so it always holds the newest master build. It is
   never marked latest. Because the tag moves, `git fetch --tags` may report
   a rejected `nightly` tag locally; `git fetch --tags --force` updates it.
+
+Release shell steps stage packages in a fresh directory under `RUNNER_TEMP`,
+so repository assets (such as `assets/fonts`) cannot become release uploads.
+`python3 test/ci/release_workflow_test.py` exercises partial-build conditions
+and both real shell steps with fake artifacts and a recording `gh` command.
 
 Both publish the files under version-free names from
 `tool/stable-asset-names.sh`, which the README links to:

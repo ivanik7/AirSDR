@@ -58,6 +58,9 @@ jobs:
 
       - run: flutter analyze
 
+      - name: Release workflow regressions
+        run: python3 test/ci/release_workflow_test.py
+
       # Host libsdrcore.so from source + the CMake-wired native suite and
       # standalone native regressions. Tests that need a real RTL-SDR print
       # a skip line when no device is attached.
@@ -526,8 +529,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          tool/stable-asset-names.sh dist assets
-          gh release create "$GITHUB_REF_NAME" assets/* \
+          assets="$(mktemp -d "$RUNNER_TEMP/airsdr-release.XXXXXX")"
+          tool/stable-asset-names.sh dist "$assets"
+          gh release create "$GITHUB_REF_NAME" "$assets"/* \
             --repo "$GITHUB_REPOSITORY" --title "AirSDR $GITHUB_REF_NAME" \
             --generate-notes --latest
 
@@ -535,8 +539,9 @@ jobs:
     name: Nightly pre-release
     if: >-
       !cancelled() && github.event_name == 'push' && github.ref == 'refs/heads/master' &&
-      needs.test.result == 'success' && needs.android.result == 'success' &&
-      needs.linux-install.result == 'success'
+      needs.test.result == 'success' &&
+      (needs.android.result == 'success' || needs.linux.result == 'success' ||
+       needs.macos.result == 'success' || needs.windows.result == 'success')
     needs: [test, android, linux, linux-install, macos, windows]
     runs-on: ubuntu-24.04
     permissions:
@@ -556,6 +561,7 @@ jobs:
           path: dist
           merge-multiple: true
 
+      # Publish available packages even when another platform build failed.
       # Recreated on every push: deleting the release and its tag, then
       # creating both at the new commit, keeps the download URLs and never
       # force-pushes a ref. --latest=false keeps releases/latest on the last
@@ -564,9 +570,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          tool/stable-asset-names.sh dist assets
+          assets="$(mktemp -d "$RUNNER_TEMP/airsdr-release.XXXXXX")"
+          tool/stable-asset-names.sh dist "$assets"
           gh release delete nightly --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes || true
-          gh release create nightly assets/* \
+          gh release create nightly "$assets"/* \
             --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
             --prerelease --latest=false \
             --title "AirSDR nightly ${{ steps.ver.outputs.FULL_VERSION }}" \
