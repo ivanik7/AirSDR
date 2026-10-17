@@ -1,0 +1,17 @@
+diff --git a/native/third_party/dump1090/dump1090.h b/native/third_party/dump1090/dump1090.h
+index e0691a8..e92ca07 100644
+--- a/native/third_party/dump1090/dump1090.h
++++ b/native/third_party/dump1090/dump1090.h
+@@ -100,7 +100,12 @@ typedef int atomic_int;
+ #include <fcntl.h>
+ #include <ctype.h>
+ #include <sys/stat.h>
++#ifdef _WIN32
++// sdr_flutter: WSADATA is retained below; decode-only builds need no POSIX ioctl.
++#include <winsock2.h>
++#else
+ #include <sys/ioctl.h>
++#endif
+ #include <time.h>
+ #include <limits.h>
+ #include <strings.h>

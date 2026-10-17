@@ -19,9 +19,11 @@ along with libcsdr.  If not, see <https://www.gnu.org/licenses/>.
 
 #include "source.hpp"
 
+#ifndef _WIN32
 #include <cstring>
 #include <unistd.h>
 #include <poll.h>
+#endif
 
 using namespace Csdr;
 
@@ -40,6 +42,7 @@ bool Source<T>::hasWriter() {
     return writer != nullptr;
 }
 
+#ifndef _WIN32
 template<typename T>
 TcpSource<T>::~TcpSource() {
     ::close(sock);
@@ -115,6 +118,8 @@ void TcpSource<T>::stop() {
     }
 }
 
+#endif
+
 namespace Csdr {
     template class Source<float>;
     template class Source<short>;
@@ -123,10 +128,12 @@ namespace Csdr {
     template class Source<unsigned char>;
     template class Source<complex<unsigned char>>;
 
+#ifndef _WIN32
     template class TcpSource<unsigned char>;
     template class TcpSource<short>;
     template class TcpSource<float>;
     template class TcpSource<complex<short>>;
     template class TcpSource<complex<float>>;
     template class TcpSource<complex<unsigned char>>;
+#endif
 }

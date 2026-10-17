@@ -16,7 +16,7 @@ Several files (`dump1090.h`, `mode_s.h`/`.c`, `track.h`/`.c`, `stats.h`/`.c`,
 `util.h`/`.c`) additionally incorporate 2012 BSD-style-licensed work by
 Salvatore Sanfilippo (reproduced in `LICENSE`); that attribution is retained
 in the per-file headers. Decode algorithms and tables are unchanged; the
-vendored `mode_s.c` network seam, `crc.c` reinitialization cleanup, and `dump1090.h` C++ parsing shim are
+vendored `mode_s.c` network seam, `crc.c` reinitialization cleanup, and `dump1090.h` C++ parsing and Windows include shims are
 documented below.
 
 ## Files in this directory
@@ -192,7 +192,8 @@ this changes memory ownership only, not the CRC algorithm. No other vendored
 `.c` file was patched. `mode_ac.c`, `cpr.c`,
 `comm_b.c`, `ais_charset.c`, `icao_filter.c`, `util.c`, `stats.c`,
 `convert.c`, `cpu.c`, every `dsp/` file, and every other header are
-byte-for-byte copies of the pinned commit.
+byte-for-byte copies of the pinned commit, except the Windows header selection
+documented below.
 
 ## Startup sequence required of callers
 
@@ -279,3 +280,17 @@ cmake --build "build/adsb-build" -j3 --target sdrcore_adsb_backend_test
 / `include(third_party/dump1090.cmake)` wiring once the parent task
 integrates this target — this task does not modify `native/CMakeLists.txt`
 itself, per its file-ownership boundary).
+
+## Windows decode-only header portability
+
+`dump1090.h` includes `<winsock2.h>` on `_WIN32` and retains
+`<sys/ioctl.h>` elsewhere. Windows has no POSIX ioctl header, and none of
+the vendored decode-only sources uses ioctl. The Winsock header supplies
+the upstream Windows-only `WSADATA` member of `struct _Modes`; no socket
+implementation or initialization is added. Decoder algorithms and struct
+fields are unchanged. The exact local patch is `windows-header.patch`.
+
+Regression verification (llvm-mingw 20261006 UCRT, macOS host): the
+unpatched `sdrcore_dump1090` target failed at `sys/ioctl.h`; the patched
+target compiled all 17 C translation units and linked its static archive.
+This compile check does not establish Windows runtime behavior.

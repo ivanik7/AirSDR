@@ -13,14 +13,14 @@ Files copied verbatim unless noted otherwise below.
 | `include/sstv.hpp` | `include/sstv.hpp` | BSD-3-clause-style (Marat Fayzullin) | Patched, see below. Header preserved verbatim. |
 | `src/sstv.cpp` | `src/lib/sstv.cpp` | BSD-3-clause-style (Marat Fayzullin) | Patched, see below. Header preserved verbatim. |
 | `include/module.hpp` | `include/module.hpp` | GPL-3.0-or-later (Jakob Ketterl) | Verbatim. |
-| `include/source.hpp` | `include/source.hpp` | GPL-3.0-or-later (Jakob Ketterl) | Verbatim. |
+| `include/source.hpp` | `include/source.hpp` | GPL-3.0-or-later (Jakob Ketterl) | Windows TCP exclusion; see `windows-source.patch`. |
 | `include/sink.hpp` | `include/sink.hpp` | GPL-3.0-or-later (Jakob Ketterl) | Verbatim. |
 | `include/reader.hpp` | `include/reader.hpp` | GPL-3.0-or-later (Jakob Ketterl) | Verbatim. |
 | `include/writer.hpp` | `include/writer.hpp` | GPL-3.0-or-later (Jakob Ketterl) | Verbatim. |
 | `include/ringbuffer.hpp` | `include/ringbuffer.hpp` | GPL-3.0-or-later (Jakob Ketterl) | Verbatim. Not actually used by the adapter (it uses a plain `MemoryReader`-style custom reader instead; `RingbufferReader`/`Ringbuffer` are vendored for completeness/future reuse and are excluded from the build and unreferenced by `sstv.cpp` / `native/src/decoder/sstv.cpp`). |
 | `include/complex.hpp` | `include/complex.hpp` | GPL-3.0-or-later (Jakob Ketterl) | Verbatim. Not used by the `SstvDecoder<float>` instantiation (no complex IQ involved) but required transitively by `module.hpp`/`source.hpp`. |
 | `src/module.cpp` | `src/lib/module.cpp` | GPL-3.0-or-later (Jakob Ketterl) | Verbatim. Explicit template instantiation list unmodified; `Module<float, unsigned char>` is already instantiated upstream (line 109 `template class Module<float, unsigned char>;`), which is exactly what `SstvDecoder<float> : Module<float, unsigned char>` needs. |
-| `src/source.cpp` | `src/lib/source.cpp` | GPL-3.0-or-later (Jakob Ketterl) | Verbatim. Only `Source<unsigned char>` template instantiation is used (line 123); the `TcpSource<T>` template is also instantiated upstream but is dead code here (never constructed) and not used by the adapter. |
+| `src/source.cpp` | `src/lib/source.cpp` | GPL-3.0-or-later (Jakob Ketterl) | Windows TCP exclusion (`windows-source.patch`). Only `Source<unsigned char>` template instantiation is used (line 123); the `TcpSource<T>` template is also instantiated upstream but is dead code here (never constructed) and not used by the adapter. |
 | `src/sink.cpp` | `src/lib/sink.cpp` | GPL-3.0-or-later (Jakob Ketterl) | Verbatim. `Sink<float>` instantiation used (line 46). |
 | `src/ringbuffer.cpp` | `src/lib/ringbuffer.cpp` | GPL-3.0-or-later (Jakob Ketterl) | Verbatim. Excluded from the build: its mirrored mapping requires Linux-only `mremap` (see ringbuffer.hpp note); not exercised by the adapter's own `MemoryReader`-style byte buffer in `native/src/decoder/sstv.cpp`. |
 | `sdr_flutter.patch` | n/a | n/a | Unified diff of `sstv.hpp`/`sstv.cpp` against the pristine upstream pin. |
@@ -209,3 +209,11 @@ parser (`owrx/sstv.py`) scans for a ` [` marker to split log text from BMP
 data — a parsing strategy this adapter does not replicate (see
 docs/status/sstv-audit.md: "must not copy its [owrx/sstv.py, AGPL] code, only
 reproduce observable framing").
+
+## Windows Source portability
+
+`windows-source.patch` excludes the unused POSIX `TcpSource` declaration,
+implementation, explicit instantiations and networking headers under `_WIN32`.
+The embedded adapter only uses `Source` with an in-process writer; these
+methods and all SSTV signal processing remain unchanged. POSIX builds retain
+the upstream TCP implementation. Copyright and license headers are preserved.

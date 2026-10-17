@@ -121,7 +121,11 @@ std::string iso8601_utc_now() {
   const auto ms = duration_cast<milliseconds>(now.time_since_epoch()).count() % 1000;
   const std::time_t t = system_clock::to_time_t(now);
   std::tm tm{};
+#ifdef _WIN32
+  gmtime_s(&tm, &t);
+#else
   gmtime_r(&t, &tm);
+#endif
   char buf[32];
   std::snprintf(buf, sizeof buf, "%04d-%02d-%02dT%02d:%02d:%02d.%03dZ",
                 tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min,

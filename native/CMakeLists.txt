@@ -145,6 +145,19 @@ target_include_directories(sdrcore PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 # Symbol-level DMR framing is independent of the signal-chain integration.
 if(NOT ANDROID AND PROJECT_IS_TOP_LEVEL)
     enable_testing()
+    # Compile and exercise each vendored Source independently; the two copies
+    # define the same symbols and must not mask one another at link time.
+    foreach(variant IN ITEMS dmr sstv)
+        add_executable(sdrcore_csdr_${variant}_source_test tests/csdr_source_test.cpp)
+        if(variant STREQUAL "dmr")
+            target_include_directories(sdrcore_csdr_${variant}_source_test PRIVATE ${DMR_VENDOR}/csdr)
+            target_link_libraries(sdrcore_csdr_${variant}_source_test PRIVATE sdrcore_dmr_csdr_base)
+        else()
+            target_link_libraries(sdrcore_csdr_${variant}_source_test PRIVATE sdrcore_csdr_sstv)
+        endif()
+        target_compile_options(sdrcore_csdr_${variant}_source_test PRIVATE -UNDEBUG)
+        add_test(NAME sdrcore_csdr_${variant}_source COMMAND sdrcore_csdr_${variant}_source_test)
+    endforeach()
     add_executable(sdrcore_dmr_framing_test tests/dmr_framing_test.cpp)
     target_link_libraries(sdrcore_dmr_framing_test PRIVATE sdrcore_dmr_framing)
     target_include_directories(sdrcore_dmr_framing_test PRIVATE

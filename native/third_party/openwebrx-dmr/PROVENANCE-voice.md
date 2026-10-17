@@ -1,9 +1,9 @@
 # Provenance: DMR voice files in native/third_party/openwebrx-dmr
 
-Vendored unmodified for the OpenWebRX+ DMR voice path (task t_5b101746).
+Originally vendored unmodified for the OpenWebRX+ DMR voice path (task t_5b101746).
 The csdr base files (module/source/sink/reader/writer/complex, LICENSE-GPL)
 and `digiham/LICENSE` are shared with the DMR channel card (t_8e3dfcc0) and
-are byte-identical to the same upstream files.
+were byte-identical to the same upstream files before the portability patch below.
 
 | File | Upstream | Commit | License |
 |---|---|---|---|
@@ -24,3 +24,11 @@ What is NOT ported, and why:
   requires codecserver/protobuf headers; its `decode_ambe_3600x2450` body is
   reproduced step for step in `AmbeSynthesizer::decode` and the host oracle
   (`tool/dmr_voice_oracle`) compiles the PRISTINE file to prove bit-exactness.
+
+## Windows Source portability
+
+`csdr/windows-source.patch` guards the unused POSIX `TcpSource` declaration,
+implementation, explicit instantiations and networking includes with
+`#ifndef _WIN32` in `csdr/source.hpp` and `csdr/source.cpp`. The embedded DMR
+chain uses in-process `Source` writers, whose behavior is unchanged. POSIX
+builds retain TCP support. No DSP code or license header is changed.

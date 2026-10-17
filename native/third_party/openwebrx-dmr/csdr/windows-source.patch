@@ -1,0 +1,74 @@
+--- a/source.hpp
++++ b/source.hpp
+@@ -21,7 +21,9 @@
+ 
+ #include "writer.hpp"
+ 
++#ifndef _WIN32
+ #include <arpa/inet.h>
++#endif
+ #include <stdexcept>
+ #include <thread>
+ 
+@@ -48,6 +50,8 @@
+             NetworkException(const std::string& reason): std::runtime_error(reason) {}
+     };
+ 
++#ifndef _WIN32
++    // The embedded decoders use Source with in-process writers, never TCP.
+     template <typename T>
+     class TcpSource: public Source<T> {
+         public:
+@@ -62,5 +66,6 @@
+             bool run = true;
+             std::thread* thread = nullptr;
+     };
++#endif
+ 
+ }
+\ No newline at end of file
+--- a/source.cpp
++++ b/source.cpp
+@@ -19,9 +19,11 @@
+ 
+ #include "source.hpp"
+ 
++#ifndef _WIN32
+ #include <cstring>
+ #include <unistd.h>
+ #include <poll.h>
++#endif
+ 
+ using namespace Csdr;
+ 
+@@ -40,6 +42,7 @@
+     return writer != nullptr;
+ }
+ 
++#ifndef _WIN32
+ template<typename T>
+ TcpSource<T>::~TcpSource() {
+     ::close(sock);
+@@ -115,6 +118,8 @@
+     }
+ }
+ 
++#endif
++
+ namespace Csdr {
+     template class Source<float>;
+     template class Source<short>;
+@@ -123,10 +128,12 @@
+     template class Source<unsigned char>;
+     template class Source<complex<unsigned char>>;
+ 
++#ifndef _WIN32
+     template class TcpSource<unsigned char>;
+     template class TcpSource<short>;
+     template class TcpSource<float>;
+     template class TcpSource<complex<short>>;
+     template class TcpSource<complex<float>>;
+     template class TcpSource<complex<unsigned char>>;
++#endif
+ }
+\ No newline at end of file

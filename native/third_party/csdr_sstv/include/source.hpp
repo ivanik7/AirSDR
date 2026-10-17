@@ -21,7 +21,9 @@ along with libcsdr.  If not, see <https://www.gnu.org/licenses/>.
 
 #include "writer.hpp"
 
+#ifndef _WIN32
 #include <arpa/inet.h>
+#endif
 #include <stdexcept>
 #include <thread>
 
@@ -48,6 +50,8 @@ namespace Csdr {
             NetworkException(const std::string& reason): std::runtime_error(reason) {}
     };
 
+#ifndef _WIN32
+    // The embedded decoders use Source with in-process writers, never TCP.
     template <typename T>
     class TcpSource: public Source<T> {
         public:
@@ -62,5 +66,6 @@ namespace Csdr {
             bool run = true;
             std::thread* thread = nullptr;
     };
+#endif
 
 }
