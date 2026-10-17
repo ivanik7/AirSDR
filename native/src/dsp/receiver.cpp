@@ -281,19 +281,23 @@ class ComplexDecimator {
   unsigned phase_ = 0, factor_ = 1;
 };
 
-// Streaming rational converter for the ADS-B full-band tap. The 128 phases
-// share a 48-tap, 1.05 MHz low-pass; history/clock persist across IQ blocks.
+// Streaming rational converter for full-band and Meshtastic taps. The 128
+// phases share 48 taps; history/clock persist across IQ blocks.
 class AdsbResampler {
  public:
-  void configure(uint32_t input_rate) {
-    step_ = static_cast<double>(input_rate) / 2400000.0;
+  void configure(uint32_t input_rate, uint32_t output_rate = 2400000,
+                 double cutoff_hz = 1050000.0, bool centered = false) {
+    step_ = static_cast<double>(input_rate) / output_rate;
     constexpr size_t taps = 48, phases = 128;
-    const double fc = 1050000.0 / input_rate;
+    const double fc = cutoff_hz / input_rate;
     for (size_t p = 0; p < phases; ++p) {
       const double delay = static_cast<double>(p) / phases;
       double total = 0;
       for (size_t k = 0; k < taps; ++k) {
-        const double x = static_cast<double>(k) - delay;
+        // The legacy ADS-B phases are kept unchanged. At 1 MS/s, a cutoff
+        // near the Nyquist edge makes their one-sided sinc's DC sum nearly
+        // zero for some phases; use a symmetric FIR for this branch.
+        const double x = static_cast<double>(k) - (centered ? 23.5 : 0.0) - delay;
         const double sinc = x == 0 ? 2 * fc : std::sin(2 * kPi * fc * x) / (kPi * x);
         const double window = 0.42 - 0.5 * std::cos(2 * kPi * k / (taps - 1)) +
                               0.08 * std::cos(4 * kPi * k / (taps - 1));
@@ -334,6 +338,47 @@ class AdsbResampler {
   std::array<std::array<float, 48>, 128> coeffs_{};
   size_t count_ = 0, index_ = 0;
   double next_time_ = 0, step_ = 1;
+};
+
+// OpenWebRX+ complex squelch: mean |IQ|^2 over outRate/16, sampled every
+// fifth IQ pair; two windows of hang then five windows of zero flush.
+class MeshtasticSquelch {
+ public:
+  void set_level(float db) { level_ = std::pow(10.0, db / 10.0); }
+  void reset() {
+    power_.fill(0);
+    index_ = ticks_ = seen_ = hang_ = flush_ = 0;
+    total_ = 0;
+    open_ = false;
+  }
+  template <class Emit>
+  void put(Complex sample, bool enabled, Emit&& emit) {
+    if (!enabled) { emit(sample); return; }
+    if (++ticks_ == 5) {
+      ticks_ = 0;
+      total_ -= power_[index_];
+      power_[index_] = std::norm(sample);
+      total_ += power_[index_];
+      index_ = (index_ + 1) % power_.size();
+      if (seen_ < power_.size()) ++seen_;
+      if (seen_ == power_.size() && total_ / power_.size() > level_) {
+        open_ = true;
+        hang_ = 125000;
+        flush_ = 312500;
+      } else if (seen_ == power_.size()) {
+        open_ = false;
+      }
+    }
+    if (open_) emit(sample);
+    else if (hang_) { --hang_; emit(sample); }
+    else if (flush_) { --flush_; emit({}); }
+  }
+ private:
+  std::array<float, 12500> power_{};
+  size_t index_ = 0, ticks_ = 0, seen_ = 0, hang_ = 0, flush_ = 0;
+  double total_ = 0;
+  double level_ = 0;
+  bool open_ = false;
 };
 
 void fft(Complex* data, size_t n) {
@@ -507,6 +552,10 @@ class ReceiverImpl final : public Receiver {
     if (channel_change && decoder_input_ == sdrcore::decoder::Input::audio)
       configure_audio_tap_branch();
     if (squelch_change && !channel_change) reset_squelch();
+    if (squelch_change && decoder_required_rate_hz_ == 1000000) {
+      meshtastic_squelch_.reset();
+      meshtastic_squelch_.set_level(controls_.squelch_level_db);
+    }
     if (display_change) fft_count_ = 0;
     if (decoder_ && (decoder_input_ == sdrcore::decoder::Input::baseband ||
                      decoder_input_ == sdrcore::decoder::Input::raw_iq) && decoder_tune_change) {
@@ -561,12 +610,17 @@ class ReceiverImpl final : public Receiver {
   bool rds_synced() const override { return rds_ && rds_->synced(); }
 
   uint32_t set_decoder(sdrcore::decoder::Decoder* decoder,
-                       sdrcore::decoder::Input input) override {
+                       sdrcore::decoder::Input input,
+                       uint32_t required_rate_hz) override {
     // Same pointer AND same input: no-op (receiver.h). A pointer swap or an
     // input-type swap on the same pointer both count as a change below.
-    if (decoder_ == decoder && decoder_input_ == input) return decoder_rate_hz();
+    if (decoder_ == decoder && decoder_input_ == input &&
+        decoder_required_rate_hz_ == required_rate_hz) return decoder_rate_hz();
     decoder_ = decoder;
     decoder_input_ = input;
+    decoder_required_rate_hz_ = required_rate_hz;
+    if (decoder_required_rate_hz_ == 1000000)
+      meshtastic_squelch_.set_level(controls_.squelch_level_db);
     if (input == sdrcore::decoder::Input::audio) {
       decoder_rate_ = 0;  // baseband-only counter; audio uses kAudioTapRateHz.
       decoder_samples_.clear();
@@ -592,6 +646,8 @@ class ReceiverImpl final : public Receiver {
     rds_suspended_ = false;
     decoder_decimator_.reset();
     adsb_resampler_.reset();
+    meshtastic_resampler_.reset();
+    meshtastic_squelch_.reset();
     decoder_oscillator_ = {1, 0};
     if (decoder_ && decoder_input_ == sdrcore::decoder::Input::audio) {
       // Stream reset (receiver.h): set_tuning(current) then reset(), and
@@ -619,6 +675,8 @@ class ReceiverImpl final : public Receiver {
     if (rds_) rds_->reset();
     decoder_decimator_.reset();
     adsb_resampler_.reset();
+    meshtastic_resampler_.reset();
+    meshtastic_squelch_.reset();
     decoder_oscillator_ = {1, 0};
     if (decoder_ && decoder_input_ == sdrcore::decoder::Input::audio) {
       // retune() (receiver.h): set_tuning(current) then reset(), and clear
@@ -745,6 +803,23 @@ class ReceiverImpl final : public Receiver {
       if (decoder_input_ == sdrcore::decoder::Input::raw_iq) {
         if (controls_.sample_rate == 2400000) append(shifted);
         else adsb_resampler_.put(shifted, append);
+      } else if (decoder_required_rate_hz_ == 1000000) {
+        auto gate = [this, &append](Complex value) {
+          // OpenWebRX+ applies its complex squelch before lorarx. The
+          // ordinary voice auto-squelch has different demodulated metrics;
+          // only a manual power threshold is meaningful for this IQ tap.
+          meshtastic_squelch_.put(value,
+              controls_.squelch == SDR_V3_SQUELCH_MANUAL &&
+                  controls_.squelch_level_db > -150, append);
+        };
+        if (controls_.sample_rate == 1000000) gate(shifted);
+        else {
+          Complex filtered;
+          if (decoder_decimator_.put(shifted, filtered)) {
+            if (meshtastic_fractional_) meshtastic_resampler_.put(filtered, gate);
+            else gate(filtered);
+          }
+        }
       } else {
         Complex filtered;
         if (decoder_decimator_.put(shifted, filtered)) append(filtered);
@@ -763,6 +838,8 @@ class ReceiverImpl final : public Receiver {
     decoder_samples_.clear();
     decoder_decimator_.reset();
     adsb_resampler_.reset();
+    meshtastic_resampler_.reset();
+    meshtastic_squelch_.reset();
     if (!decoder_) return;
     if (decoder_input_ == sdrcore::decoder::Input::raw_iq) {
       // The +/-1.2 MHz decoder window must fit inside the user's tuned
@@ -776,6 +853,25 @@ class ReceiverImpl final : public Receiver {
         adsb_resampler_.configure(controls_.sample_rate);
       decoder_step_ = std::polar(1.0f, static_cast<float>(
           -2 * kPi * controls_.vfo_offset_hz / controls_.sample_rate));
+      decoder_oscillator_ = {1, 0};
+      return;
+    }
+    if (decoder_required_rate_hz_ == 1000000) {
+      // Do not upsample: the LoRa PHY expects a true 1 MS/s complex window.
+      const uint32_t source = controls_.sample_rate;
+      if (source < 1000000 ||
+          std::abs(static_cast<int64_t>(controls_.vfo_offset_hz)) + 500000 >
+              static_cast<int64_t>(source) / 2) return;
+      const unsigned factor = source / 1000000;
+      const uint32_t intermediate = source / factor;
+      decoder_rate_ = 1000000;
+      meshtastic_fractional_ = intermediate != decoder_rate_;
+      if (source != decoder_rate_)
+        decoder_decimator_.configure(source, 450000, factor);
+      if (meshtastic_fractional_)
+        meshtastic_resampler_.configure(intermediate, decoder_rate_, 450000, true);
+      decoder_step_ = std::polar(1.0f, static_cast<float>(
+          -2 * kPi * controls_.vfo_offset_hz / source));
       decoder_oscillator_ = {1, 0};
       return;
     }
@@ -1233,12 +1329,16 @@ class ReceiverImpl final : public Receiver {
   // The requested Input kind of decoder_ (set_decoder()'s second argument);
   // selects which of the two independent branches below is scheduled.
   sdrcore::decoder::Input decoder_input_ = sdrcore::decoder::Input::baseband;
+  uint32_t decoder_required_rate_hz_ = 0;
   std::unique_ptr<sdrcore::rds::Sink> rds_;
   std::vector<float> rds_mpx_;
   bool rbds_ = false;
   bool rds_suspended_ = false;
   ComplexDecimator decoder_decimator_;
   AdsbResampler adsb_resampler_;
+  AdsbResampler meshtastic_resampler_;
+  MeshtasticSquelch meshtastic_squelch_;
+  bool meshtastic_fractional_ = false;
   uint32_t decoder_rate_ = 0;
   Complex decoder_oscillator_{1, 0}, decoder_step_{1, 0};
   std::vector<float> decoder_samples_;

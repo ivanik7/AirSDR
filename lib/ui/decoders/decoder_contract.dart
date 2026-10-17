@@ -142,6 +142,29 @@ final decoderCatalog = <DecoderDescriptor>[
     result: DecoderResult.message,
     settings: const [], // v1 {"version":1,"settings":{}}; tuning is the VFO.
   ),
+  // The native registry advertises this 1 MS/s IQ mode, but selection stays
+  // unavailable until the upstream lorarx PHY/backend supplies its factory.
+  DecoderDescriptor(
+    id: 'meshtastic',
+    label: 'Meshtastic',
+    input: DecoderInput.baseband,
+    exclusiveReceiver: false,
+    requiredMode: null,
+    requiredRateHz: 1000000,
+    result: DecoderResult.message,
+    settings: const [
+      DecoderSetting('preset', 'LongFast', allowed: [
+        'LongFast', 'LongSlow', 'MediumSlow', 'MediumFast', 'ShortSlow',
+        'ShortFast', 'LongMod', 'ShortTurbo', 'LongTurbo', 'MediumTurbo',
+        'LiteFast', 'LiteSlow', 'NarrowFast', 'NarrowSlow', 'TinyFast',
+        'TinySlow',
+      ]),
+      DecoderSetting('region', 'EU_868', allowed: [
+        'US', 'EU_433', 'EU_868', 'EU_866', 'EU_N_868', 'CN', 'JP',
+        'ANZ', 'RU',
+      ]),
+    ],
+  ),
   DecoderDescriptor(
     id: 'adsb',
     label: 'ADS-B',

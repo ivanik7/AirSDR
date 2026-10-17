@@ -41,10 +41,10 @@ class Receiver {
   virtual void set_rds_suspended(bool suspended) = 0;
   virtual bool take_rds_group(std::string& json) = 0;
   virtual bool rds_synced() const = 0;
-  // Borrowed, DSP-lock protected. Input::baseband: the branch is filtered and
-  // integer-decimated to a complex 200-300 kS/s tuned VFO; zero means source
-  // rate is unsuitable. Attach/detach, retune, rate and stream generation
-  // changes reset the branch.
+  // Borrowed, DSP-lock protected. Input::baseband: required_rate_hz=0 is
+  // the rtl_433 200-300 kS/s VFO; 1000000 selects the exact-rate Meshtastic
+  // complex VFO branch. Zero means source rate/window unsuitable. Attach,
+  // retune, rate and stream changes reset the branch.
   // Input::raw_iq: tuned full-band 2.4 MS/s, native-resampled when feasible;
   // zero means the source rate or tuned +/-1.2 MHz window is insufficient.
   // Input::audio: real mono demodulator output (USB/LSB real part, NFM
@@ -58,7 +58,8 @@ class Receiver {
   // Returns the tap rate: 24000 for audio (0 when not attached).
   virtual uint32_t set_decoder(sdrcore::decoder::Decoder* decoder,
                                sdrcore::decoder::Input input =
-                                   sdrcore::decoder::Input::baseband) = 0;
+                                   sdrcore::decoder::Input::baseband,
+                               uint32_t required_rate_hz = 0) = 0;
   virtual uint32_t decoder_rate_hz() const = 0;
   virtual void reset() = 0;
   // Live LO retune on a continuing stream: forgets what belonged to the old

@@ -47,6 +47,18 @@ const std::vector<Registration>& registry() {
           },
           /*create=*/create_adsb,
       },
+      Registration{
+          Descriptor{
+              /*id=*/"meshtastic",
+              /*input=*/Input::baseband,
+              /*exclusive_receiver=*/false,
+              /*required_mode=*/0xFFFFFFFFu,
+              /*required_rate_hz=*/1000000,
+              /*result=*/Result::message,
+          },
+          // The PHY/backend card supplies the factory; no fake live mode.
+          /*create=*/nullptr,
+      },
   };
   return kRegistry;
 }

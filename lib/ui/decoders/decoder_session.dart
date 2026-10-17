@@ -11,6 +11,7 @@ import '../bands/bands.dart';
 import '../legacy/centered_receiver.dart';
 import 'decoder_contract.dart';
 import 'adsb_snapshot.dart';
+import 'meshtastic_tuning.dart';
 import 'dmr_call.dart';
 import 'rds_station.dart';
 import 'sstv_image.dart';
@@ -136,6 +137,10 @@ class DecoderSession extends ChangeNotifier {
     final output = rate ~/ factor;
     return output >= 200000 && output <= 300000 ? output : 0;
   }
+  String? get meshtasticLimit => meshtasticInputLimit(
+    meshtasticPreset(settingsFor('meshtastic')['preset'] as String),
+    inputRateHz, radio.vfoOffset.round(),
+  );
 
   Set<String> get availableIds => <String>{
     for (final mode in DemodMode.values) decoderIdForMode(mode),
@@ -220,11 +225,13 @@ class DecoderSession extends ChangeNotifier {
       rds.clear();
       if (!_isDemod(_selectedId)) {
         _resetEvents();
-        if ((rate != 0 && decoderRateHz == 0 && _needsBaseband(_selectedId)) ||
+        if ((_selectedId == 'meshtastic' && meshtasticLimit != null) ||
+            (rate != 0 && decoderRateHz == 0 && _needsBaseband(_selectedId)) ||
             (_selectedId == 'adsb' && !adsbInputReady)) {
           _attached = false;
           _stopPolling();
-          _failure = _selectedId == 'adsb'
+          _failure = _selectedId == 'meshtastic' ? meshtasticLimit
+              : _selectedId == 'adsb'
               ? 'not ready: set sample rate 2.4 MS/s'
               : 'IQ sample rate too low: choose at least 200 kHz';
           radio.decoderBackend?.select(null, const <String, Object>{});
@@ -328,8 +335,10 @@ class DecoderSession extends ChangeNotifier {
       backend?.select(null, const <String, Object>{});
       return;
     }
-    if (_needsBaseband(id) && decoderRateHz == 0) {
-      _failure = 'IQ sample rate too low: choose at least 200 kHz';
+    if ((_needsBaseband(id) && decoderRateHz == 0) ||
+        (id == 'meshtastic' && meshtasticLimit != null)) {
+      _failure = id == 'meshtastic' ? meshtasticLimit
+          : 'IQ sample rate too low: choose at least 200 kHz';
       backend.select(null, const <String, Object>{});
       return;
     }

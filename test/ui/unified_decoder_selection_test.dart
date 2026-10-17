@@ -39,6 +39,7 @@ void main() {
         'dmr',
         'sstv',
         'rtl_433',
+        'meshtastic',
         'adsb',
       ]);
       expect(

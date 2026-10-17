@@ -102,6 +102,7 @@ void main() {
       expect(radio.bandwidth, isNot(DemodMode.wfm.params.defaultBandwidth));
       await tester.tap(find.byKey(const ValueKey('decoderSelector')));
       await tester.pumpAndSettle();
+      await tester.ensureVisible(find.byKey(const ValueKey('decoderSelect-demod:0')));
       await tester.tap(find.byKey(const ValueKey('decoderSelect-demod:0')));
       await tester.pump();
       expect(radio.mode, DemodMode.nfm);

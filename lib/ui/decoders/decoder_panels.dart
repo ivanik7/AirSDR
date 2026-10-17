@@ -7,6 +7,7 @@ import 'decoder_contract.dart';
 import 'adsb_panel.dart';
 import 'decoder_session.dart';
 import 'dmr_panel.dart';
+import 'meshtastic_mode_panel.dart';
 import 'rds_widgets.dart';
 import 'sstv_panel.dart';
 import '../legacy/centered_receiver.dart';
@@ -53,6 +54,7 @@ final Map<String, DecoderPanelBuilder> decoderPanels = {
   'dmr': (c) => DmrDecoderPanel(session: c.session),
   'sstv': (c) => SstvDecoderPanel(session: c.session),
   'adsb': (c) => AdsbPanel(session: c.session, receiver: c.receiver),
+  'meshtastic': (c) => MeshtasticModePanel(session: c.session, receiver: c.receiver),
 };
 
 /// Exactly one panel for [selectedId]; an unknown id falls back to the

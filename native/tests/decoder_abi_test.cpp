@@ -115,6 +115,12 @@ int main() {
   assert(adsb.exclusive_receiver == 0);
   assert(adsb.required_rate_hz == 2400000);
   assert(adsb.result == SDR_DECODER_AIRCRAFT);
+  const auto mesh = find("meshtastic");
+  assert(mesh.input == SDR_DECODER_BASEBAND);
+  assert(mesh.required_rate_hz == 1000000);
+  assert(mesh.result == SDR_DECODER_MESSAGE);
+  assert(mesh.exclusive_receiver == 0);
+  assert(mesh.available == 0); // PHY factory belongs to a later task.
   // SSTV is an audio-tap decoder valid for USB, LSB or NFM: no single
   // required mode in the descriptor; accepts_mode() gates selection.
   {
@@ -155,6 +161,7 @@ int main() {
     return s;
   };
   auto before = snap_before();
+  assert(sdr_decoder_select(h, "meshtastic", 10, nullptr, 0) == SDR_UNSUPPORTED);
   assert(sdr_decoder_select(h, "nope", 4, nullptr, 0) == SDR_UNSUPPORTED);
   auto after = snap_before();
   assert(after.control_sequence == before.control_sequence);
