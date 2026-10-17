@@ -1,0 +1,68 @@
+AGENTS.md
+  s_10006c9cac7e6b::t_9c8b2fb753b452 51
+docs/android-emulator.md
+  s_10006c9cac7e6b::t_9c8b2fb753b452 5-9,16,60-61
+lib/native/sdr_core.dart
+  s_10006c9cac7e6b::t_9c8b2fb753b452 282
+native/third_party/compat/bionic_no_page_size.h
+  s_10006c9cac7e6b::t_13b7eb81f7ff68 1-12
+native/third_party/csdr_sstv.cmake
+  s_10006c9cac7e6b::t_2ce21c78c0e62c 27,31,34
+  s_10006c9cac7e6b::t_13b7eb81f7ff68 28-30,32-33
+.github/workflows/ci.yml
+  s_10006c9cac7e6b::t_9ddd6c6909d792 158-160,166-167,170,172,176-184,188-196,199,204,207
+native/third_party/dump1090.cmake
+  s_10006c9cac7e6b::t_2ce21c78c0e62c 81-90
+docs/ci.md
+  s_10006c9cac7e6b::t_9c8b2fb753b452 49-53,105-107
+android/app/build.gradle.kts
+  s_10006c9cac7e6b::t_39791fb12dd71a 60-61,64,99-100,103
+README.md
+  s_10006c9cac7e6b::t_9c8b2fb753b452 3,30,33
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "0.0.62",
+  "base_commit_sha": "6f64bc5b9020d009683ab7fada26d42a21a2b14a",
+  "prompts": {},
+  "sessions": {
+    "s_10006c9cac7e6b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "991b0d67-d6ed-4a30-ba6d-90c845a76500",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "ivanik <ivan170102@gmail.com>",
+      "usage": [
+        {
+          "model": "claude-opus-5-5",
+          "input_tokens": 108,
+          "output_tokens": 47655,
+          "cache_read_tokens": 15519706,
+          "cache_write_5m_tokens": 0,
+          "cache_write_1h_tokens": 77175,
+          "assistant_messages": 54,
+          "turns": 1,
+          "ai_wall_ms": 112360,
+          "first_ts": "2026-10-17T18:18:57.542Z",
+          "last_ts": "2026-10-17T18:26:05.919Z",
+          "session_total_output_tokens": 266529
+        }
+      ],
+      "tools": [
+        {
+          "tool": "Bash",
+          "model": "claude-opus-5-5",
+          "calls": 21,
+          "result_chars": 19643,
+          "result_input_tokens": 42,
+          "result_cache_write_5m_tokens": 0,
+          "result_cache_write_1h_tokens": 27801,
+          "call_output_tokens": 16167
+        }
+      ],
+      "accepted_lines": 85,
+      "overridden_lines": 0
+    }
+  }
+}
