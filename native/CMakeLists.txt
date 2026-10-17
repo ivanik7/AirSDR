@@ -39,6 +39,25 @@ target_include_directories(sdrcore_meshtastic PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR}/third_party)
 target_link_libraries(sdrcore_meshtastic PUBLIC sdrcore_meshtastic_pb)
 
+# DMR channel front end (OpenWebRX+/digiham FmDemod -> DcBlock ->
+# WideRrcFilter -> GfskDemodulator). Framing/voice and decoder registration
+# are separate cards; only linked sources enter Android/Linux binaries.
+set(DMR_VENDOR ${CMAKE_CURRENT_SOURCE_DIR}/third_party/openwebrx-dmr)
+add_library(sdrcore_dmr_channel STATIC
+    src/dmr/channel.cpp
+    src/dmr/channel_filter.cpp
+    ${DMR_VENDOR}/csdr/module.cpp
+    ${DMR_VENDOR}/csdr/source.cpp
+    ${DMR_VENDOR}/csdr/sink.cpp
+    ${DMR_VENDOR}/csdr/fmdemod.cpp
+    ${DMR_VENDOR}/csdr/dcblock.cpp
+    ${DMR_VENDOR}/digiham/rrc_filter.cpp
+    ${DMR_VENDOR}/digiham/gfsk_demodulator.cpp)
+set_target_properties(sdrcore_dmr_channel PROPERTIES POSITION_INDEPENDENT_CODE ON)
+target_compile_features(sdrcore_dmr_channel PUBLIC cxx_std_17)
+target_include_directories(sdrcore_dmr_channel PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/src ${DMR_VENDOR})
+
 # rtl_433 upstream sources are embedded, not run as a subprocess. Preserve
 # upstream source verbatim; link only the engine/API and protocol decoders.
 set(RTL433_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/third_party/rtl_433)
@@ -92,7 +111,7 @@ endif()
 target_compile_features(sdrcore PRIVATE cxx_std_17)
 find_package(Threads REQUIRED)
 target_link_libraries(sdrcore PRIVATE Threads::Threads sdrcore_rtlsdr sdrcore_hackrf sdrcore_rtl433 sdrcore_rds sdrcore_meshtastic sdrcore_csdr_sstv sdrcore_dump1090 sdrcore_dmr_framing)
-target_link_libraries(sdrcore PRIVATE sdrcore_dmr_voice)
+target_link_libraries(sdrcore PRIVATE sdrcore_dmr_voice sdrcore_dmr_channel)
 if(NOT WIN32)
     target_link_libraries(sdrcore PRIVATE m)
 endif()
@@ -155,6 +174,14 @@ target_link_libraries(sdrcore PRIVATE sdrcore_audio)
 # wrapping. Keep these off Apple/Windows, where the portable subset below runs.
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND PROJECT_IS_TOP_LEVEL)
     enable_testing()
+    add_executable(sdrcore_dmr_channel_test tests/dmr_channel_test.cpp)
+    target_link_libraries(sdrcore_dmr_channel_test PRIVATE sdrcore_dmr_channel Threads::Threads m)
+    target_compile_options(sdrcore_dmr_channel_test PRIVATE -UNDEBUG)
+    add_test(NAME sdrcore_dmr_channel COMMAND sdrcore_dmr_channel_test)
+    add_executable(sdrcore_dmr_channel_filter_test tests/dmr_channel_filter_test.cpp)
+    target_link_libraries(sdrcore_dmr_channel_filter_test PRIVATE sdrcore_dmr_channel Threads::Threads m)
+    target_compile_options(sdrcore_dmr_channel_filter_test PRIVATE -UNDEBUG)
+    add_test(NAME sdrcore_dmr_channel_filter COMMAND sdrcore_dmr_channel_filter_test)
     # Existing native tests use assert() for API calls with side effects;
     # retain those calls even when the production library is built Release.
     add_compile_options(-UNDEBUG)
