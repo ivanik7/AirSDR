@@ -163,6 +163,55 @@ class NfmTapDeemphasis {
   std::array<float, kHistorySize> history_{};
   size_t index_ = 0;
 };
+
+// Constant-envelope limiter for the NFM audio tap, applied after
+// NfmTapDeemphasis. The csdr NFM deemphasis FIR is not flat across the SSTV
+// tone range (+1.0 dB at 1200 Hz, -1.4 dB at 1900 Hz, -3.2 dB at 2300 Hz,
+// relative to 1500 Hz). For a transmitter without matching pre-emphasis
+// that tilt becomes amplitude modulation at every tone step, and csdr's
+// FFT-peak sync/pixel estimator, which looks at windows spanning a step,
+// then favours the louder (lower) tone: the sync end is found late and
+// PD-90 shifts about 2 px. A tone decoder only needs the instantaneous
+// frequency, so the tap divides the signal by its analytic-signal envelope
+// (127-tap Blackman Hilbert FIR, flat to +-0.001 dB from 900 Hz to 11 kHz;
+// in-phase path delayed by the same 63 samples). This removes the tilt for
+// any transmitter pre-emphasis, keeps the deemphasis' out-of-band noise
+// rejection and does not touch the USB/LSB tap.
+class ToneEnvelopeLimiter {
+ public:
+  ToneEnvelopeLimiter() {
+    for (size_t k = 0; k < kTaps; ++k) {
+      const long m = static_cast<long>(k) - static_cast<long>(kMid);
+      if (m % 2 == 0) continue;
+      const double w = 0.42 - 0.5 * std::cos(2 * kPi * k / (kTaps - 1)) +
+                       0.08 * std::cos(4 * kPi * k / (kTaps - 1));
+      taps_[k] = static_cast<float>(2.0 / (kPi * m) * w);
+    }
+  }
+  void reset() { history_.fill(0); index_ = 0; }
+  float put(float sample) {
+    history_[index_ & kMask] = sample;
+    float q = 0;
+    // Only taps at an odd distance from the centre are non-zero (type-III
+    // Hilbert FIR); kMid is odd, so those are the even k.
+    for (size_t k = 0; k < kTaps; k += 2) q += taps_[k] * history_[(index_ - k) & kMask];
+    const float i = history_[(index_ - kMid) & kMask];
+    ++index_;
+    const float envelope = std::sqrt(i * i + q * q);
+    return envelope > kFloor ? i / envelope : 0.0f;
+  }
+ private:
+  static constexpr size_t kTaps = 127, kMid = kTaps / 2;
+  static constexpr size_t kHistorySize = 128;  // power of 2, >= kTaps.
+  static constexpr size_t kMask = kHistorySize - 1;
+  // Discriminator units (1.0 = 12 kHz deviation): far below any real tone,
+  // so only digital silence maps to 0.
+  static constexpr float kFloor = 1e-6f;
+  std::array<float, kTaps> taps_{};
+  std::array<float, kHistorySize> history_{};
+  size_t index_ = 0;
+};
+
 // Dart IQFrontEnd default FFT size (8192, Nuttall, power / N^2) so that the
 // native rows use the same dBFS convention as RadioController.FftRow. Lower
 // sample rates use a smaller power-of-two size to keep >= 20 rows/s.
@@ -475,6 +524,7 @@ class ReceiverImpl final : public Receiver {
       decoder_->reset();
       audio_tap_resampler_.reset_state();
       audio_tap_deemphasis_.reset();
+      audio_tap_limiter_.reset();
     }
     if (rds_ && rds_tune_change && !channel_change) rds_->reset();
   }
@@ -550,6 +600,7 @@ class ReceiverImpl final : public Receiver {
       decoder_->reset();
       audio_tap_resampler_.reset_state();
       audio_tap_deemphasis_.reset();
+      audio_tap_limiter_.reset();
     } else if (decoder_) {
       decoder_->reset();
     }
@@ -578,6 +629,7 @@ class ReceiverImpl final : public Receiver {
       decoder_->reset();
       audio_tap_resampler_.reset_state();
       audio_tap_deemphasis_.reset();
+      audio_tap_limiter_.reset();
     } else if (decoder_) {
       decoder_->reset();
     }
@@ -648,8 +700,9 @@ class ReceiverImpl final : public Receiver {
     }
     if (rds_ && !rds_suspended_ && !rds_mpx_.empty())
       rds_->process(rds_mpx_.data(), rds_mpx_.size());
-    if (audio_tap_active && !audio_tap_samples_.empty())
+    if (audio_tap_active && !audio_tap_samples_.empty()) {
       decoder_->process(audio_tap_samples_.data(), audio_tap_samples_.size(), kAudioTapRateHz);
+    }
     result.signal_db = controls_.squelch == SDR_V3_SQUELCH_AUTO &&
         controls_.mode == SDR_V3_NFM ? metric_db_ :
         static_cast<float>(10 * std::log10(std::max(power_smooth_, kFloor)));
@@ -729,6 +782,7 @@ class ReceiverImpl final : public Receiver {
     const double cutoff = controls_.mode == SDR_V3_NFM ? kAudioTapCutoffNfmHz : kAudioTapCutoffSsbHz;
     audio_tap_resampler_.configure(if_rate_, kAudioTapRateHz, cutoff);
     audio_tap_deemphasis_.reset();
+    audio_tap_limiter_.reset();
   }
   static constexpr size_t kAudioTaps = 32, kPhases = 64;
   // NCO frequency: SSB offsets name the lower/upper passband edge.
@@ -1068,8 +1122,10 @@ class ReceiverImpl final : public Receiver {
         const size_t before = audio_tap_samples_.size();
         audio_tap_resampler_.put(tap_input, audio_tap_samples_);
         if (controls_.mode == SDR_V3_NFM) {
-          for (size_t k = before; k < audio_tap_samples_.size(); ++k)
+          for (size_t k = before; k < audio_tap_samples_.size(); ++k) {
             audio_tap_samples_[k] = audio_tap_deemphasis_.put(audio_tap_samples_[k]);
+            audio_tap_samples_[k] = audio_tap_limiter_.put(audio_tap_samples_[k]);
+          }
         }
       }
     }
@@ -1173,6 +1229,7 @@ class ReceiverImpl final : public Receiver {
   // RealResampler/NfmTapDeemphasis instances with their own ring buffers.
   RealResampler audio_tap_resampler_;
   NfmTapDeemphasis audio_tap_deemphasis_;
+  ToneEnvelopeLimiter audio_tap_limiter_;
   std::vector<float> audio_tap_samples_;
   // Cached once per process() call (decoder_->accepts_mode() may not be
   // cheap/pure); avoids calling it per-sample in the hot loop.

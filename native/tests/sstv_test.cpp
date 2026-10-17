@@ -757,6 +757,66 @@ void test_receiver_end_to_end() {
   }
 }
 
+// Regression for t_b137e226: the csdr NFM deemphasis FIR on the audio tap
+// tilts the SSTV tone range (+1.0 dB at 1200 Hz, -3.2 dB at 2300 Hz vs
+// 1500 Hz). Without a matching transmitter pre-emphasis that tilt turned
+// every tone step into an amplitude step, upstream's FFT-peak sync search
+// found line starts late, and fast-pixel modes slipped ~2 px (PD-90 over
+// NFM: 23.5 dB vs source, 25.0 dB vs the oracle; USB 29.5 dB). The tap now
+// normalises the tone envelope, so NFM must decode like the direct
+// adapter: same bar edge position and near-identical flat areas.
+// The assertion checks both the flat-area similarity and edge alignment;
+// scores vary slightly with the generated pattern and receiver build.
+void test_receiver_nfm_matches_adapter() {
+  constexpr uint32_t kRate = 240000;
+  constexpr int64_t kVfo = 20000;
+  constexpr uint64_t kCenter = 145500000;
+  for (const Mode mode : {Mode::kPd90, Mode::kScottie1}) {
+    const auto info = sstv_test::mode_info(mode);
+    const auto rgb = sstv_test::make_test_pattern(info.width, info.height, 21);
+    // Direct adapter on the clean 24 kHz audio: the reference image.
+    const auto audio = with_trailer(sstv_test::encode(mode, rgb, info.width, info.height, 24000));
+    auto ref_dec = make_backend(14230000, SDR_V3_USB);
+    Collector ref;
+    feed_chunks(*ref_dec, audio, ref, 1000);
+    // The same transmission over FM (2.5 kHz deviation, no pre-emphasis).
+    const auto iq = sstv_iq(mode, rgb, kRate, SDR_V3_NFM, kVfo);
+    auto rx = sdrcore::dsp::make_receiver();
+    rx->configure(make_controls(SDR_V3_NFM, 12500, kRate, kCenter, kVfo), make_display(kRate));
+    auto d = sdrcore::decoder::create_sstv();
+    d->configure(R"({"version":1,"settings":{"underlying":"nfm","mode":"auto"}})");
+    rx->set_decoder(d.get(), sdrcore::decoder::Input::audio);
+    Collector c;
+    feed_rx(*rx, *d, iq, c);
+    const bool ok = ref.frames.size() == 1 && c.frames.size() == 1 &&
+                    c.frames[0].rows.size() == static_cast<size_t>(info.height) &&
+                    ref.frames[0].rows.size() == static_cast<size_t>(info.height);
+    CHECK(ok, "receiver nfm %s: one complete frame (adapter %zu, receiver %zu frames)", info.name,
+          ref.frames.size(), c.frames.size());
+    if (!ok) continue;
+    const Frame& a = ref.frames[0];
+    const Frame& f = c.frames[0];
+    dump_ppm(std::string("nfm_") + info.name, f, info.width);
+    // The adapter's decoded image as an RGB "source" for interior_psnr().
+    std::vector<uint8_t> a_rgb(static_cast<size_t>(info.width) * info.height * 3);
+    for (int y = 0; y < info.height; ++y)
+      for (int x = 0; x < info.width; ++x)
+        for (int ch = 0; ch < 3; ++ch)
+          a_rgb[(static_cast<size_t>(y) * info.width + x) * 3 + ch] =
+              a.rows[y][static_cast<size_t>(x) * 3 + (2 - ch)];
+    const int margin = window_margin(mode);
+    const double vs_adapter = interior_psnr(a_rgb, f, info.width, info.height, margin);
+    const double vs_source = interior_psnr(rgb, f, info.width, info.height, margin);
+    const double adapter_vs_source = interior_psnr(rgb, a, info.width, info.height, margin);
+    const double shift = median_edge(f, info.width, 8, info.height - 8) -
+                         median_edge(a, info.width, 8, info.height - 8);
+    CHECK(vs_adapter >= 35.0 && std::fabs(shift) <= 0.5 && vs_source >= adapter_vs_source - 1.0,
+          "receiver nfm %s: flat areas %.2f dB vs the direct adapter (>= 35), bar edge shift "
+          "%.2f px (|.| <= 0.5), %.2f dB vs source (adapter %.2f, loss <= 1 dB)",
+          info.name, vs_adapter, shift, vs_source, adapter_vs_source);
+  }
+}
+
 void test_receiver_retune_mode_bandwidth() {
   constexpr uint32_t kRate = 250000;
   constexpr int64_t kVfo = 30000;
@@ -833,6 +893,12 @@ void test_receiver_retune_mode_bandwidth() {
 
 int main(int argc, char** argv) {
   const bool quick = argc > 1 && std::strcmp(argv[1], "--quick") == 0;
+  if (argc > 1 && std::strcmp(argv[1], "--nfm-tap") == 0) {
+    // Only the NFM tap regression (fast RED/GREEN loop).
+    test_receiver_nfm_matches_adapter();
+    std::printf(failures ? "%d check(s) failed.\n" : "All SSTV checks passed.\n", failures);
+    return failures ? 1 : 0;
+  }
   test_configure_contract();
   test_vis_rejects();
   test_scottie_start_sync_timeout();
@@ -852,6 +918,7 @@ int main(int argc, char** argv) {
     test_vis_and_framing(ModeCase{Mode::kPd290, kCleanInteriorPsnr, 15.5});
     test_sync_realignment_under_clock_drift();
     test_receiver_end_to_end();
+    test_receiver_nfm_matches_adapter();
     test_receiver_retune_mode_bandwidth();
   }
   if (failures) {

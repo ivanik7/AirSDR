@@ -34,6 +34,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <map>
+#include <random>
 #include <string>
 #include <vector>
 
@@ -163,10 +164,28 @@ class Recorder {
 // interpolation by L = rate/24000 with a 6 kHz windowed-sinc low-pass (the
 // SSTV band is 1.1-2.3 kHz), mixed to vfo_hz and quantized to CU8 at 0.3
 // of full scale. NFM: phase accumulation with 2.5 kHz deviation per unit
-// of audio (normalized so the audio's peak maps to 1).
-std::vector<uint8_t> make_iq(const std::vector<float>& audio, const std::string& mode,
-                             uint32_t rate, int64_t vfo_hz) {
+// of audio (normalized so the audio's peak maps to 1). `preemph_tia`
+// (NFM only) first applies a land-mobile 750 us pre-emphasis shelf (zero at
+// 212 Hz, pole at 6 kHz; bilinear, prewarped) as an FM transmitter's mic
+// path would. `cnr_db` (finite) adds deterministic complex white Gaussian
+// noise so the carrier-to-noise ratio inside a 12.5 kHz channel is cnr_db.
+std::vector<uint8_t> make_iq(std::vector<float> audio, const std::string& mode,
+                             uint32_t rate, int64_t vfo_hz, bool preemph_tia = false,
+                             double cnr_db = INFINITY) {
   const uint32_t L = rate / 24000;
+  if (mode == "nfm" && preemph_tia) {
+    const double k = 2.0 * 24000;
+    const double wz = k * std::tan(kPi * 212.0 / 24000), wp = k * std::tan(kPi * 6000.0 / 24000);
+    const double a0 = 1 + k / wp, b0 = (1 + k / wz) / a0, b1 = (1 - k / wz) / a0,
+                 a1 = (1 - k / wp) / a0;
+    double xp = 0, yp = 0;
+    for (float& v : audio) {
+      const double y = b0 * v + b1 * xp - a1 * yp;
+      xp = v;
+      yp = y;
+      v = static_cast<float>(y);
+    }
+  }
   std::vector<std::complex<double>> z(audio.size());
   float peak = 1e-9f;
   for (float v : audio) peak = std::max(peak, std::fabs(v));
@@ -208,6 +227,12 @@ std::vector<uint8_t> make_iq(const std::vector<float>& audio, const std::string&
   const double amp = 0.3;
   double fm_phase = 0;
   const double vfo_step = 2 * kPi * static_cast<double>(vfo_hz) / rate;
+  // Per-component sigma: total complex noise power amp^2 / CNR spread over
+  // `rate`, of which 12.5 kHz falls inside the channel.
+  const bool noisy = std::isfinite(cnr_db);
+  const double sigma = noisy ? amp * std::sqrt(rate / 12500.0 / std::pow(10.0, cnr_db / 10) / 2) : 0;
+  std::mt19937_64 rng(0x5354564eu);
+  std::normal_distribution<double> gauss(0.0, 1.0);
   auto quant = [](double v) {
     return static_cast<uint8_t>(std::clamp(std::lround(127.5 + 127.5 * v), 0L, 255L));
   };
@@ -239,6 +264,7 @@ std::vector<uint8_t> make_iq(const std::vector<float>& audio, const std::string&
       s = amp * acc / zpeak;
     }
     s *= std::polar(1.0, vfo_step * static_cast<double>(out));
+    if (noisy) s += std::complex<double>(sigma * gauss(rng), sigma * gauss(rng));
     iq[2 * out] = quant(s.real());
     iq[2 * out + 1] = quant(s.imag());
   }
@@ -259,8 +285,9 @@ int usage(const char* argv0) {
   std::fprintf(stderr,
                "usage: %s adapter <in.wav> <outdir> [--chunk N]\n"
                "       %s receiver <in.wav> <outdir> --mode usb|lsb|nfm [--rate HZ] [--vfo HZ]"
-               " [--block PAIRS] [--iq-out F]\n"
-               "       %s make-iq <in.wav> <out.cu8> --mode usb|lsb|nfm [--rate HZ] [--vfo HZ]\n",
+               " [--block PAIRS] [--iq-out F] [--preemph none|tia] [--cnr DB]\n"
+               "       %s make-iq <in.wav> <out.cu8> --mode usb|lsb|nfm [--rate HZ] [--vfo HZ]"
+               " [--preemph none|tia] [--cnr DB]\n",
                argv0, argv0, argv0);
   return 2;
 }
@@ -274,6 +301,8 @@ int main(int argc, char** argv) {
   uint32_t rate = 240000;
   int64_t vfo = 0;
   std::string mode = "usb", iq_out;
+  bool preemph_tia = false;
+  double cnr_db = INFINITY;
   for (int i = 4; i + 1 < argc; i += 2) {
     const std::string k = argv[i], v = argv[i + 1];
     if (k == "--chunk") chunk = std::strtoul(v.c_str(), nullptr, 10);
@@ -282,6 +311,8 @@ int main(int argc, char** argv) {
     else if (k == "--vfo") vfo = std::strtoll(v.c_str(), nullptr, 10);
     else if (k == "--mode") mode = v;
     else if (k == "--iq-out") iq_out = v;
+    else if (k == "--preemph" && (v == "none" || v == "tia")) preemph_tia = v == "tia";
+    else if (k == "--cnr") cnr_db = std::strtod(v.c_str(), nullptr);
     else return usage(argv[0]);
   }
   std::vector<float> audio;
@@ -295,7 +326,7 @@ int main(int argc, char** argv) {
     return usage(argv[0]);
 
   if (cmd == "make-iq" || cmd == "receiver") {
-    const auto iq = make_iq(audio, mode, rate, vfo);
+    const auto iq = make_iq(audio, mode, rate, vfo, preemph_tia, cnr_db);
     const std::string path = cmd == "make-iq" ? out : iq_out;
     if (!path.empty()) {
       FILE* fp = std::fopen(path.c_str(), "wb");

@@ -214,7 +214,8 @@ def psnr_threshold(case):
     return CLEAN_MIN_PATCH_PSNR if snr is None else NOISY_MIN_PATCH_PSNR[snr]
 
 
-def analyse(case, corpus, out, oracle_bin, replay_bin, receiver_modes, control_bin=None):
+def analyse(case, corpus, out, oracle_bin, replay_bin, receiver_modes, control_bin=None,
+            nfm_args=()):
     name = case["name"]
     wav = os.path.join(corpus, case["wav"])
     cdir = os.path.join(out, name)
@@ -350,8 +351,9 @@ def analyse(case, corpus, out, oracle_bin, replay_bin, receiver_modes, control_b
     for demod in receiver_modes:
         rdir = os.path.join(cdir, f"receiver_{demod}")
         os.makedirs(rdir, exist_ok=True)
+        extra = list(nfm_args) if demod == "nfm" else []
         r_dropped = json.loads(run([replay_bin, "receiver", wav, rdir, "--mode", demod,
-                                    "--rate", "240000", "--vfo", "0"]))["dropped"]
+                                    "--rate", "240000", "--vfo", "0"] + extra))["dropped"]
         r_frames = load_native(rdir)
         entry = dict(frames=len(r_frames), dropped=r_dropped)
         res["receiver"][demod] = entry
@@ -372,16 +374,19 @@ def analyse(case, corpus, out, oracle_bin, replay_bin, receiver_modes, control_b
               len(rf["rows"]) == len(of["rows"]) and rf["start"]["underlying"] == demod,
               f"receiver {demod}: {len(rf['rows'])} rows {rc.get('status')}/{rc.get('reason')}, "
               f"underlying={rf['start']['underlying']}")
-        # Under noise the receiver's own channel filter changes the noise
-        # (it improves PSNR vs source), so receiver-vs-oracle similarity is
-        # only meaningful on noise-free input.
-        if case.get("snr_db") is None:
+        # Under noise (audio SNR in the corpus, or RF CNR added by the NFM
+        # modulator) the receiver's channel filter and FM threshold change
+        # the noise, so receiver-vs-oracle similarity is only meaningful on
+        # noise-free input.
+        rf_noise = demod == "nfm" and "--cnr" in extra
+        if case.get("snr_db") is None and not rf_noise:
             check(p_ro is not None and p_ro >= RECEIVER_MIN_PSNR_VS_ORACLE,
                   f"receiver {demod}: flat-patch PSNR vs oracle image {p_ro:.2f} dB >= "
                   f"{RECEIVER_MIN_PSNR_VS_ORACLE}")
-        check(p_r is not None and p_r >= p_patch_o - RECEIVER_MAX_PSNR_LOSS,
-              f"receiver {demod}: flat-patch PSNR vs source {p_r:.2f} dB within "
-              f"{RECEIVER_MAX_PSNR_LOSS} dB of the oracle's {p_patch_o:.2f}")
+        if not rf_noise:
+            check(p_r is not None and p_r >= p_patch_o - RECEIVER_MAX_PSNR_LOSS,
+                  f"receiver {demod}: flat-patch PSNR vs source {p_r:.2f} dB within "
+                  f"{RECEIVER_MAX_PSNR_LOSS} dB of the oracle's {p_patch_o:.2f}")
         save_png(rf["rows"], of["width"], os.path.join(cdir, f"receiver_{demod}.png"))
     return res
 
@@ -429,8 +434,20 @@ def main():
     ap.add_argument("--receiver", action="store_true",
                     help="also run the IQ receiver path (Robot36/MartinM1/PD90 clean in "
                          "USB/LSB/NFM, other cases in USB)")
+    ap.add_argument("--receiver-modes",
+                    help="comma-separated demods to run for EVERY case instead of the "
+                         "--receiver default selection (e.g. nfm)")
+    ap.add_argument("--nfm-preemph", choices=["none", "tia"], default="none",
+                    help="NFM modulator: 'tia' applies 750 us land-mobile pre-emphasis "
+                         "before FM, as a real FM transmitter's mic path does")
+    ap.add_argument("--nfm-cnr", type=float,
+                    help="NFM modulator: add white noise for this carrier-to-noise ratio "
+                         "(dB in 12.5 kHz); disables the noise-free receiver checks")
     ap.add_argument("--only")
     args = ap.parse_args()
+    nfm_args = ["--preemph", args.nfm_preemph]
+    if args.nfm_cnr is not None:
+        nfm_args += ["--cnr", str(args.nfm_cnr)]
     manifest = json.load(open(os.path.join(args.corpus, "manifest.json")))
     only = set(args.only.split(",")) if args.only else None
     results = []
@@ -438,11 +455,13 @@ def main():
         if only and case["name"] not in only:
             continue
         modes = []
-        if args.receiver and case["expect"] is not None:
+        if args.receiver_modes and case["expect"] is not None:
+            modes = args.receiver_modes.split(",")
+        elif args.receiver and case["expect"] is not None:
             three = case["name"] in ("Robot36_clean", "MartinM1_clean", "PD90_clean")
             modes = ["usb", "lsb", "nfm"] if three else ["usb"]
         r = analyse(case, args.corpus, args.out, args.oracle, args.replay, modes,
-                    args.fftw_control)
+                    args.fftw_control, nfm_args)
         ok = all(c["ok"] for c in r["checks"])
         print(f"{'ok  ' if ok else 'FAIL'} {r['name']}", flush=True)
         for c in r["checks"]:
