@@ -61,6 +61,18 @@ class Decoder {
   // "retune", mode changed -> "mode", otherwise "stop".
   virtual void set_tuning(uint64_t /*tuned_frequency_hz*/,
                           uint32_t /*sdr_v3_mode*/) {}
+  // Voice-producing backends only (DMR AMBE+2 synthesis, STATUS-dmr.md §7.5).
+  // When provides_audio() is true for the attached decoder, the receiver
+  // REPLACES (never mixes) its own demodulator audio for that block with
+  // read_audio() output: mono float [-1, 1] at exactly 48000 S/s. The
+  // receiver asks for exactly the frames it is about to emit, applies the
+  // ordinary volume*volume / mute stage (no squelch gate: OpenWebRX+ DMR has
+  // supportsSquelch()=False) and writes the result to the existing AudioSink
+  // (AAudio/ALSA/WAV). A short return means underrun; the receiver fills the
+  // remainder with silence. Called on the DSP worker right after process().
+  // PCM never crosses the C ABI or reaches Dart.
+  virtual bool provides_audio() const { return false; }
+  virtual size_t read_audio(float* /*mono*/, size_t /*max_frames*/) { return 0; }
 };
 
 using Factory = std::unique_ptr<Decoder> (*)();

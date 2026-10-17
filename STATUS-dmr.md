@@ -286,3 +286,50 @@ touches IQ or PCM.
 - **Not verified.** No native `dmr` backend is registered on master, so no
   real event has gone through `NativeDecoderBackend`. Live RTL-SDR/air and
   phone checks have not been done.
+
+## 11. AMBE+2 voice output (t_5b101746)
+
+`native/src/dmr/vocoder.{hpp,cpp}` (target `sdrcore_dmr_voice`, linked into
+libsdrcore) reproduces OpenWebRX+'s DmrMode voice path in process:
+codecserver-softmbe `decode_ambe_3600x2450` (DMR deinterleave, mbelib
+`mbe_processAmbe3600x2450Frame`, uvquality 3, 160 int16 @ 8 kHz) ->
+digiham-plus `DigitalVoiceFilter` -> csdr-plus `Agc<short>` (maxGain 30,
+initialGain 3) -> x6 polyphase interpolation to 48 kHz -> bounded jitter
+buffer (100 ms prebuffer, 1 s cap). mbelib 1.3.0 (ISC), Agc and
+DigitalVoiceFilter are vendored unmodified (`native/third_party/mbelib`,
+`native/third_party/openwebrx-dmr`, provenance files there). There is no
+codecserver process, socket, protobuf, or Dart PCM path.
+
+Receiver integration: `Decoder::provides_audio()/read_audio()` (additive
+`decoder.hpp` extension, C ABI unchanged). When the attached decoder provides
+audio, `receiver.cpp` replaces each block's demodulator output with exactly as
+many 48 kHz decoder samples. It applies the normal `volume^2`/mute stage,
+skips the squelch gate (upstream `supportsSquelch() = False`), and fills
+underruns with silence. The result goes to the existing AudioSink (AAudio on
+Android, ALSA/WAV on Linux). `sdrcore.cpp` exempts attached voice decoders
+from the mute-while-decoding rule for baseband decoders.
+
+Framing connection: `AmbeFrame` is shared via `native/src/dmr/ambe_frame.hpp`.
+`framing_voice_sink(VoiceOutput&)` adapts the `VoiceSink` to `Framing`'s
+callback. The `sdrcore_dmr_framing_voice` CTest feeds digiham bursts through
+Framing into VoiceOutput and gets PCM bit-identical to direct synthesis of the
+same frames.
+
+Build option `SDRCORE_ENABLE_MBELIB` (default ON). OFF leaves mbelib out
+completely (no `mbe_*` symbols in libsdrcore). Frames are counted as dropped
+and no PCM is produced, while framing and metadata keep working.
+
+Verified: `sdrcore_dmr_vocoder`, `sdrcore_dmr_framing_voice`,
+`sdrcore_decoder_voice_replace`, `sdrcore_decoder_voice_abi` (DSP worker into
+a real `wav:` sink), all also under ASan+UBSan; the OFF build;
+`tool/dmr_voice_oracle` bit-exact against pristine codecserver-softmbe +
+mbelib + DigitalVoiceFilter + `csdr agc` on synthetic frames.
+
+Not verified / remaining: no open AMBE+2 speech encoder exists, so all test
+frames are synthetic parameter vectors (vocoder buzz, not speech). No
+over-the-air DMR voice was decoded. Audibility on the phone is unconfirmed;
+it still requires manual listening. The DMR backend (registry entry, 4FSK channel from
+t_8e3dfcc0, events, `{"voice":false}` mapping) still has to own one
+`VoiceOutput` and return `provides_audio() == true`. That wiring belongs to
+the integration card t_bc6f9eeb. Once the backend is registered, the UI from
+§10 needs no volume control of its own.

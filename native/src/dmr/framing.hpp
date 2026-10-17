@@ -1,5 +1,6 @@
 // Symbol-level DMR framing adapter around digiham (GPL-3.0), not a DSP demodulator.
 #pragma once
+#include "ambe_frame.hpp"
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -12,10 +13,6 @@
 #include <vector>
 
 namespace sdrcore::dmr {
-struct AmbeFrame {
-    uint8_t slot;
-    uint8_t bits[9]; // Interleaved 72 bits, MSB first; 3 frames per voice burst.
-};
 struct SlotMeta {
     uint8_t slot = 0; // 0=TS1, 1=TS2, as in digiham.
     int sync = -1; // -1=no sync, 1=data, 2=voice.

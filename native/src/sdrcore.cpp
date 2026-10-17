@@ -569,7 +569,11 @@ struct SdrHandle {
         // Baseband decoders (rtl_433) keep their mute-while-decoding policy.
         // Audio-tap decoders (SSTV) listen alongside the operator, as in
         // OpenWebRX+: selection never mutes voice audio implicitly.
-        if (decoder && decoder_input != sdrcore::decoder::Input::audio)
+        // Voice decoders (DMR, Decoder::provides_audio) already replaced the
+        // block with their synthesized PCM inside the receiver; while
+        // detached for a stale slot they are muted like other baseband ones.
+        if (decoder && decoder_input != sdrcore::decoder::Input::audio &&
+            !(decoder_attached && decoder->provides_audio()))
           std::fill(result.audio.begin(), result.audio.end(), 0.0f);
         if (!result.audio.empty())
           audio_sink->write(result.audio.data(), result.audio.size() / 2);
