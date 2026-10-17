@@ -46,9 +46,6 @@ set(DMR_VENDOR ${CMAKE_CURRENT_SOURCE_DIR}/third_party/openwebrx-dmr)
 add_library(sdrcore_dmr_channel STATIC
     src/dmr/channel.cpp
     src/dmr/channel_filter.cpp
-    ${DMR_VENDOR}/csdr/module.cpp
-    ${DMR_VENDOR}/csdr/source.cpp
-    ${DMR_VENDOR}/csdr/sink.cpp
     ${DMR_VENDOR}/csdr/fmdemod.cpp
     ${DMR_VENDOR}/csdr/dcblock.cpp
     ${DMR_VENDOR}/digiham/rrc_filter.cpp
@@ -57,6 +54,7 @@ set_target_properties(sdrcore_dmr_channel PROPERTIES POSITION_INDEPENDENT_CODE O
 target_compile_features(sdrcore_dmr_channel PUBLIC cxx_std_17)
 target_include_directories(sdrcore_dmr_channel PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/src ${DMR_VENDOR})
+target_link_libraries(sdrcore_dmr_channel PUBLIC sdrcore_dmr_csdr_base)
 
 # rtl_433 upstream sources are embedded, not run as a subprocess. Preserve
 # upstream source verbatim; link only the engine/API and protocol decoders.
