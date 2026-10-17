@@ -23,7 +23,7 @@ final class NativeDevice {
   final int? bus, address, fd;
 }
 
-/// Provides the exclusive borrowed USB fd (Android), host address (Linux),
+/// Provides the exclusive borrowed USB fd (Android), host address (desktop),
 /// or synthetic source. The original Android fd stays owned by Kotlin.
 abstract interface class NativeDeviceSource {
   Stream<void> get changes;

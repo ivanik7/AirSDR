@@ -36,9 +36,15 @@ int g_failures = 0;
   } while (0)
 
 std::string TempPath(const char* name) {
+#ifdef _WIN32
+  const char* tmpdir = std::getenv("TEMP");
+  std::string dir = (tmpdir && *tmpdir) ? tmpdir : ".";
+  return dir + "\\" + name;
+#else
   const char* tmpdir = std::getenv("TMPDIR");
   std::string dir = (tmpdir && *tmpdir) ? tmpdir : "/tmp";
   return dir + "/" + name;
+#endif
 }
 
 // --- Spec parsing table ---------------------------------------------------

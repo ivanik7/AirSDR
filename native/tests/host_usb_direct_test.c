@@ -11,7 +11,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#ifdef _WIN32
+#include <windows.h>
+#else
 #include <time.h>
+#endif
 
 #include "sdrcore_host.h"
 
@@ -33,8 +37,12 @@ static SdrStats stats_of(SdrHandle* h) {
 }
 
 static void sleep_ms(int ms) {
+#ifdef _WIN32
+  Sleep((DWORD)ms);
+#else
   struct timespec ts = {ms / 1000, (long)(ms % 1000) * 1000000L};
   nanosleep(&ts, NULL);
+#endif
 }
 
 static int find_rtl(uint8_t* bus, uint8_t* address) {
@@ -95,7 +103,7 @@ static int hardware_checks(uint8_t bus, uint8_t address) {
   CHECK(stats_of(h).state == SDR_IDLE);
   sdr_destroy(h);
 
-  // The claim is released: the default path (fd path on Linux) opens again.
+  // The claim is released: the default host path opens again.
   rc = sdr_host_open_usb(other, bus, address, SDR_RTLSDR);
   CHECK(rc == SDR_OK);
   CHECK(stats_of(other).state == SDR_OPEN);

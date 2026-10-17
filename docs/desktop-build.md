@@ -77,8 +77,19 @@ Only the `sdr_*` C API is exported, on every target:
 - redsea: the built-in UCS-2/Latin-1 converter in `ext/iconvpp/iconv.hpp` is
   used on Android, Windows and macOS. Desktop Linux uses glibc iconv.
 - Native tests: Linux runs the full ctest suite. Tests that rely on POSIX fds,
-  pipes or `-Wl,--wrap` are Linux-only. The Windows cross build compiles the
-  library; its test executables are not run (no Windows host or Wine).
+  pipes or `-Wl,--wrap` are Linux-only. macOS and Windows configure a portable
+  CTest subset (ABI, decoder ABI, direct USB open, PCM and sink tests); the
+  Windows cross build compiles these executables but cannot run them here (no
+  Windows host or Wine).
+- Dart loads `libsdrcore.dylib` from `<App>.app/Contents/Frameworks` on macOS,
+  `sdrcore.dll` beside the Windows runner, and `lib/libsdrcore.so` on Linux.
+  `SDRCORE_HOST_LIBRARY` overrides the bundled library on desktops. All
+  desktops use the host USB device source; macOS/Windows select the direct
+  libusb entry point. `SDR_AUDIO_SINK` overrides the OS default (`null` on
+  Linux, `miniaudio` on macOS/Windows). Native radio settings are stored in
+  the platform's application-support directory; favorites stay in the
+  platform shared-preferences backend. Missing native libraries surface as
+  an error rather than silently falling back to a mock receiver.
 
 ## Local patches added for portability
 

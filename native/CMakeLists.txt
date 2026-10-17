@@ -125,9 +125,9 @@ set_source_files_properties(src/dsp/receiver.cpp PROPERTIES
 include(src/audio/audio.cmake)
 target_link_libraries(sdrcore PRIVATE sdrcore_audio)
 
-# Tests only for a standalone host configure (native/ as the top-level project);
-# the Flutter Linux runner adds native/ as a subdirectory and needs the library only.
-if(NOT ANDROID AND PROJECT_IS_TOP_LEVEL)
+# Linux regression/oracle tests include usbfs fds, POSIX clocks and GNU linker
+# wrapping. Keep these off Apple/Windows, where the portable subset below runs.
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND PROJECT_IS_TOP_LEVEL)
     enable_testing()
     # Existing native tests use assert() for API calls with side effects;
     # retain those calls even when the production library is built Release.
@@ -317,4 +317,21 @@ if(NOT ANDROID AND PROJECT_IS_TOP_LEVEL)
         sdrcore_rtlsdr sdrcore_hackrf sdrcore_audio Threads::Threads)
     target_link_libraries(sdrcore_baseband_tap_abi_test PRIVATE sdrcore_rds)
     add_test(NAME sdrcore_baseband_tap_abi COMMAND sdrcore_baseband_tap_abi_test)
+endif()
+
+# Standalone macOS/Windows CTest: link the actual shared library and run the
+# ABI and direct-USB argument/no-device regressions. Audio CTests live in
+# src/audio/audio.cmake and run on all desktops.
+if((APPLE OR WIN32) AND PROJECT_IS_TOP_LEVEL)
+    enable_testing()
+    add_executable(sdrcore_abi_test tests/abi_test.c)
+    target_link_libraries(sdrcore_abi_test PRIVATE sdrcore)
+    add_test(NAME sdrcore_abi COMMAND sdrcore_abi_test)
+    add_executable(sdrcore_host_usb_direct_test tests/host_usb_direct_test.c)
+    target_link_libraries(sdrcore_host_usb_direct_test PRIVATE sdrcore)
+    add_test(NAME sdrcore_host_usb_direct COMMAND sdrcore_host_usb_direct_test)
+    add_executable(sdrcore_decoder_abi_test tests/decoder_abi_test.cpp)
+    target_link_libraries(sdrcore_decoder_abi_test PRIVATE sdrcore)
+    target_compile_options(sdrcore_decoder_abi_test PRIVATE -UNDEBUG)
+    add_test(NAME sdrcore_decoder_abi COMMAND sdrcore_decoder_abi_test)
 endif()
