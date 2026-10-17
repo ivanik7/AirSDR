@@ -12,3 +12,4 @@ key.properties
 
 # Gradle output of the plugin CMake builds
 /build/
+**/*.p12

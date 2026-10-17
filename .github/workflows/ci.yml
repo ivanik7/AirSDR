@@ -141,7 +141,25 @@ jobs:
 
       - run: flutter pub get
 
+      # Secrets are absent on pull requests from forks; the release APK is
+      # then signed with the debug key (android/app/build.gradle.kts).
+      - name: Release signing key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "::warning::ANDROID_KEYSTORE_BASE64 is not set; release APK uses the debug key"
+            exit 0
+          fi
+          keystore="$RUNNER_TEMP/airsdr-release.p12"
+          printf '%s' "$KEYSTORE_BASE64" | base64 -d > "$keystore"
+          echo "ANDROID_KEYSTORE_FILE=$keystore" >> "$GITHUB_ENV"
+
       - name: Build release APK (arm64)
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: >-
           flutter build apk --release --target-platform android-arm64
           --build-name "${{ steps.ver.outputs.FULL_VERSION }}"
@@ -152,6 +170,11 @@ jobs:
           flutter build apk --debug
           --build-name "${{ steps.ver.outputs.FULL_VERSION }}"
           --build-number "${{ steps.ver.outputs.BUILD_NUMBER }}"
+
+      - name: Show release signing certificate
+        run: |
+          apksigner="$(ls -d "$ANDROID_HOME"/build-tools/36.0.0)/apksigner"
+          "$apksigner" verify --print-certs build/app/outputs/flutter-apk/app-release.apk | grep -E "DN|SHA-256"
 
       - name: Rename APKs
         id: apk
