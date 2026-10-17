@@ -15,7 +15,7 @@ Vendored unmodified for DMR AMBE+2 voice synthesis (task t_5b101746).
 - Build: `native/src/dmr/dmr_voice.cmake` target `sdrcore_mbelib`, only when
   `SDRCORE_ENABLE_MBELIB=ON` (default). Only `mbe_processAmbe3600x2450Frame`
   is reachable from the app; unused codecs are dropped by `--gc-sections`.
-- Patent note: AMBE+2 is covered by DVSI patents; see STATUS-dmr.md §5
+- Patent note: AMBE+2 is covered by DVSI patents; see docs/status/dmr.md §5
   (US 8,359,197 listed active until 2028-05-20). Building with
   `-DSDRCORE_ENABLE_MBELIB=OFF` removes this library completely; DMR then stays
   metadata-only and never produces voice PCM.

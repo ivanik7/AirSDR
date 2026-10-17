@@ -523,7 +523,7 @@ class DecoderSession extends ChangeNotifier {
     super.dispose();
   }
 
-  /// DMR uses the flat `dmr/1` config audited in STATUS-dmr.md §7.3;
+  /// DMR uses the flat `dmr/1` config audited in docs/status/dmr.md §7.3;
   /// other data decoders use the versioned `{version, settings}` envelope.
   Map<String, Object> _config(String id) => id == 'dmr'
       ? {'schema': 'dmr/1', ...settingsFor(id)}

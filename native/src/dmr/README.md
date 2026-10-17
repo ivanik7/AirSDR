@@ -47,7 +47,7 @@ represented as an exact upstream algorithm. Direct tone/boundary tests cover
 the rate and pass/stop behaviour; air-recording oracle parity remains open.
 
 Vendor provenance: `native/third_party/openwebrx-dmr/` contains source from
-luarvique/csdr-plus and luarvique/digiham-plus, pinned in STATUS-dmr.md
+luarvique/csdr-plus and luarvique/digiham-plus, pinned in docs/status/dmr.md
 (digiham-plus beec7822). Retain the vendored license texts. The extra
 `csdr/fftfilter.{cpp,hpp}` files are unused exploratory copies, not needed
 in the build. Tests use synthetic baseband and direct discriminator-domain

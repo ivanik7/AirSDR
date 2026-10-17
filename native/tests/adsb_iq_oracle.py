@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Compare synthetic SC16 IQ via original dump1090 CLI and native backend.
 
-Build the upstream executable from the pinned source (see STATUS-adsb-oracle.md),
+Build the upstream executable from the pinned source (see docs/status/adsb-oracle.md),
 then pass its path and the CMake sdrcore_adsb_backend_test binary as arguments.
 No third-party IQ recording or prebuilt binary is needed.
 """

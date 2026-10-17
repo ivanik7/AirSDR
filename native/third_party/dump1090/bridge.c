@@ -64,7 +64,7 @@
 // icao_filter.c/convert.c/dsp/helpers/tables.c for truly exceptional
 // conditions like a full hash table or failed malloc). Setting
 // `Modes.quiet = 1` matches OpenWebRX+'s own invocation (`--quiet`, see
-// STATUS-adsb-audit.md) and silences the normal per-message
+// docs/status/adsb-audit.md) and silences the normal per-message
 // `displayModesMessage()` output without touching mode_s.c itself: this is
 // the "minimal conditional seam... to avoid output... references
 // (quiet...)" required by the task, implemented entirely by setting this

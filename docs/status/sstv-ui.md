@@ -1,7 +1,7 @@
 # SSTV UI status (live picture, gallery, saving, settings)
 
-Card `t_68a23f96`. Native backend: `STATUS-sstv.md`. Event contract and
-upstream audit: `STATUS-sstv-audit.md`.
+Card `t_68a23f96`. Native backend: `docs/status/sstv.md`. Event contract and
+upstream audit: `docs/status/sstv-audit.md`.
 
 ## What is in the tree
 

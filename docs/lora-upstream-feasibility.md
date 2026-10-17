@@ -37,7 +37,7 @@ real runs on debian-ai (2026-10-11), unless explicitly marked unverified.
   header (dest, src, id, flags, channel hash at byte 13), dedups by
   (src, id), tries channel keys whose hash matches, AES-CTR decrypts and
   decodes `portnums_pb2`. Already ported natively in master as
-  `sdrcore_meshtastic` (STATUS-meshtastic.md, card t_a68f364b).
+  `sdrcore_meshtastic` (docs/status/meshtastic.md, card t_a68f364b).
 - lorarx JSON fields (author-hosted `loraprotocols.c sendjson`): `net crc
   invers bw sf cr preamb duration level afc dre eye eyemin nfloor pknfloor
   snr snrmin fec firlen notches chirps rxmhz ver payload` (some only when

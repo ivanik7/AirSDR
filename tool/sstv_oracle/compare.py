@@ -46,7 +46,7 @@ OWRX_NAMES = {0: "Robot 12", 4: "Robot 24", 8: "Robot 36", 12: "Robot 72", 32: "
 WINDOW_FACTOR = {8: 7.70, 44: 2.34, 40: 4.68, 60: 2.48, 56: 3.82, 76: 0.98, 99: 2.01, 95: 5.63,
                  98: 2.79, 96: 3.74, 97: 2.80, 94: 3.74, 55: 1.46, 63: 2.93}
 
-# Acceptance thresholds (justification in STATUS-sstv-oracle.md).
+# Acceptance thresholds (justification in docs/status/sstv-oracle.md).
 # Adapter vs oracle: same decoder source and input; the only allowed
 # difference is float rounding from a different FFTW build (vendored
 # portable FFTW vs upstream's SIMD FFTW + -ffast-math), which can move a
@@ -341,7 +341,7 @@ def analyse(case, corpus, out, oracle_bin, replay_bin, receiver_modes, control_b
           f"oracle {p_patch_o:.2f} (whole image native {p_full_a:.2f} / oracle {p_full_o:.2f})")
     # Absolute floors are reported, not gated: the oracle itself is the
     # reference, and where it misses a floor so does native (identical
-    # PSNR is checked above). See STATUS-sstv-oracle.md.
+    # PSNR is checked above). See docs/status/sstv-oracle.md.
     res["meets_absolute_floor"] = None if thr is None else bool(p_patch_a >= thr)
     res["oracle_meets_absolute_floor"] = None if thr is None else bool(p_patch_o >= thr)
     save_png(of["rows"], of["width"], os.path.join(cdir, "oracle.png"))

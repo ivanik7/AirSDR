@@ -337,7 +337,7 @@ bool decode_to_json(const pb_msgdesc_t* desc, const uint8_t* payload,
 
 // OpenWebRX+ APP_PROTO_DECODERS (owrx/meshtastic.py), restricted to the
 // messages generated here. ADMIN_APP (6), ATAK_PLUGIN (72) and
-// POWERSTRESS_APP (74) are reported as raw payloads; see STATUS-meshtastic.md.
+// POWERSTRESS_APP (74) are reported as raw payloads; see docs/status/meshtastic.md.
 const pb_msgdesc_t* app_decoder(uint32_t port) {
   switch (port) {
     case meshtastic_PortNum_REMOTE_HARDWARE_APP: return &meshtastic_HardwareMessage_msg;

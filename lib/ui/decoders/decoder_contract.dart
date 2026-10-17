@@ -92,7 +92,7 @@ final decoderCatalog = <DecoderDescriptor>[
             ]
           : const [],
     ),
-  // OpenWebRX+ `dmr` (STATUS-dmr.md §7): a voice mode decoded natively from
+  // OpenWebRX+ `dmr` (docs/status/dmr.md §7): a voice mode decoded natively from
   // the VFO-centred baseband tap; AMBE voice replaces demod audio natively.
   // `slot_filter` is the upstream bitmask (1=TS1, 2=TS2, 3=both);
   // `color_code` -1 = off is a documented native addition.
@@ -116,7 +116,7 @@ final decoderCatalog = <DecoderDescriptor>[
     ],
   ),
   // OpenWebRX+ `sstv`: underlying usb/lsb/nfm, 24 kHz audio, VIS auto-detect.
-  // Upstream has no forced picture mode (STATUS-sstv-audit.md), so `mode`
+  // Upstream has no forced picture mode (docs/status/sstv-audit.md), so `mode`
   // only allows `auto`; stale `martin_m1`/`scottie_s1` values normalize to it.
   DecoderDescriptor(
     id: 'sstv',

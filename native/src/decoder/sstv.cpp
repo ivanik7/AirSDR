@@ -2,7 +2,7 @@
 // In-process adapter wrapping the vendored csdr-plus SstvDecoder<float>
 // (native/third_party/csdr_sstv). Implements sdrcore::decoder::Decoder per
 // native/include/decoder.hpp and the Frozen v1 image event contract in
-// STATUS-sstv-audit.md ("Frozen v1 image event contract for native and UI
+// docs/status/sstv-audit.md ("Frozen v1 image event contract for native and UI
 // children"). See native/third_party/csdr_sstv/PROVENANCE.md for the exact
 // list of patches applied to the vendored upstream source and the rationale
 // for every design decision summarized here.
@@ -38,7 +38,7 @@ namespace {
 // very well"). This is pure metadata (VIS id, upstream NAME string,
 // dimensions) reproduced for the adapter's own BMP-header validation and
 // event payload construction; it does not reimplement any decoding
-// algorithm. Cross-reference: STATUS-sstv-audit.md "Exactly what the
+// algorithm. Cross-reference: docs/status/sstv-audit.md "Exactly what the
 // upstream code can decode" table.
 struct VisEntry {
   int vis;
@@ -205,7 +205,7 @@ struct HeaderInfo {
 };
 
 // Validates the 54-byte BMP header upstream writes (see PROVENANCE.md /
-// STATUS-sstv-audit.md "Framing, fidelity..."): 'BM' magic, byte 7 ==
+// docs/status/sstv-audit.md "Framing, fidelity..."): 'BM' magic, byte 7 ==
 // 0x73, a known mapped VIS whose table dimensions match the header's
 // width/height (LE32 at 18; height stored as LE32(-LINE_COUNT) at 22).
 bool parse_bmp_header(const std::vector<uint8_t>& buf, HeaderInfo& out) {

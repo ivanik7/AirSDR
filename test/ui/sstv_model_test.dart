@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
-// SSTV v1 image-event assembly (STATUS-sstv-audit.md "Frozen v1 image event
+// SSTV v1 image-event assembly (docs/status/sstv-audit.md "Frozen v1 image event
 // contract"), PNG encoding and the Linux file save.
 import 'dart:convert';
 import 'dart:io';

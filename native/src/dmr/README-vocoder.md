@@ -55,7 +55,7 @@ produces no PCM.
 `SDRCORE_ENABLE_MBELIB` (default ON). OFF: mbelib is not compiled,
 `vocoder_available()` is false, frames are counted in `frames_dropped()`,
 `read_audio()` returns 0 and the receiver plays silence. Use it for builds
-that must not contain the AMBE+2 decoder (patent note: STATUS-dmr.md §5).
+that must not contain the AMBE+2 decoder (patent note: docs/status/dmr.md §5).
 
 ## Verification
 

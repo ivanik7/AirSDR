@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Presentation-only DMR metadata parsed from native `dmr/1` events
-// (STATUS-dmr.md §7.4). Absent keys stay null: nothing is invented. The
+// (docs/status/dmr.md §7.4). Absent keys stay null: nothing is invented. The
 // native pipeline owns IQ and voice PCM.
 class DmrCall {
   const DmrCall({

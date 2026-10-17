@@ -4,7 +4,7 @@
 // decoding) for packets delivered by a LoRa PHY. Behavioural reference:
 // OpenWebRX+ owrx/meshtastic.py (MeshtasticParser) and owrx/lora.py, with the
 // key/channel-hash rules of the Meshtastic firmware (src/mesh/Channels.cpp,
-// CryptoEngine.cpp, Router.cpp::perhapsDecode). See STATUS-meshtastic.md.
+// CryptoEngine.cpp, Router.cpp::perhapsDecode). See docs/status/meshtastic.md.
 //
 // Pure, synchronous and allocation-bounded: no I/O, no logging, no threads.
 // The caller (later: the decoder backend on the native DSP worker) owns the

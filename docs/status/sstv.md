@@ -5,7 +5,7 @@ upstream decoder, the adapter, the receiver's 24 kHz audio tap and the C ABI
 selection rules. The Dart panel/gallery/save work belongs to `t_68a23f96`.
 The pysstv/OpenWebRX+ oracle comparison and the live-air check belong to
 `t_9165cc6e`. The source audit and the frozen v1 event contract are in
-`STATUS-sstv-audit.md`.
+`docs/status/sstv-audit.md`.
 
 ## What is in the tree
 
@@ -162,4 +162,4 @@ then per-line sync/porch/pixel tones on an ideal time line. It checks:
   android-24, Release) compiles and links the vendored SSTV/FFTW sources;
   the APK and on-device behaviour are unverified.
 - Dart UI for images (panel, gallery, save): done in `t_68a23f96`, see
-  `STATUS-sstv-ui.md`.
+  `docs/status/sstv-ui.md`.

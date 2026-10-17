@@ -4,7 +4,7 @@
 #   Meshtastic protobufs 95c5f8c (GPL-3) -> meshtastic-protobufs/ (+ committed
 #                                           nanopb output, see regen.sh)
 #   Brad Conte crypto-algorithms aes.c (public domain) -> crypto-algorithms/
-# See NOTICE.md and STATUS-meshtastic.md.
+# See NOTICE.md and docs/status/meshtastic.md.
 set(MESHTASTIC_TP ${CMAKE_CURRENT_LIST_DIR})
 set(MESHTASTIC_GEN ${MESHTASTIC_TP}/meshtastic-protobufs/generated)
 set(MESHTASTIC_PB_SOURCES

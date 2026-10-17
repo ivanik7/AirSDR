@@ -61,7 +61,7 @@ class Decoder {
   // "retune", mode changed -> "mode", otherwise "stop".
   virtual void set_tuning(uint64_t /*tuned_frequency_hz*/,
                           uint32_t /*sdr_v3_mode*/) {}
-  // Voice-producing backends only (DMR AMBE+2 synthesis, STATUS-dmr.md §7.5).
+  // Voice-producing backends only (DMR AMBE+2 synthesis, docs/status/dmr.md §7.5).
   // When provides_audio() is true for the attached decoder, the receiver
   // REPLACES (never mixes) its own demodulator audio for that block with
   // read_audio() output: mono float [-1, 1] at exactly 48000 S/s. The

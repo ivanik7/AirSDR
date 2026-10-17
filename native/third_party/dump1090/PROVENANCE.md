@@ -7,7 +7,7 @@ Source: FlightAware `dump1090` (dump1090-fa), commit
 reference checkout `~/prj/ref/openwebrx/ext/dump1090` (vendored as part of
 OpenWebRX+'s `ext/` tree; upstream project is
 https://github.com/flightaware/dump1090). See
-`STATUS-adsb-audit.md` for the source/feasibility audit this embedding
+`docs/status/adsb-audit.md` for the source/feasibility audit this embedding
 implements §"Concrete integration blockers and ordered plan" item 2.
 
 License: **GPL-2.0-or-later** — see the vendored `LICENSE` and `COPYING`
@@ -65,7 +65,7 @@ by vendoring their real implementations.
 | `dsp/generated/starch.h` | Generated registry/typedef declarations for all starch functions and flavors (verbatim; "do not edit" header is upstream's own, not ours). |
 | `dsp/generated/dispatcher.c` | Generated flavor-selection/ranking/wisdom-file logic (verbatim). |
 | `dsp/generated/flavor.generic.c` | Generated: defines `STARCH_SYMBOL`/`STARCH_IMPL` for the `generic` flavor and `#include`s the four `dsp/impl/*.generic.c` files below (upstream's own code-generation convention — see `dsp/generated/starch_generic.cmake`, which this CMake file mirrors for a single flavor). |
-| `dsp/impl/magnitude_sc16.generic.c` | Exact SC16 (`int16` interleaved I/Q) -> `uint16` magnitude, `exact_u32`/`exact_float` variants. **This is the exact conversion `docs/adsb-snapshot-v1.md`'s SC16 ingress contract and `STATUS-adsb-audit.md`'s audit both reference** (`min(65535, 2*sqrt(I^2+Q^2))`, float variant shown; `exact_u32` is the integer-math equivalent). |
+| `dsp/impl/magnitude_sc16.generic.c` | Exact SC16 (`int16` interleaved I/Q) -> `uint16` magnitude, `exact_u32`/`exact_float` variants. **This is the exact conversion `docs/adsb-snapshot-v1.md`'s SC16 ingress contract and `docs/status/adsb-audit.md`'s audit both reference** (`min(65535, 2*sqrt(I^2+Q^2))`, float variant shown; `exact_u32` is the integer-math equivalent). |
 | `dsp/impl/magnitude_uc8.generic.c`, `magnitude_power_uc8.generic.c`, `magnitude_sc16q11.generic.c`, `mean_power_u16.generic.c`, `count_above_u16.generic.c` | Other starch primitives `convert.c`/`stats.c`'s dispatch paths can reach (UC8/SC16Q11 input formats, mean-power, threshold-counting); vendored for a complete, buildable starch registry set — only the SC16 path above is expected to be exercised by this project's decoder adapter (2.4 MS/s SC16 ingress per `docs/adsb-snapshot-v1.md`). |
 | `dsp/helpers/tables.c`/`.h` | Lookup-table builders (`get_uc8_mag_table`, `get_sc16q11_mag_{11,12}bit_table`) used by the `lookup`/`*_table` starch impls above. |
 
@@ -108,7 +108,7 @@ the task contract; see "Conditional seam" below for how `mode_s.c`'s single
 call site into this excluded file is handled); `interactive.c` (ncurses
 terminal UI); `view1090.c`/`faup1090.c` (separate upstream executables that
 are not needed and are not linkable library code as-is per
-`STATUS-adsb-audit.md`); `adaptive.c` (SDR-gain-driven adaptive burst/range
+`docs/status/adsb-audit.md`); `adaptive.c` (SDR-gain-driven adaptive burst/range
 control — see "Conditional seams" below); `cprtests.c` (upstream's own CPR
 unit-test executable; this task's only verification step is the isolated
 CMake compile described below, not re-running upstream's test suite);
@@ -135,7 +135,7 @@ C file."
    half of the seam**, because `Modes.quiet` is an upstream field upstream
    itself already checks at that exact call site; setting it is sufficient
    and matches OpenWebRX+'s own `--quiet` invocation flag
-   (`STATUS-adsb-audit.md` §"Actual OpenWebRX+ behavior").
+   (`docs/status/adsb-audit.md` §"Actual OpenWebRX+ behavior").
 2. **No network references**: `mode_s.c:useModesMessage()`'s
    `if (Modes.net) { modesQueueOutput(mm, a); }` call is different: `Modes.net`
    being permanently `0` (zero-initialized, no setter exposed) makes the
@@ -200,11 +200,11 @@ This library does not call any of its own startup functions automatically
 (upstream's `dump1090.c:main()`/`initializeState()` normally does, as part
 of code this embedding excludes). Before feeding any samples to
 `demodulate2400()`/`demodulate2400AC()`, a caller (the in-process C++
-adapter, owned by the parent task per `STATUS-adsb-audit.md`) must call, in
+adapter, owned by the parent task per `docs/status/adsb-audit.md`) must call, in
 this order, once per decoder session:
 
 1. `modesChecksumInit(fixBits)` — `fixBits=0` matches OpenWebRX+'s own
-   default (`Modes.nfix_crc` starts at 0 upstream; `STATUS-adsb-audit.md`
+   default (`Modes.nfix_crc` starts at 0 upstream; `docs/status/adsb-audit.md`
    §"Actual OpenWebRX+ behavior": "The chain does not add `--fix` or
    `--fix-2bit`"). `Modes.nfix_crc` should be set to the same value the
    caller passes to `modesChecksumInit` so `demod_2400.c`'s
@@ -212,7 +212,7 @@ this order, once per decoder session:
    CRC correction tables actually built.
 2. `icaoFilterInit()`
 3. `modeACInit()` — required because Mode A/C decoding is in scope
-   (`STATUS-adsb-audit.md`: "`--modeac` enables Mode A/C demodulation").
+   (`docs/status/adsb-audit.md`: "`--modeac` enables Mode A/C demodulation").
 
 Per-session `Modes.*` fields a caller will typically also set directly
 (there is no setter API; `dump1090.h`'s `struct _Modes` fields are public):
@@ -222,9 +222,9 @@ Per-session `Modes.*` fields a caller will typically also set directly
 surface/local-CPR and range-check math in `track.c`, only if the caller has
 an explicitly configured receiver location per `docs/adsb-snapshot-v1.md`),
 `Modes.maxRange` (receiver-centered CPR range sanity check — see
-`STATUS-adsb-audit.md` §"Source boundary and dependencies"). The caller is
+`docs/status/adsb-audit.md` §"Source boundary and dependencies"). The caller is
 also responsible for the live-clock background work upstream's main loop
-does and `SDR_IFILE` input skips (`STATUS-adsb-audit.md` §"Actual OpenWebRX+
+does and `SDR_IFILE` input skips (`docs/status/adsb-audit.md` §"Actual OpenWebRX+
 behavior": "The embedded live receiver must explicitly call
 `icaoFilterExpire()` and `trackPeriodicUpdate()` on its wall clock"), and
 for setting `_messageNow`/calling `mstime()`-consistent timestamps per
@@ -260,7 +260,7 @@ executable target is produced by this file.
 
 ## Isolated compilation check performed by this task
 
-See `STATUS-adsb-audit.md`'s own precedent ("14 relevant upstream C
+See `docs/status/adsb-audit.md`'s own precedent ("14 relevant upstream C
 translation units passed host `cc -std=c11 ... -fsyntax-only`") for the
 baseline this task re-verifies against the final vendored+bridged tree,
 now as a real static-library CMake build (not just `-fsyntax-only`) that

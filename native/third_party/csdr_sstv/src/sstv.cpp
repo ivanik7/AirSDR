@@ -236,7 +236,7 @@ print(" [VIS %d %dx%d %s]", curMode->ID, curMode->LINE_WIDTH, curMode->LINE_COUN
             // If have not received sync for a while...
             // sdr_flutter: upstream quirk, intentionally kept (compares ms
             // with a seconds-derived threshold; bounded by the adapter's 2s
-            // canProcess() lookahead; see PROVENANCE.md / STATUS-sstv-audit.md).
+            // canProcess() lookahead; see PROVENANCE.md / docs/status/sstv-audit.md).
             else if(msecs() > lastLineT + round(curMode->SYNC_PULSE*32.0))
             {
                 // Go back to header detection, skip all input

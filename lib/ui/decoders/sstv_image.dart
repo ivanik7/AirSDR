@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
 // Assembles SSTV pictures from the native v1 image events (frozen contract:
-// STATUS-sstv-audit.md, "Frozen v1 image event contract"). Pixels arrive as
+// docs/status/sstv-audit.md, "Frozen v1 image event contract"). Pixels arrive as
 // bounded base64 BGR rows already decoded natively by csdr-plus; Dart only
 // validates, stores and displays them. No audio or IQ ever reaches Dart.
 import 'dart:convert';

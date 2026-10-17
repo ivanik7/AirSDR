@@ -9,7 +9,7 @@
 // mbelib (decode_ambe_3600x2450, uvquality 3). Here the same steps run in
 // process on the DSP worker (no codecserver, no socket, no subprocess), and
 // the 8 kHz result is interpolated x6 to the receiver's 48 kHz output rate.
-// See STATUS-dmr.md and native/src/dmr/README-vocoder.md.
+// See docs/status/dmr.md and native/src/dmr/README-vocoder.md.
 #pragma once
 
 #include "ambe_frame.hpp"

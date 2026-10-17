@@ -1,6 +1,6 @@
 # ADS-B IQ and aircraft snapshot contract (v1)
 
-This is the contract for the embedded dump1090 backend and Flutter aircraft list. The native backend is linked and registry `available=1`; the live aircraft UI consumes its snapshots. Generated IQ has been compared with upstream dump1090; real-air recordings and live aircraft remain unverified. See `STATUS-adsb-audit.md`, `STATUS-adsb-backend.md`, `STATUS-adsb-oracle.md` and `STATUS-adsb-ui.md` for verification boundaries.
+This is the contract for the embedded dump1090 backend and Flutter aircraft list. The native backend is linked and registry `available=1`; the live aircraft UI consumes its snapshots. Generated IQ has been compared with upstream dump1090; real-air recordings and live aircraft remain unverified. See `docs/status/adsb-audit.md`, `docs/status/adsb-backend.md`, `docs/status/adsb-oracle.md` and `docs/status/adsb-ui.md` for verification boundaries.
 
 ## Input and lifecycle
 
@@ -30,4 +30,4 @@ If 128 entries would exceed the ABI's 64 KiB payload limit, drop oldest entries 
 
 ## Verification boundary
 
-The IQ tap/resampler and its lifecycle are covered by `sdrcore_adsb_tap`; registry metadata by `sdrcore_decoder_abi`. Generated SC16 IQ is compared with the original dump1090 executable through the float adapter and the CU8 receiver tap; CRC/correction, CPR, snapshot size/expiry, reset and UI readiness have regression coverage. See `STATUS-adsb-oracle.md` for reproducible commands, provenance, verified output and the OpenWebRX+ finite-file timestamp limitation. Host tap tests alone do not establish live ADS-B reception, Android performance, or RF analog bandwidth.
+The IQ tap/resampler and its lifecycle are covered by `sdrcore_adsb_tap`; registry metadata by `sdrcore_decoder_abi`. Generated SC16 IQ is compared with the original dump1090 executable through the float adapter and the CU8 receiver tap; CRC/correction, CPR, snapshot size/expiry, reset and UI readiness have regression coverage. See `docs/status/adsb-oracle.md` for reproducible commands, provenance, verified output and the OpenWebRX+ finite-file timestamp limitation. Host tap tests alone do not establish live ADS-B reception, Android performance, or RF analog bandwidth.

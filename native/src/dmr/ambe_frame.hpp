@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Shared DMR voice frame type: produced by the digiham framing adapter
 // (framing.hpp, t_0c6cc09e) and consumed by the AMBE+2 voice output
-// (vocoder.hpp, t_5b101746). STATUS-dmr.md §7.3.
+// (vocoder.hpp, t_5b101746). docs/status/dmr.md §7.3.
 #pragma once
 
 #include <cstdint>

@@ -1,15 +1,15 @@
 # Decoder architecture (native contract and UI)
 
 SSTV source audit and the shared native/UI line-event contract are in
-[`STATUS-sstv-audit.md`](../STATUS-sstv-audit.md). It documents the mapped
+[`docs/status/sstv-audit.md`](status/sstv-audit.md). It documents the mapped
 csdr-plus VIS list (including disabled AVT-90 and a required PD 290 fix), the
 24 kHz audio boundary, source licenses/FFTW build gap, and the bounded
 progress/completion schema.
 This is a design handoff, not an SSTV implementation or availability claim.
 The native backend (vendored csdr-plus `SstvDecoder`, adapter, 24 kHz
 receiver audio tap) is described with its verification in
-[`STATUS-sstv.md`](../STATUS-sstv.md); the Dart UI (live picture, gallery,
-saving, underlying demod) is in [`STATUS-sstv-ui.md`](../STATUS-sstv-ui.md).
+[`docs/status/sstv.md`](status/sstv.md); the Dart UI (live picture, gallery,
+saving, underlying demod) is in [`docs/status/sstv-ui.md`](status/sstv-ui.md).
 
 Status: `rtl_433` is an in-process upstream engine on the single native
 receiver's tuned complex-IQ branch. `sstv` uses its 24 kHz USB/LSB/NFM audio
@@ -33,7 +33,7 @@ entry and no second mode picker.
   optional decoder extension and have no decoder factory.
 - `dmr` is a voice mode in the same list but not a v3 demodulator:
   `voice` is true and `demodMode` is null. It is a native decoder-extension
-  engine on the baseband tap (STATUS-dmr.md §7, §10); session code tells
+  engine on the baseband tap (docs/status/dmr.md §7, §10); session code tells
   demod rows apart by `demodMode != null`, never by `voice`. Its AMBE audio
   is meant to replace demod audio natively; Dart only shows metadata.
 - Data rows (`sstv`, `rtl_433`, `adsb`) are optional native decoder
@@ -109,7 +109,7 @@ The DSP tap feeds the embedded FlightAware dump1090 core through a 2.4 MS/s
 SC16 magnitude converter. `native/src/decoder/adsb.cpp` uses upstream
 demodulation, CRC/CPR/Comm-B and track state, and emits a bounded snapshot
 about once per second; `adsb` is now available in the native registry. See
-`STATUS-adsb-backend.md` and `STATUS-adsb-oracle.md` for the verified boundary
+`docs/status/adsb-backend.md` and `docs/status/adsb-oracle.md` for the verified boundary
 and generated-IQ comparison. `lib/ui/decoders/adsb_panel.dart` displays the
 live bounded snapshot, not raw frames. Host RF yielded no aircraft in a
 30-second check; this does not establish live reception.
@@ -259,10 +259,10 @@ edit: its row is generated from `DemodMode` order in `decoderCatalog`.
   allows only `auto` because upstream has no forced picture mode.
 - **Live-air decoding is unverified.** A host RTL-SDR Blog V4 streamed ADS-B
   at 1090 MHz / 2.4 MS/s, but no aircraft were decoded during the 30-second
-  measurement (see `STATUS-adsb.md`). Neither synthetic IQ nor a running tuner
+  measurement (see `docs/status/adsb.md`). Neither synthetic IQ nor a running tuner
   establishes antenna/analog RF reception or Android phone behavior.
 
-## WFM RDS integration contract (implemented; validation in STATUS-rds.md)
+## WFM RDS integration contract (implemented; validation in docs/status/rds.md)
 
 This section supersedes the historical RDS/SDR++ suggestion in
 `~/prj/docs/30-openwebrx-decoders-plan.md`. The implementation target is the

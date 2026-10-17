@@ -11,9 +11,9 @@
 #
 # SDRCORE_ENABLE_MBELIB=OFF builds a vocoder-less library: AMBE frames are
 # counted and dropped, read_audio() returns 0 and the receiver plays silence.
-# Nothing else changes (DMR sync/metadata stay usable). See STATUS-dmr.md §5.
+# Nothing else changes (DMR sync/metadata stay usable). See docs/status/dmr.md §5.
 option(SDRCORE_ENABLE_MBELIB
-    "Build the mbelib AMBE+2 vocoder into DMR (see STATUS-dmr.md patent note)" ON)
+    "Build the mbelib AMBE+2 vocoder into DMR (see docs/status/dmr.md patent note)" ON)
 
 set(DMR_VENDOR ${CMAKE_CURRENT_SOURCE_DIR}/third_party/openwebrx-dmr)
 

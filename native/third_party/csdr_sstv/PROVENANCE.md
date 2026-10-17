@@ -50,12 +50,12 @@ amounts, compact after `canProcess()`" usage pattern as directly.
    640 is smaller than that, so `linebuf[2][MAX_LINE_WIDTH]` and the
    `convertPD`/`convertR36`/`decodeLine` local buffers sized from
    `MAX_LINE_WIDTH` would overflow for PD-290 (this is exactly the defect the
-   audit (`STATUS-sstv-audit.md` §"Framing, fidelity...") flags: "Do not ship
+   audit (`docs/status/sstv-audit.md` §"Framing, fidelity...") flags: "Do not ship
    or test PD 290 with the unmodified upstream bound"). Fixed by raising the
    bound to the largest mapped `LINE_WIDTH` (800, used only by PD-290).
    Verified by a full PD-290 decode (616 rows, byte-identical to the patched
    upstream engine) in `sdrcore_sstv_test`, also run under ASan/UBSan (see
-   `STATUS-sstv.md`).
+   `docs/status/sstv.md`).
 
 2. **`decodeLine` output-capacity guard `LINE_WIDTH*LINE_STEP` ->
    `LINE_WIDTH*LINE_STEP*3`.** The guard checked `writer->writeable() >=
@@ -207,5 +207,5 @@ byte stream the adapter parses as BMP header + rows. This is a deliberate
 divergence from OpenWebRX+'s value, justified because OpenWebRX+'s Python
 parser (`owrx/sstv.py`) scans for a ` [` marker to split log text from BMP
 data — a parsing strategy this adapter does not replicate (see
-STATUS-sstv-audit.md: "must not copy its [owrx/sstv.py, AGPL] code, only
+docs/status/sstv-audit.md: "must not copy its [owrx/sstv.py, AGPL] code, only
 reproduce observable framing").
