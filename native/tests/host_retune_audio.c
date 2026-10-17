@@ -28,10 +28,10 @@
 // so a producer stall during retunes shows up as underflow even though the
 // host has no real-time audio device.
 //
-// Usage: sdrcore_host_retune_audio [--sink SPEC] [--mode none|lo|drag]
+// Usage: sdrcore_host_retune_audio [--sink SPEC] [--mode none|lo|drag|switch]
 //          [--seconds S] [--freq HZ] [--step HZ] [--interval-ms MS]
 //          [--move-ms MS] [--gain TENTHS] [--stereo 0|1] [--bandwidth HZ]
-//          [--burst FRAMES]
+//          [--burst FRAMES] [--demod wfm|nfm] [--timeline PATH]
 #include <inttypes.h>
 #include <pthread.h>
 #include <stdatomic.h>
@@ -126,6 +126,7 @@ static void model_ring(double t0, double t1, double prefill_ms, int burst) {
 }
 
 static uint32_t bandwidth = 200000;
+static uint32_t demod = SDR_V3_WFM;
 
 static SdrV3Controls make_controls(uint64_t center, int64_t offset, int32_t gain) {
   SdrV3Controls c;
@@ -135,7 +136,7 @@ static SdrV3Controls make_controls(uint64_t center, int64_t offset, int32_t gain
   c.center_frequency_hz = center;
   c.vfo_offset_hz = offset;
   c.sample_rate = 2400000;
-  c.mode = SDR_V3_WFM;
+  c.mode = demod;
   c.bandwidth_hz = bandwidth;
   c.gain_tenths_db = gain;
   c.squelch = SDR_V3_SQUELCH_OFF;
@@ -165,6 +166,7 @@ int main(int argc, char** argv) {
   int32_t gain = 280;
   int stereo = 1;
   int burst = 192;  // AAudio LOW_LATENCY burst on many devices (4 ms)
+  const char* timeline = NULL;
   for (int i = 1; i + 1 < argc; i += 2) {
     if (!strcmp(argv[i], "--sink")) sink = argv[i + 1];
     else if (!strcmp(argv[i], "--mode")) mode = argv[i + 1];
@@ -176,7 +178,12 @@ int main(int argc, char** argv) {
     else if (!strcmp(argv[i], "--gain")) gain = atoi(argv[i + 1]);
     else if (!strcmp(argv[i], "--stereo")) stereo = atoi(argv[i + 1]);
     else if (!strcmp(argv[i], "--bandwidth")) bandwidth = (uint32_t)atoi(argv[i + 1]);
+    else if (!strcmp(argv[i], "--demod")) {
+      demod = !strcmp(argv[i + 1], "nfm") ? SDR_V3_NFM : SDR_V3_WFM;
+      if (demod == SDR_V3_NFM) bandwidth = 12500;
+    }
     else if (!strcmp(argv[i], "--burst")) burst = atoi(argv[i + 1]);
+    else if (!strcmp(argv[i], "--timeline")) timeline = argv[i + 1];
   }
   tl_t = calloc(kMaxSamples, sizeof(double));
   tl_frames = calloc(kMaxSamples, sizeof(uint64_t));
@@ -215,6 +222,35 @@ int main(int argc, char** argv) {
   uint32_t rng = 12345;
   int64_t walk = 0;  // tuned offset from the station, Hz
   while (now_ms() - t0 < seconds * 1000) {
+    if (!strcmp(mode, "switch")) {
+      static const uint64_t wfm[] = {101800000, 101900000, 103500000, 104000000,
+                                     100000000, 100100000, 106700000, 106800000,
+                                     98500000, 98700000};
+      static const uint64_t nfm[] = {145500000, 145512500, 144000000, 144025000,
+                                     146500000, 146512500, 147000000, 147025000,
+                                     145000000, 145012500};
+      if (next_lo - t0 > seconds * 1000) break;
+      sleep_until_ms(next_lo);
+      next_lo += interval;
+      center = (demod == SDR_V3_NFM ? nfm : wfm)[(lo_count + 1) % 10];
+      const double requested_at = now_ms();
+      errors += apply(h, center, 0, gain, "switch") != SDR_OK;
+      double applied_ms = -1;
+      while (now_ms() < next_lo && applied_ms < 0) {
+        snap(h, &s);
+        if (s.center_frequency_hz == center) applied_ms = now_ms() - requested_at;
+        else sleep_until_ms(now_ms() + 0.5);
+      }
+      snap(h, &s);
+      printf("{\"event\":\"applied\",\"index\":%d,\"t_ms\":%.3f,"
+             "\"applied_ms\":%.3f,\"frame\":%" PRIu64 ","
+             "\"dropped_samples\":%" PRIu64 ",\"audio_dropped_frames\":%" PRIu64 "}\n",
+             lo_count, requested_at - t0, applied_ms, s.audio_frames,
+             s.dropped_samples - s0.dropped_samples,
+             s.audio_dropped_frames - s0.audio_dropped_frames);
+      ++lo_count;
+      continue;
+    }
     if (!strcmp(mode, "none")) {
       sleep_until_ms(t0 + seconds * 1000);
       break;
@@ -259,6 +295,15 @@ int main(int argc, char** argv) {
   printf("{\"event\":\"end\",\"frame\":%" PRIu64 "}\n", s.audio_frames);
   atomic_store(&poll_quit, 1);
   pthread_join(poll_thread, NULL);
+  if (timeline) {
+    FILE* f = fopen(timeline, "w");
+    if (!f) { perror("timeline"); errors++; }
+    else {
+      for (long k = 0; k < tl_n; ++k)
+        fprintf(f, "%.3f,%" PRIu64 "\n", tl_t[k] - t0, tl_frames[k]);
+      fclose(f);
+    }
+  }
   fprintf(stderr,
           "mode=%s lo=%d vfo=%d errors=%d state=%u last_error=%d generation %" PRIu64
           "->%" PRIu64 " audio %.0f frames/s, sink dropped %" PRIu64
