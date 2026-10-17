@@ -21,6 +21,18 @@
 //   ""/nullptr           same as "null".
 //   "aaudio"            Android API 26+ output, nonblocking SPSC callback.
 //                        Fails explicitly on API 24/25 (no libaaudio).
+//   "miniaudio"         desktop output through the vendored miniaudio library
+//                        (CoreAudio on macOS, WASAPI on Windows; ALSA/PulseAudio
+//                        are also available on a Linux host, where the
+//                        production default stays the dedicated ALSA sink).
+//                        Same real-time model as AAudio: nonblocking SPSC
+//                        PcmRing (kPlaybackRingFrames capacity,
+//                        kPlaybackPrefillFrames = 60 ms pre-roll, re-prime
+//                        after an underflow) drained by the device callback;
+//                        underflows / zero_filled_frames are reported.
+//   "miniaudio:null"    the same sink on miniaudio's null backend: no device,
+//                        a real-time paced callback thread. For offline tests.
+//                        Not built on Android.
 //
 // Threading: one producer thread calls write(); open/close are called by the
 // owner while no write() is in flight. stats() may be called from any thread.
@@ -34,11 +46,13 @@
 
 namespace sdrcore {
 
-enum class AudioSinkKind { kNull = 0, kWav = 1, kAlsa = 2, kAAudio = 3 };
+enum class AudioSinkKind { kNull = 0, kWav = 1, kAlsa = 2, kAAudio = 3, kMiniaudio = 4 };
 
 struct AudioSinkSpec {
   AudioSinkKind kind = AudioSinkKind::kNull;
-  std::string target;  // WAV path or ALSA PCM name ("default" if empty)
+  // WAV path, ALSA PCM name ("default" if empty), or for kMiniaudio "" (system
+  // default device) / "null" (null backend).
+  std::string target;
 };
 
 // Returns false for an unknown/malformed spec (e.g. "wav:" without a path,

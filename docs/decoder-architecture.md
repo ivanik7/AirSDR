@@ -12,8 +12,8 @@ receiver audio tap) is described with its verification in
 saving, underlying demod) is in [`STATUS-sstv-ui.md`](../STATUS-sstv-ui.md).
 
 Status: `rtl_433` is an in-process upstream engine on the single native
-receiver's tuned complex-IQ branch. `sstv` is an in-process upstream engine
-on the receiver's 24 kHz USB/LSB/NFM audio tap; `adsb` remains unavailable.
+receiver's tuned complex-IQ branch. `sstv` uses its 24 kHz USB/LSB/NFM audio
+tap, and `adsb` uses the tuned 2.4 MS/s IQ tap and embedded dump1090 core.
 The v1 decoder extension sends only bounded low-rate JSON events to Dart.
 
 ## One decoder list (UI contract)
@@ -95,6 +95,20 @@ CU8 recordings with zero-order interpolation into the tuned 2.5 MS/s branch;
 the FIR can change marginal pulse detection, so its match rate is separately
 reported. Neither oracle subprocess is part of the app runtime.
 
+## ADS-B input and native snapshot backend
+
+`docs/adsb-snapshot-v1.md` fixes the tuned, undecimated 2.4 MS/s complex-IQ
+tap (with a native converter for feasible higher rates), SC16 boundary and
+bounded aircraft snapshot fields.
+The DSP tap feeds the embedded FlightAware dump1090 core through a 2.4 MS/s
+SC16 magnitude converter. `native/src/decoder/adsb.cpp` uses upstream
+demodulation, CRC/CPR/Comm-B and track state, and emits a bounded snapshot
+about once per second; `adsb` is now available in the native registry. See
+`STATUS-adsb-backend.md` and `STATUS-adsb-oracle.md` for the verified boundary
+and generated-IQ comparison. `lib/ui/decoders/adsb_panel.dart` displays the
+live bounded snapshot, not raw frames. Host RF yielded no aircraft in a
+30-second check; this does not establish live reception.
+
 ## Pieces
 
 - `lib/ui/decoders/decoder_contract.dart` — shared Dart contract
@@ -108,7 +122,8 @@ reported. Neither oracle subprocess is part of the app runtime.
   dropdown over `decoderCatalog`, data rows marked "Недоступен" unless the
   backend reports them) and the selected-only panels:
   `VoiceDecoderPanel` (bandwidth/squelch/demod options such as WFM stereo),
-  live `Rtl433DecoderPanel`, and previews for unavailable decoders.
+  live `Rtl433DecoderPanel`, `AdsbPanel` (in `adsb_panel.dart`),
+  `SstvDecoderPanel` (in `sstv_panel.dart`), and previews for unavailable decoders.
 - `lib/ui/legacy/decoder_screen.dart` — the Decoder tab: selector + exactly
   one panel for `session.selectedId` (selected-only, not all panels stacked).
 - `lib/ui/radio_controller.dart` — `RadioController.decoderBackend` getter,
@@ -116,7 +131,7 @@ reported. Neither oracle subprocess is part of the app runtime.
   `lib/main.dart` probes the additive extension without changing v3 requirements.
 - `native/include/sdrcore_decoder_v1.h` and `decoder.hpp` define a separate
   versioned C ABI and native C++ processing interface. `native/src/decoder/`
-  exposes the in-process `rtl_433` factory and unavailable future entries.
+  exposes the in-process `rtl_433`, SSTV and ADS-B factories.
 - `lib/ui/favorites/favorites.dart` — storage v3: `Favorite.decoderId` +
   `Favorite.decoderSettings`, with migration/normalization on load (see
   below).
@@ -196,8 +211,8 @@ never alias each other's settings. See
 4. When a real native backend is implemented, wire a single instance to the
    existing handle's DSP input and bounded event queue, enforce required mode
    and sample rate inside the native lifecycle, then report availability.
-   Full-band decoders remain preview-only until a safe receiver integration
-   is designed. Add real output polling/UI
+   Full-band decoders require a safe receiver integration before availability;
+   ADS-B now has one. Add real output polling/UI
    before claiming a working decoder. Versioned configuration sent over FFI
    has `{"version":1,"settings":{...}}`; favorites store the same settings
    under the selected ID with `decoderSettingsVersion`.
@@ -213,8 +228,8 @@ edit: its row is generated from `DemodMode` order in `decoderCatalog`.
 
 ## Known limitations (by design, today)
 
-- **rtl_433 and SSTV have selectable data-decoder output.** Implicit WFM RDS
-  metadata is active alongside audio; ADS-B is preview-only. SSTV pictures
+- **rtl_433, SSTV and ADS-B have selectable data-decoder output.** Implicit WFM RDS
+  metadata is active alongside audio. SSTV pictures
   are assembled in Dart from bounded per-row events (`lib/ui/decoders/
   sstv_image.dart`); voice audio keeps playing.
 - **No Start/Stop control.** Decoder lifecycle (when a backend exists) is
@@ -222,8 +237,9 @@ edit: its row is generated from `DemodMode` order in `decoderCatalog`.
   `DecoderSession.selectPreview`/`applyStored`, not a separate user action —
   there is deliberately no "Start" button to avoid implying a live run that
   isn't backed by anything.
-- **Full-band decoders are preview-only.** ADS-B has no backend. rtl_433 is
-  explicitly non-exclusive and consumes the tuned channel baseband.
+- **The ADS-B backend requires a usable 2.4 MS/s IQ window.** It shares the
+  existing tuned receiver; a slower rate or displaced VFO shows not ready.
+  rtl_433 is likewise non-exclusive and consumes tuned channel baseband.
 - **One shell-scoped session, not per-favorite live state.** `DecoderSession`
   belongs to the shell (`LegacyAppShell`), not to an individual favorite or
   channel. Applying a favorite/channel updates the *shared* session's
@@ -236,10 +252,10 @@ edit: its row is generated from `DemodMode` order in `decoderCatalog`.
   (`usb|lsb|nfm`) is a segmented control that switches the receiver through
   the normal mode control (`DecoderDescriptor.underlyingModes`), and `mode`
   allows only `auto` because upstream has no forced picture mode.
-- **No device-visible receiver acceptance in this task.** The host did not
-  enumerate a Blog V4 during the final checks. Native/Flutter/Linux host
-  gates are reported separately in the task handoff; subjective Android audio
-  quality and phone screen appearance are not inferred from host tests.
+- **Live-air decoding is unverified.** A host RTL-SDR Blog V4 streamed ADS-B
+  at 1090 MHz / 2.4 MS/s, but no aircraft were decoded during the 30-second
+  measurement (see `STATUS-adsb.md`). Neither synthetic IQ nor a running tuner
+  establishes antenna/analog RF reception or Android phone behavior.
 
 ## WFM RDS integration contract (implemented; validation in STATUS-rds.md)
 

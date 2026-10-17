@@ -8,26 +8,63 @@ import 'package:ffi/ffi.dart';
 /// Opaque handle from native/include/sdrcore.h.
 final class SdrHandle extends Opaque {}
 
-/// Loads libsdrcore.so for this platform (see [SdrCore.open] for the order).
+/// Ordered loader candidates for the native library packaged with the runner.
+/// [operatingSystem] uses dart:io's Platform.operatingSystem values.
+List<String> sdrCoreLibraryCandidates(
+  String operatingSystem,
+  String executable,
+) {
+  final separator = operatingSystem == 'windows' ? '\\' : '/';
+  final slash = executable.lastIndexOf(separator);
+  final dir = slash < 0 ? '.' : executable.substring(0, slash);
+  switch (operatingSystem) {
+    case 'linux':
+      return ['$dir/lib/libsdrcore.so', 'libsdrcore.so'];
+    case 'macos':
+      final contents = dir.endsWith('/MacOS')
+          ? dir.substring(0, dir.length - '/MacOS'.length)
+          : dir;
+      return ['$contents/Frameworks/libsdrcore.dylib', 'libsdrcore.dylib'];
+    case 'windows':
+      return ['$dir${separator}sdrcore.dll', 'sdrcore.dll'];
+    default:
+      return ['libsdrcore.so'];
+  }
+}
+
+/// Loads the packaged core; an explicit path takes precedence on every OS.
 DynamicLibrary openSdrCoreLibrary([String? libraryPath]) {
   if (libraryPath != null && libraryPath.isNotEmpty) {
     return DynamicLibrary.open(libraryPath);
   }
-  if (Platform.isLinux) {
+  if (Platform.isLinux || Platform.isMacOS || Platform.isWindows) {
     final env = Platform.environment['SDRCORE_HOST_LIBRARY'];
     if (env != null && env.isNotEmpty) return DynamicLibrary.open(env);
-    // Flutter Linux bundle: <bundle>/<binary> + <bundle>/lib/libsdrcore.so.
-    final bundled = File(
-      '${File(Platform.resolvedExecutable).parent.path}/lib/libsdrcore.so',
+    final candidates = sdrCoreLibraryCandidates(
+      Platform.operatingSystem,
+      Platform.resolvedExecutable,
     );
-    if (bundled.existsSync()) return DynamicLibrary.open(bundled.path);
+    if (File(candidates.first).existsSync()) {
+      return DynamicLibrary.open(candidates.first);
+    }
+    return DynamicLibrary.open(candidates.last);
   }
   return DynamicLibrary.open('libsdrcore.so');
 }
 
 /// A failed native command; [code] is the SdrResult / SdrHostResult value.
 final class SdrCoreError extends StateError {
-  SdrCoreError(this.code) : super('Native core error $code');
+  SdrCoreError(this.code)
+    : super(switch (code) {
+        SdrResult.hostAccessDenied =>
+          'USB access denied ($code); check device permissions',
+        SdrResult.hostNotFound => 'USB device not found ($code); reconnect it',
+        SdrResult.hostDriverUnsupported =>
+          'USB driver unsupported ($code); on Windows bind WinUSB with Zadig',
+        SdrResult.hostBusy =>
+          'USB device busy ($code); close other SDR applications',
+        _ => 'Native core error $code',
+      });
   final int code;
 }
 
@@ -42,6 +79,8 @@ abstract final class SdrResult {
   static const internalError = -6;
   static const hostAccessDenied = -16;
   static const hostNotFound = -17;
+  static const hostDriverUnsupported = -18;
+  static const hostBusy = -19;
 }
 
 /// Native engine states (sdrcore.h enum SdrState).
@@ -75,7 +114,7 @@ final class SdrHostUsbDevice {
   final int bus;
   final int address;
 
-  /// /dev/bus/usb/BBB/DDD; changes on re-enumeration (replug).
+  /// Linux: /dev/bus/usb/BBB/DDD; macOS/Windows: usb:BBB/DDD.
   final String path;
   final String? manufacturer;
   final String? product;
@@ -87,7 +126,7 @@ final class SdrHostUsbDevice {
       '${productId.toRadixString(16)} $manufacturer $product $serial)';
 }
 
-/// Optional desktop host USB layer; present only in Linux host builds.
+/// Optional desktop host USB layer; not present in Android builds.
 abstract interface class SdrCoreHostBindings {
   bool get hasHostUsb;
   List<SdrHostUsbDevice> hostUsbList();
@@ -240,14 +279,16 @@ final class SdrCore {
   /// symbols; every ABI 2 signature and the SdrStats layout are unchanged.
   static const maxAbiVersion = 3;
 
-  /// On Android loads the packaged arm64 library. On Linux resolves, in order:
-  /// [libraryPath], `$SDRCORE_HOST_LIBRARY`, the Flutter bundle's
-  /// `<executable dir>/lib/libsdrcore.so`, then the loader path. Other
-  /// platforms are not built.
+  /// On Android loads the packaged arm64 library. On desktops resolves an
+  /// explicit path, `$SDRCORE_HOST_LIBRARY`, the runner bundle, then the
+  /// platform loader path, in that order.
   factory SdrCore.open({String? libraryPath}) {
-    if (!Platform.isAndroid && !Platform.isLinux) {
+    if (!Platform.isAndroid &&
+        !Platform.isLinux &&
+        !Platform.isMacOS &&
+        !Platform.isWindows) {
       throw UnsupportedError(
-        'libsdrcore.so is only built for Android arm64 and Linux',
+        'libsdrcore is only built for Android, Linux, macOS and Windows',
       );
     }
     return SdrCore._(_DynamicSdrCoreBindings(openSdrCoreLibrary(libraryPath)));
@@ -261,7 +302,7 @@ final class SdrCore {
   /// Calls native sdr_version (ABI revision, not receiver state).
   int get version => _bindings.version();
 
-  /// True when this library has the desktop host USB layer (Linux builds).
+  /// True when this library has the desktop host USB layer.
   bool get hasHostUsb {
     final Object b = _bindings;
     return b is SdrCoreHostBindings && b.hasHostUsb;
@@ -323,8 +364,7 @@ final class SdrCoreInstance {
   /// or dispose; native duplicates [fd] and never owns the original.
   void openUsb(int fd, int source) => _check(_v2.openUsb(_live, fd, source));
 
-  /// Desktop host only: opens `/dev/bus/usb/<bus>/<address>` through the same
-  /// native driver path as [openUsb]; native owns the descriptor.
+  /// Desktop host only: opens via Linux usbfs or direct libusb on macOS/Windows.
   void openHostUsb(int bus, int address, int source) {
     final Object b = _bindings;
     if (b is! SdrCoreHostBindings || !b.hasHostUsb) {
@@ -359,7 +399,9 @@ final class _DynamicSdrCoreBindings
   @override
   late final bool hasHostUsb =
       _library.providesSymbol('sdr_host_usb_list') &&
-      _library.providesSymbol('sdr_host_open_usb');
+      _library.providesSymbol('sdr_host_open_usb') &&
+      (!(Platform.isMacOS || Platform.isWindows) ||
+          _library.providesSymbol('sdr_host_open_usb_direct'));
   late final int Function(Pointer<_NativeHostUsbDevice>, int, Pointer<Uint32>)
   _hostList = _library
       .lookupFunction<
@@ -370,7 +412,11 @@ final class _DynamicSdrCoreBindings
       _library.lookupFunction<
         Int32 Function(Pointer<SdrHandle>, Uint8, Uint8, Uint32),
         int Function(Pointer<SdrHandle>, int, int, int)
-      >('sdr_host_open_usb');
+      >(
+        Platform.isMacOS || Platform.isWindows
+            ? 'sdr_host_open_usb_direct'
+            : 'sdr_host_open_usb',
+      );
 
   @override
   List<SdrHostUsbDevice> hostUsbList() {

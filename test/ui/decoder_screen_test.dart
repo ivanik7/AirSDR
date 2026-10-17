@@ -263,7 +263,8 @@ void main() {
         find.byKey(const ValueKey('decoderUnavailable-adsb')),
         findsOneWidget,
       );
-      expect(find.textContaining('единственный приёмник'), findsOneWidget);
+      // ADS-B uses the current tuned IQ tap, not a second/taken-over tuner.
+      expect(find.textContaining('единственный приёмник'), findsNothing);
       expect(find.text('Start'), findsNothing);
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox());

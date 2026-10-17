@@ -10,6 +10,7 @@ import '../radio_controller.dart';
 import '../bands/bands.dart';
 import '../legacy/centered_receiver.dart';
 import 'decoder_contract.dart';
+import 'adsb_snapshot.dart';
 import 'rds_station.dart';
 import 'sstv_image.dart';
 
@@ -56,6 +57,7 @@ class DecoderSession extends ChangeNotifier {
     : _receiver = receiver ?? CenteredReceiver(radio) {
     _wasRunning = radio.running;
     _lastTunedFrequency = radio.tunedFrequency;
+    _lastVfoOffset = radio.vfoOffset;
     _lastSampleRate = radio.sampleRate.round();
     _lastMode = radio.mode;
     radio.addListener(_radioChanged);
@@ -70,10 +72,13 @@ class DecoderSession extends ChangeNotifier {
   late String _selectedId = decoderIdForMode(radio.mode);
   final Map<String, Map<String, Object>> _settings = {};
   final List<DecoderMessage> _messages = [];
+  AdsbSnapshot? _adsbSnapshot;
+  AdsbSnapshot? get adsbSnapshot => _adsbSnapshot;
   Timer? _pollTimer;
   bool _attached = false;
   bool _wasRunning = false;
   late double _lastTunedFrequency;
+  late double _lastVfoOffset;
   late int _lastSampleRate;
   late DemodMode _lastMode;
   final RdsStation rds = RdsStation();
@@ -99,6 +104,9 @@ class DecoderSession extends ChangeNotifier {
       (radio.decoderBackend! as RbdsDecoderBackend).rbdsAvailable;
   List<DecoderMessage> get messages => List.unmodifiable(_messages);
   int get inputRateHz => radio.sampleRate.round();
+  bool get adsbInputReady =>
+      inputRateHz >= 2400000 &&
+      radio.vfoOffset.abs() + 1200000 <= radio.sampleRate / 2;
   int get decoderRateHz {
     final rate = inputRateHz;
     if (rate < 200000) return 0;
@@ -171,19 +179,25 @@ class DecoderSession extends ChangeNotifier {
       _lastMode = radio.mode;
       rds.clear();
       sstv.abort('mode');
+      if (_selectedId == 'adsb') _resetEvents();
     }
-    if (frequency != _lastTunedFrequency || rate != _lastSampleRate) {
+    if (frequency != _lastTunedFrequency ||
+        rate != _lastSampleRate ||
+        radio.vfoOffset != _lastVfoOffset) {
       sstv.abort(frequency != _lastTunedFrequency ? 'retune' : 'restart');
       _lastTunedFrequency = frequency;
+      _lastVfoOffset = radio.vfoOffset;
       _lastSampleRate = rate;
       rds.clear();
       if (decoderById(_selectedId)?.voice != true) {
         _resetEvents();
-        if (rate != 0 && decoderRateHz == 0 && _selectedId == 'rtl_433') {
+        if ((rate != 0 && decoderRateHz == 0 && _selectedId == 'rtl_433') ||
+            (_selectedId == 'adsb' && !adsbInputReady)) {
           _attached = false;
           _stopPolling();
-          _failure =
-              'Недостаточная частота выборки IQ: выберите не менее 200 кГц';
+          _failure = _selectedId == 'adsb'
+              ? 'not ready: set sample rate 2.4 MS/s'
+              : 'Недостаточная частота выборки IQ: выберите не менее 200 кГц';
           radio.decoderBackend?.select(null, const <String, Object>{});
         } else if (running && !_attached) {
           _attachSelected();
@@ -231,6 +245,7 @@ class DecoderSession extends ChangeNotifier {
     _streamGeneration = null;
     _droppedEvents = 0;
     _messages.clear();
+    _adsbSnapshot = null;
   }
 
   void _startPolling() {
@@ -281,6 +296,11 @@ class DecoderSession extends ChangeNotifier {
       backend.select(null, const <String, Object>{});
       return;
     }
+    if (id == 'adsb' && !adsbInputReady) {
+      _failure = 'not ready: set sample rate 2.4 MS/s';
+      backend.select(null, const <String, Object>{});
+      return;
+    }
     _syncUnderlying(id);
     final ok = backend.select(id, _config(id));
     if (!ok) {
@@ -310,11 +330,30 @@ class DecoderSession extends ChangeNotifier {
       if (_streamGeneration != null &&
           event.streamGeneration != _streamGeneration) {
         _messages.clear();
+        _adsbSnapshot = null;
         rds.clear();
         sstv.abort('restart');
         changed = true;
       }
       _streamGeneration = event.streamGeneration;
+      if (event.kind == DecoderResult.aircraft) {
+        if (!active || _selectedId != 'adsb' || event.payload.length > 65536) {
+          continue;
+        }
+        try {
+          final data = jsonDecode(utf8.decode(event.payload));
+          if (data is Map<String, dynamic>) {
+            final snapshot = AdsbSnapshot.parse(data);
+            if (snapshot != null) {
+              _adsbSnapshot = snapshot;
+              changed = true;
+            }
+          }
+        } on FormatException {
+          // Keep the last complete snapshot until a valid replacement arrives.
+        }
+        continue;
+      }
       if ((event.kind == DecoderResult.imageProgress ||
               event.kind == DecoderResult.imageComplete) &&
           event.payload.length <= 65536) {

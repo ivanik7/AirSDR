@@ -7,6 +7,15 @@ target_include_directories(sdrcore_dmr_vocoder_test PRIVATE tests
 target_link_libraries(sdrcore_dmr_vocoder_test PRIVATE sdrcore_dmr_voice Threads::Threads m)
 add_test(NAME sdrcore_dmr_vocoder COMMAND sdrcore_dmr_vocoder_test)
 
+# Framing (digiham DmrDecoder port) -> VoiceOutput (softmbe/mbelib chain).
+add_executable(sdrcore_dmr_framing_voice_test tests/dmr_framing_voice_test.cpp)
+target_include_directories(sdrcore_dmr_framing_voice_test PRIVATE tests
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party/openwebrx-dmr
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party/digiham_dmr/upstream)
+target_link_libraries(sdrcore_dmr_framing_voice_test PRIVATE
+    sdrcore_dmr_framing sdrcore_dmr_voice Threads::Threads m)
+add_test(NAME sdrcore_dmr_framing_voice COMMAND sdrcore_dmr_framing_voice_test)
+
 # Host-only replay/corpus tool for tool/dmr_voice_oracle (not a CTest).
 add_executable(dmr_voice_replay tests/dmr_voice_replay.cpp)
 target_include_directories(dmr_voice_replay PRIVATE tests

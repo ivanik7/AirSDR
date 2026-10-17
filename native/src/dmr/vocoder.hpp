@@ -12,23 +12,19 @@
 // See STATUS-dmr.md and native/src/dmr/README-vocoder.md.
 #pragma once
 
+#include "ambe_frame.hpp"
+
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <vector>
 
 namespace sdrcore::dmr {
 
-// One 72-bit AMBE+2 (3600x2450) channel frame, still DMR-interleaved,
-// MSB-first, exactly as digiham's DmrDecoder emits it (its 27-byte voice
-// burst split into three consecutive 9-byte frames). STATUS-dmr.md §7.3.
-struct AmbeFrame {
-  uint8_t slot = 0;  // 0 = TS1, 1 = TS2 (informational; upstream ignores it)
-  uint8_t bits[9] = {};
-};
-
-// Frame consumer offered to the framing decoder (t_0c6cc09e). Called on the
-// DSP worker, in channel order.
+// Frame consumer for the framing decoder (t_0c6cc09e). Called on the DSP
+// worker, in channel order. Framing takes a std::function; connect it with
+// framing_voice_sink() below.
 struct VoiceSink {
   virtual ~VoiceSink() = default;
   virtual void on_ambe(const AmbeFrame& frame) = 0;
@@ -109,5 +105,14 @@ class VoiceOutput final : public VoiceSink {
   struct Impl;
   std::unique_ptr<Impl> impl_;
 };
+
+// Connects Framing (framing.hpp, whose voice callback is a std::function) to
+// a VoiceSink, normally the backend's VoiceOutput. This is the in-process
+// replacement for OpenWebRX+'s DmrDecoder -> MbeSynthesizer(codecserver) hop:
+// frames are forwarded unchanged and in order on the DSP worker. The sink
+// must outlive the returned callable.
+inline std::function<void(const AmbeFrame&)> framing_voice_sink(VoiceSink& sink) {
+  return [&sink](const AmbeFrame& frame) { sink.on_ambe(frame); };
+}
 
 }  // namespace sdrcore::dmr

@@ -12,6 +12,9 @@
 #ifdef __ANDROID__
 #include "aaudio_sink.h"
 #endif
+#ifdef SDRCORE_HAVE_MINIAUDIO
+#include "miniaudio_sink.h"
+#endif
 
 namespace sdrcore {
 
@@ -26,6 +29,11 @@ bool parse_audio_sink_spec(const char* spec, AudioSinkSpec* out) {
   if (s == "aaudio") {
     out->kind = AudioSinkKind::kAAudio;
     out->target.clear();
+    return true;
+  }
+  if (s == "miniaudio" || s == "miniaudio:null") {
+    out->kind = AudioSinkKind::kMiniaudio;
+    out->target = s == "miniaudio" ? std::string() : std::string("null");
     return true;
   }
   if (s == "alsa") {
@@ -70,6 +78,12 @@ std::unique_ptr<AudioSink> make_audio_sink(const AudioSinkSpec& spec) {
     case AudioSinkKind::kAAudio:
 #ifdef __ANDROID__
       return make_aaudio_sink();
+#else
+      return nullptr;
+#endif
+    case AudioSinkKind::kMiniaudio:
+#ifdef SDRCORE_HAVE_MINIAUDIO
+      return make_miniaudio_sink(spec.target);
 #else
       return nullptr;
 #endif

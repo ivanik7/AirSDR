@@ -32,7 +32,7 @@ void main() {
     expect(api, isNotNull);
   }, skip: skipReason);
 
-  test('real host library enumerates preview descriptors without claiming a backend', () {
+  test('real host library exposes the embedded ADS-B backend', () {
     if (skipReason != null) return;
     final lib = DynamicLibrary.open(libraryPath!);
     // sdr_version must still be resolvable (v3 unaffected).
@@ -48,6 +48,9 @@ void main() {
     expect(descriptors[1].input, 3);
     expect(descriptors[1].exclusiveReceiver, isFalse);
     expect(descriptors[1].requiredRateHz, isNull);
+    expect(descriptors[2].available, isTrue);
+    expect(descriptors[2].input, 4);
+    expect(descriptors[2].requiredRateHz, 2400000);
   }, skip: skipReason);
 
   test('tryOpen returns null against the current process (no sdr_decoder_* symbols)', () {

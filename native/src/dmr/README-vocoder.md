@@ -33,6 +33,23 @@ passes it as the `VoiceSink` to the framing decoder, calls `reset()` on
 `Decoder::reset()` (retune, mode, stop) and maps the decoder config
 `{"voice": false}` to `set_enabled(false)`.
 
+`AmbeFrame` lives in `ambe_frame.hpp` and is shared by `framing.hpp` and
+`vocoder.hpp`. `Framing` takes a `std::function` voice callback; connect it
+with `framing_voice_sink(voice_output)`:
+
+```
+VoiceOutput voice;
+Framing framing(framing_voice_sink(voice), on_meta);
+```
+
+`sdrcore_dmr_framing_voice` (CTest) drives digiham bursts (CACH/TACT, BS
+voice sync, 27-byte payload) carrying synthetic AMBE+2 frames through
+`Framing` into `VoiceOutput`. It checks that the selected slot's frames arrive
+bit-exactly and in order, that 8 kHz and 48 kHz PCM are bit-identical to a
+`VoiceOutput` fed the same frames directly, that slot filter 2 selects TS2,
+that `{"voice":false}` drops frames, and that `SDRCORE_ENABLE_MBELIB=OFF`
+produces no PCM.
+
 ## Build option
 
 `SDRCORE_ENABLE_MBELIB` (default ON). OFF: mbelib is not compiled,

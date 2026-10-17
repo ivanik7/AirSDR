@@ -1,0 +1,8 @@
+_sdr_create
+_sdr_destroy
+_sdr_version
+_sdr_v2_*
+_sdr_v3_*
+_sdr_host_*
+_sdr_decoder_*
+_sdr_rds_*

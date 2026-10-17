@@ -10,7 +10,6 @@
 #include <string>
 #include <vector>
 
-
 namespace sdrcore {
 namespace dsp {
 
@@ -46,6 +45,8 @@ class Receiver {
   // integer-decimated to a complex 200-300 kS/s tuned VFO; zero means source
   // rate is unsuitable. Attach/detach, retune, rate and stream generation
   // changes reset the branch.
+  // Input::raw_iq: tuned full-band 2.4 MS/s, native-resampled when feasible;
+  // zero means the source rate or tuned +/-1.2 MHz window is insufficient.
   // Input::audio: real mono demodulator output (USB/LSB real part, NFM
   // discriminator + csdr 24 kHz NFM deemphasis FIR) band-limited and resampled
   // to exactly 24000 S/s, tapped before AGC/squelch gate/volume/mute; fed only

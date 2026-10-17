@@ -1,6 +1,7 @@
 # STATUS — DMR audit (OpenWebRX+ chain, digiham, codecserver, mbelib)
 
-Task t_5724f368. This is an audit and interface definition only; no DMR code exists in the app yet.
+Task t_5724f368 is the audit and interface definition. Section 9 tracks the
+subsequent symbol-level framing port; no live DMR decoder is registered yet.
 Child cards: t_8e3dfcc0 (filter + 4FSK), t_0c6cc09e (framing/metadata),
 t_5b101746 (AMBE synthesis + audio), t_e1e6186c (UI). Integration: t_bc6f9eeb.
 
@@ -193,6 +194,80 @@ No tuner control, no subprocess, no PCM/IQ through Dart.
 ## 8. Remaining gaps / not verified
 - No over-the-air DMR test yet; no local DMR IQ recording found. Child cards need a capture
   (Blog V4 on debian-ai) or a synthetic vector generated from the sync/EMB tables.
-- Talker-alias charset handling, embedded LC checksum behaviour and GPS formulas were read but not
-  executed.
+- Full talker-alias charset cases, nonzero GPS and embedded LC checksum failure
+  remain unverified; zero-coordinate/ISO-8859-1/four-fragment paths are tested in section 9.
 - Legal status outside US/EP not checked; this is not legal advice.
+
+## 9. Framing port (t_0c6cc09e)
+
+The GPL-3.0 digiham DMR phase, metadata, LC, CACH, EMB, slot-type, GPS,
+talker-alias and FEC sources are compiled as `sdrcore_dmr_framing` from
+`native/third_party/digiham_dmr/upstream/` (pinned provenance and local delta in
+`native/third_party/digiham_dmr/PROVENANCE.md`). `native/src/dmr/framing.hpp`
+exposes streaming 4800-symbol/s dibits to `Framing::on_symbols`, per-slot
+`SlotMeta` callbacks and three 9-byte interleaved AMBE frames per accepted
+voice burst. The adapter has no second tuner, subprocess, IQ/PCM FFI or audio
+sink. `reset()` clears partial bursts, reinitializes digiham and sends no-sync
+for both slots. Digiham's first active voice slot wins unless the slot mask
+mutes it; optional CC filtering withholds metadata and voice until EMB/slot-type
+CC is known. TS1 is slot 0, TS2 is slot 1. Group `target` is the talkgroup;
+unit-to-unit `target` is the destination radio ID. Privacy means PI header or
+the voice LC service-options privacy bit; the payload is never decrypted.
+`duration_ms` counts observed voice frames in 30-ms increments, not wall time.
+
+Host synthetic tests cover four BS/MS sync words at the three-bit-error limit,
+rejection above that limit, alternating CACH slot tracking, voice slot selection,
+CC filtering, symbol-stream chunk boundaries, AMBE dibit packing, reset,
+Hamming/QR/BPTC correction, LC group/direct IDs and privacy, zero-coordinate
+GPS, an ISO-8859-1 talker alias and four-fragment embedded LC. The native
+target and tests also compile for Android arm64 API 26. No matching DMR air
+capture, full BPTC LC over a burst, RS(12,9) verification, or codec PCM
+comparison has been exercised here; the oracle card t_371d403a owns that
+end-to-end check. The demodulator/receiver registration, vocoder and UI are
+separate child cards; DMR cannot be selected as a live decoder yet.
+
+## 10. AMBE+2 voice output (t_5b101746)
+
+`native/src/dmr/vocoder.{hpp,cpp}` (target `sdrcore_dmr_voice`, linked into
+libsdrcore) reproduces OpenWebRX+'s DmrMode voice path in process:
+codecserver-softmbe `decode_ambe_3600x2450` (DMR deinterleave, mbelib
+`mbe_processAmbe3600x2450Frame`, uvquality 3, 160 int16 @ 8 kHz) ->
+digiham-plus `DigitalVoiceFilter` -> csdr-plus `Agc<short>` (maxGain 30,
+initialGain 3) -> x6 polyphase interpolation to 48 kHz -> bounded jitter
+buffer (100 ms prebuffer, 1 s cap). mbelib 1.3.0 (ISC), Agc and
+DigitalVoiceFilter are vendored unmodified (`native/third_party/mbelib`,
+`native/third_party/openwebrx-dmr`, provenance files there). There is no
+codecserver process, socket, protobuf, or Dart PCM path.
+
+Receiver integration: `Decoder::provides_audio()/read_audio()` (additive
+`decoder.hpp` extension, C ABI unchanged). When the attached decoder provides
+audio, `receiver.cpp` replaces each block's demodulator output with exactly as
+many 48 kHz decoder samples. It applies the normal `volume^2`/mute stage,
+skips the squelch gate (upstream `supportsSquelch() = False`), and fills
+underruns with silence. The result goes to the existing AudioSink (AAudio on
+Android, ALSA/WAV on Linux). `sdrcore.cpp` exempts attached voice decoders
+from the mute-while-decoding rule for baseband decoders.
+
+Framing connection: `AmbeFrame` is shared via `native/src/dmr/ambe_frame.hpp`.
+`framing_voice_sink(VoiceOutput&)` adapts the `VoiceSink` to `Framing`'s
+callback. The `sdrcore_dmr_framing_voice` CTest feeds digiham bursts through
+Framing into VoiceOutput and gets PCM bit-identical to direct synthesis of the
+same frames.
+
+Build option `SDRCORE_ENABLE_MBELIB` (default ON). OFF leaves mbelib out
+completely (no `mbe_*` symbols in libsdrcore). Frames are counted as dropped
+and no PCM is produced, while framing and metadata keep working.
+
+Verified: `sdrcore_dmr_vocoder`, `sdrcore_dmr_framing_voice`,
+`sdrcore_decoder_voice_replace`, `sdrcore_decoder_voice_abi` (DSP worker into
+a real `wav:` sink), all also under ASan+UBSan; the OFF build;
+`tool/dmr_voice_oracle` bit-exact against pristine codecserver-softmbe +
+mbelib + DigitalVoiceFilter + `csdr agc` on synthetic frames.
+
+Not verified / remaining: no open AMBE+2 speech encoder exists, so all test
+frames are synthetic parameter vectors (vocoder buzz, not speech). No
+over-the-air DMR voice was decoded. Audibility on the phone is unconfirmed;
+it still requires manual listening. The DMR backend (registry entry, 4FSK channel from
+t_8e3dfcc0, events, `{"voice":false}` mapping) still has to own one
+`VoiceOutput` and return `provides_audio() == true`. That wiring belongs to
+the integration card t_bc6f9eeb, and the UI is in t_e1e6186c.

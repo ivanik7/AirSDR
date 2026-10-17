@@ -61,6 +61,15 @@ internal interface that bridges these drivers into the engine.
   - Our adapter (`native/src/usb_rtlsdr_adapter.cpp`) `dup()`s the fd before
     calling this, because `libusb_wrap_sys_device()` stores the fd verbatim
     and neither duplicates nor closes it — see that file's ownership comment.
+- **Patch applied (local, additive)**: `patches/rtlsdr-open-bus-address.patch`
+  adds `int rtlsdr_open_bus_address(rtlsdr_dev_t **dev, uint8_t bus,
+  uint8_t address)` for the desktop direct open path
+  (`sdr_host_open_usb_direct`; the only path on macOS and Windows, which have
+  no usbfs file descriptors). It is `rtlsdr_open()` with the device matched by
+  libusb bus number / device address instead of by index, and returns the raw
+  libusb error (`LIBUSB_ERROR_NOT_FOUND` when no supported device is there)
+  so the host layer can report access denied / busy / missing WinUSB.
+  Existing functions are unchanged. Not used on Android.
 
 ## libhackrf — `hackrf/libhackrf/`
 
@@ -91,6 +100,11 @@ internal interface that bridges these drivers into the engine.
     `libusb_init()`-time device enumeration that fails on unrooted Android.
   - Our adapter (`native/src/usb_hackrf_adapter.cpp`) `dup()`s the fd before
     calling this, for the same reason as the rtlsdr adapter.
+- **Patch applied (local)**: `patches/hackrf-static-windows.patch` guards
+  hackrf.h's Windows `__declspec(dllexport/dllimport)` with
+  `!defined(HACKRF_STATIC)`. The build sets `HACKRF_STATIC`, so the
+  statically linked libhackrf API is not exported from `sdrcore.dll`. There
+  is no behaviour change on other targets.
 
 ## License compatibility
 
@@ -172,3 +186,14 @@ git ls-remote https://github.com/AlexandreRouma/hackrf.git   # HEAD b1275e9c240b
 ```
 
 The exact unified diffs applied are kept in `patches/` for audit/reproduction.
+
+## miniaudio — `miniaudio/`
+
+- Upstream: https://github.com/mackron/miniaudio, tag **0.11.25**; only
+  `miniaudio.h` and `LICENSE`, unmodified (hashes in
+  `miniaudio/PROVENANCE.md`).
+- License: Public Domain (Unlicense) or MIT No Attribution, at the
+  recipient's choice; GPL-3.0-compatible.
+- Desktop playback only (`native/src/audio/miniaudio_sink.cpp`): CoreAudio on
+  macOS, WASAPI on Windows, PulseAudio/ALSA (dlopen'ed) or the null backend on
+  Linux. Compiled with hidden visibility; not part of Android builds.
