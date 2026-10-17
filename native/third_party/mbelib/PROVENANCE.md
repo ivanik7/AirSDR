@@ -1,6 +1,6 @@
 # Provenance: native/third_party/mbelib
 
-Vendored unmodified for DMR AMBE+2 voice synthesis (task t_5b101746).
+Vendored unmodified for DMR AMBE+2 voice synthesis.
 
 - Upstream: mbelib (szechyjs/mbelib), the copy OpenWebRX+ ships in
   `<refs>/openwebrx/ext/mbelib`, commit `9a04ed5c78176a9965f3d43f7aa1b1f5330e771f`

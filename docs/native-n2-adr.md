@@ -92,7 +92,7 @@ The working Dart receiver remains the Android default/selectable fallback
 through N2; never open the same USB device concurrently, and switch only after
 native stop/close and claim release. L1's Linux Dart receiver is not supported:
 show native-required state if the v3 library cannot load, not synthetic rows.
-After the complete Linux-host acceptance override in task `t_58a4efeb`, native
+After the complete Linux-host acceptance override, native
 may become the Android default; N5, not N2, removes Dart DSP/drivers later.
 This ADR supersedes the earlier phone-only N2 gates; acceptance runs on the
 Linux host.
@@ -163,7 +163,7 @@ fds; do not automatically restart reception on a sticky service invocation.
 
 ## Acceptance and ownership of follow-up files
 
-This card owns `native/include/sdrcore_v3.h` and this ADR, **not** DSP, sink
+This ADR owns `native/include/sdrcore_v3.h` and this ADR, **not** DSP, sink
 implementation, FFI/controller or fixtures. Implementers must not silently
 change the header; propose changes through the integrator. N2 may turn the
 version gate to 3 only when the full header is implemented on Linux and Android
@@ -178,7 +178,7 @@ ForegroundService, AAudio and fd handoff need unit/host tests and the Android
 emulator; behaviour on real Android hardware is **unverified** and does not
 block Linux acceptance. The Dart receiver remains available until N5.
 
-## N2 close-out: Android wiring and default engine (t_58a4efeb)
+## N2 close-out: Android wiring and default engine
 
 Decided by the N2 lead before delegating the remaining glue; workers must not
 change these shapes.

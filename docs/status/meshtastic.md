@@ -1,11 +1,11 @@
 # STATUS — Meshtastic packet layer (native)
 
-Card t_a68f364b. Pure C++ library `sdrcore_meshtastic`
+Pure C++ library `sdrcore_meshtastic`
 (`native/src/meshtastic/`). It turns one LoRa payload plus PHY metadata into
-a UTF-8 JSON event. There is no LoRa PHY, decoder-backend wiring or UI in this
-card; those are the child cards (LoRa demod, backend/ABI, UI). The library is
+a UTF-8 JSON event. There is no LoRa PHY, decoder-backend wiring or UI yet;
+those are separate pieces of work (LoRa demod, backend/ABI, UI). The library is
 linked into `libsdrcore`, but no code path calls it yet, so `--gc-sections`
-removes it from the shipped `.so` until the backend card wires it.
+removes it from the shipped `.so` until the backend wires it.
 
 ## Interface (`native/src/meshtastic/meshtastic.h`)
 

@@ -1,6 +1,6 @@
 # SSTV UI status (live picture, gallery, saving, settings)
 
-Card `t_68a23f96`. Native backend: `docs/status/sstv.md`. Event contract and
+Native backend: `docs/status/sstv.md`. Event contract and
 upstream audit: `docs/status/sstv-audit.md`.
 
 ## What is in the tree
@@ -61,7 +61,7 @@ upstream audit: `docs/status/sstv-audit.md`.
       permission is needed.
     - API 26–28: app-specific external `Pictures/AirSDR`, which is not
       visible in the gallery. Files there are not overwritten either.
-  - Sharing is not implemented (optional in the card).
+  - Sharing is not implemented (optional).
 - Catalog/session:
   - `sstv` now declares `underlyingModes` (USB/LSB/NFM) and has no fixed
     `requiredMode`. Settings v1 are `{mode: auto, underlying: usb|lsb|nfm}`,
@@ -79,7 +79,7 @@ upstream audit: `docs/status/sstv-audit.md`.
 | `flutter analyze` | No issues |
 | `flutter test` (full) | 486 passed, 14 skipped |
 | New tests: `test/ui/sstv_model_test.dart` (13), `sstv_session_test.dart` (9), `sstv_panel_test.dart` (3, 344 dp), `test/platform/media_store_test.dart`, plus a legacy-mode normalization test | pass. The session/model tests were RED before the session wiring. The 344 dp panel test caught a real dialog button overflow, which is fixed. |
-| `SDRCORE_HOST_LIBRARY=<t_b20604db build>/libsdrcore.so flutter test test/native/` | 111 passed, 6 skipped |
+| `SDRCORE_HOST_LIBRARY=<host build>/libsdrcore.so flutter test test/native/` | 111 passed, 6 skipped |
 | `SDR_HW_TEST=1 SDRCORE_V3_PROBE_LIBRARY=… flutter test test/native/sstv_session_hw_test.dart` with the attached RTL-SDR Blog V4 | pass (see below) |
 | `flutter build linux --debug`, then 20 s `xvfb-run` launch | built. The app detected the Blog V4 and ran until `timeout` (exit 124). |
 | `flutter build apk --debug`; `android/gradlew :app:testDebugUnitTest` | both succeeded |
@@ -100,8 +100,8 @@ this proves no live-air decode.
 ## Not verified / gaps
 
 - Live-air SSTV picture through the UI: NOT DONE. No transmission was
-  received during the hardware run. Oracle and pysstv recordings belong to
-  `t_9165cc6e`.
+  received during the hardware run. Oracle and pysstv recordings are in
+  `docs/status/sstv-oracle.md`.
 - No Linux UI screenshot of the SSTV panel. The host has no X screenshot
   tool (`xwd`, `import`, `scrot` and `ffmpeg` are absent), and the
   `flutter screenshot --type=skia` route was not completed. The panel

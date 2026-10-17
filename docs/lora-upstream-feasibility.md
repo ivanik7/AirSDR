@@ -1,6 +1,6 @@
 # LoRa / Meshtastic upstream verification and porting feasibility
 
-Card t_21d361f6. Research only: no code changed. All results below come from
+Research only: no code changed. All results below come from
 real runs on the Linux host (2026-10-11), unless explicitly marked unverified.
 
 ## 1. OpenWebRX+ reference chain (openwebrx-plus @ f1e0d1ac7dfa)
@@ -37,7 +37,7 @@ real runs on the Linux host (2026-10-11), unless explicitly marked unverified.
   header (dest, src, id, flags, channel hash at byte 13), dedups by
   (src, id), tries channel keys whose hash matches, AES-CTR decrypts and
   decodes `portnums_pb2`. Already ported natively in master as
-  `sdrcore_meshtastic` (docs/status/meshtastic.md, card t_a68f364b).
+  `sdrcore_meshtastic` (docs/status/meshtastic.md).
 - lorarx JSON fields (author-hosted `loraprotocols.c sendjson`): `net crc
   invers bw sf cr preamb duration level afc dre eye eyemin nfloor pknfloor
   snr snrmin fec firlen notches chirps rxmhz ver payload` (some only when
@@ -94,7 +94,7 @@ global state, `static` functions, X2C idioms.
   "pknfloor":-32.0,"snr":11.7,"fec":0,"ver":"lorarx","payload":"/////7RU…"}`
   and `Meshtastic: Dest:ffffffff SRC:da6354b4 MID:8caa71b9 HopLim:3 …`.
   Note `bw` is Hz in this JSON (250000.0), not kHz — the native parser's
-  `PhyMeta.bw` docs say kHz; the backend card must convert.
+  `PhyMeta.bw` docs say kHz; the backend must convert.
 - `ref/openwebrx/ext/rtl_433_tests/tests/lora/01/lora01_868M_1000k.cu8`
   exists (868 MHz, 1 MS/s CU8) but is not Meshtastic; not yet run.
 - No real over-the-air Meshtastic recording exists locally. Unverified:

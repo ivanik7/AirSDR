@@ -1,10 +1,9 @@
 # Native SSTV backend status (csdr-plus SstvDecoder)
 
-Card `t_b20604db`. This card covers the native side only: the vendored
-upstream decoder, the adapter, the receiver's 24 kHz audio tap and the C ABI
-selection rules. The Dart panel/gallery/save work belongs to `t_68a23f96`.
-The pysstv/OpenWebRX+ oracle comparison and the live-air check belong to
-`t_9165cc6e`. The source audit and the frozen v1 event contract are in
+This report covers the native side only: the vendored upstream decoder, the
+adapter, the receiver's 24 kHz audio tap and the C ABI selection rules. The
+Dart panel/gallery/save work is in `docs/status/sstv-ui.md`; the
+pysstv/OpenWebRX+ oracle comparison is in `docs/status/sstv-oracle.md`. The source audit and the frozen v1 event contract are in
 `docs/status/sstv-audit.md`.
 
 ## What is in the tree
@@ -132,8 +131,8 @@ then per-line sync/porch/pixel tones on an ideal time line. It checks:
   real station.** Decoder parity is exact because the rows are compared
   byte for byte with the upstream engine. Fidelity against the source
   image is measured only with this encoder. Comparing against the
-  OpenWebRX+ `csdr sstv` chain on pysstv recordings is the job of
-  `t_9165cc6e`.
+  OpenWebRX+ `csdr sstv` chain on pysstv recordings is covered in
+  `docs/status/sstv-oracle.md`.
 - **dbgTime=0** instead of OpenWebRX+'s 300000. It affects only debug text
   interleaved in the byte stream, not image bytes (`PROVENANCE.md`).
 - **Patches 1–4 change behaviour only where upstream is broken**:
@@ -144,7 +143,7 @@ then per-line sync/porch/pixel tones on an ideal time line. It checks:
 
   All other modes produce identical bytes.
 - **No forced-mode setting** because upstream has none. Native rejects
-  anything but `auto`; since `t_68a23f96` the Dart catalog allows only
+  anything but `auto`; the Dart catalog allows only
   `auto` and normalizes stored `martin_m1`/`scottie_s1` to it.
 - **Audio path differs structurally from OpenWebRX+**. OpenWebRX+
   channel-filters to 24 kS/s before demodulation. This app demodulates at
@@ -155,11 +154,10 @@ then per-line sync/porch/pixel tones on an ideal time line. It checks:
 ## Not done here
 
 - Live-air SSTV reception. An RTL-SDR Blog V4 is attached to the Linux host
-  (`0bda:2838`), but no on-air SSTV decode was attempted on this card; it
-  belongs to `t_9165cc6e`.
-- Android build/run of the new native code. No Gradle build was run on this
-  card. A direct NDK r28 CMake build of `libsdrcore.so` (arm64-v8a,
+  (`0bda:2838`), but no on-air SSTV decode was attempted.
+- Android build/run of the new native code. No Gradle build was run for this
+  report. A direct NDK r28 CMake build of `libsdrcore.so` (arm64-v8a,
   android-24, Release) compiles and links the vendored SSTV/FFTW sources;
   the APK and on-device behaviour are unverified.
-- Dart UI for images (panel, gallery, save): done in `t_68a23f96`, see
+- Dart UI for images (panel, gallery, save): done, see
   `docs/status/sstv-ui.md`.

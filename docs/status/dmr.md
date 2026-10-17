@@ -1,9 +1,9 @@
 # STATUS — DMR audit (OpenWebRX+ chain, digiham, codecserver, mbelib)
 
-Task t_5724f368 is the audit and interface definition. Section 9 tracks the
+Sections 1–8 are the audit and interface definition. Section 9 tracks the
 subsequent symbol-level framing port; no live DMR decoder is registered yet.
-Child cards: t_8e3dfcc0 (filter + 4FSK), t_0c6cc09e (framing/metadata),
-t_5b101746 (AMBE synthesis + audio), t_e1e6186c (UI). Integration: t_bc6f9eeb.
+Work is split into: filter + 4FSK, framing/metadata, AMBE synthesis + audio,
+UI, and backend integration.
 
 Labels: **[verified]** = read in the pinned source or primary record listed below.
 **[unverified]** = inference or secondary source, not checked against a primary record.
@@ -84,7 +84,7 @@ Per-slot dict, sent only when dirty:
 OpenWebRX+ `DmrEnricher` adds `additional` from radioid.net lookups (network, out of scope) and
 derives a callsign from talker alias regex `^([A-Z0-9]+)(\s.*)?$`.
 
-**Not provided upstream** (child cards must not invent them): color code, encryption/privacy
+**Not provided upstream** (implementations must not invent them): color code, encryption/privacy
 flag, call duration, call history, BER/RSSI, emergency/priority flags, data-call contents.
 Feasible native additions (documented deviations): color code (already parsed), PI/privacy from
 FLCO/service-options bits, duration from voice-sync timestamps. Encryption is only *indicated*,
@@ -157,7 +157,7 @@ default for US distribution.
 All in `native/src/dmr/` (new), namespace `sdrcore::dmr`, called only on the DSP worker.
 No tuner control, no subprocess, no PCM/IQ through Dart.
 
-1. **Channel samples (t_8e3dfcc0 input).** Registered as decoder id `dmr`, `Input::baseband`
+1. **Channel samples (filter + 4FSK input).** Registered as decoder id `dmr`, `Input::baseband`
    (the existing ~250 kS/s complex VFO-centred tap used by rtl_433), `required_mode`
    UINT32_MAX, `exclusive_receiver=false`. The backend owns: ±6250 Hz low-pass (complex), rational
    resampler to exactly **48000 complex S/s**, then FmDemod (atan2 of conj product, scaled like
@@ -165,7 +165,7 @@ No tuner control, no subprocess, no PCM/IQ through Dart.
    `struct ChannelBlock { const std::complex<float>* iq; size_t n; }  // 48 kS/s`
 2. **Symbols.** `void SymbolSink::on_symbols(const uint8_t* dibits, size_t n)`; values 0..3 in
    digiham encoding (§2), 4800/s. Test vectors: the four 24-symbol sync words.
-3. **Frames / metadata (t_0c6cc09e).**
+3. **Frames / metadata.**
    `struct AmbeFrame { uint8_t slot; uint8_t bits[9]; }` — one 72-bit frame, still interleaved,
    MSB-first, exactly as digiham emits (27-byte burst split into 3). Delivered in order to
    `VoiceSink::on_ambe(const AmbeFrame&)`.
@@ -175,13 +175,13 @@ No tuner control, no subprocess, no PCM/IQ through Dart.
    Config JSON (`sdr_decoder_select` config, schema `"dmr/1"`):
    `{"schema":"dmr/1","slot_filter":3,"color_code":-1,"voice":true}`; `slot_filter` 1/2/3 as
    upstream; `color_code` -1 = off (deviation: upstream has no CC filter).
-4. **Events to Dart (t_e1e6186c).** `Result::message`, JSON payload ≤ 64 KiB:
+4. **Events to Dart.** `Result::message`, JSON payload ≤ 64 KiB:
    `{"schema":"dmr/1","protocol":"DMR","slot":0,"sync":"voice","type":"group","source":2620001,
    "target":91,"talkeralias":"…","lat":…,"lon":…,"color_code":1,"privacy":false,
    "voice":"ok|unavailable|muted"}` — upstream keys keep upstream names; numbers are JSON
    numbers; absent keys mean "not decoded", never placeholders. Call history and duration are
    computed in Dart from event timestamps (sequence + wall clock), clearly labelled.
-5. **Voice PCM (t_5b101746).** `VoiceSink` → mbelib (uvquality 3) → int16 160 @ 8 kHz →
+5. **Voice PCM.** `VoiceSink` → mbelib (uvquality 3) → int16 160 @ 8 kHz →
    DigitalVoiceFilter → Agc(maxGain 30, initial 3) → float. Required contract extension in
    `decoder.hpp` (additive, commit before parallel work): 
    `virtual bool provides_audio() const { return false; }` and
@@ -201,13 +201,13 @@ No tuner control, no subprocess, no PCM/IQ through Dart.
   240k, 250k, 288k and 300k baseband rates. The custom native selector
   remains a documented approximation of OpenWebRX+'s FFT selector; a
   same-recording oracle comparison is not yet available.
-- No over-the-air DMR test yet; no local DMR IQ recording found. Child cards need a capture
+- No over-the-air DMR test yet; no local DMR IQ recording found. Implementations need a capture
   (Blog V4 on the Linux host) or a synthetic vector generated from the sync/EMB tables.
 - Full talker-alias charset cases, nonzero GPS and embedded LC checksum failure
   remain unverified; zero-coordinate/ISO-8859-1/four-fragment paths are tested in section 9.
 - Legal status outside US/EP not checked; this is not legal advice.
 
-## 9. Framing port (t_0c6cc09e)
+## 9. Framing port
 
 The GPL-3.0 digiham DMR phase, metadata, LC, CACH, EMB, slot-type, GPS,
 talker-alias and FEC sources are compiled as `sdrcore_dmr_framing` from
@@ -231,11 +231,11 @@ Hamming/QR/BPTC correction, LC group/direct IDs and privacy, zero-coordinate
 GPS, an ISO-8859-1 talker alias and four-fragment embedded LC. The native
 target and tests also compile for Android arm64 API 26. No matching DMR air
 capture, full BPTC LC over a burst, RS(12,9) verification, or codec PCM
-comparison has been exercised here; the oracle card t_371d403a owns that
-end-to-end check. The demodulator/receiver registration, vocoder and UI are
-separate child cards; DMR cannot be selected as a live decoder yet.
+comparison has been exercised here; that end-to-end oracle
+check is still open. The demodulator/receiver registration, vocoder and UI are
+separate pieces of work; DMR cannot be selected as a live decoder yet.
 
-## 10. Flutter controls and call display (t_e1e6186c)
+## 10. Flutter controls and call display
 
 Dart side only; it consumes the §7.3 config and §7.4 events and never
 touches IQ or PCM.
@@ -282,7 +282,7 @@ touches IQ or PCM.
 - **Not implemented, shown honestly.** radioid.net ID lookup, callsign
   enrichment and the map pin need network access, and the panel states
   that lookup is unsupported. The panel has no volume control: DMR voice
-  uses the normal audio volume and mute once t_5b101746 routes AMBE PCM
+  uses the normal audio volume and mute once AMBE PCM is routed
   into the native sink. The `voice` key in events (`ok|muted|unavailable`)
   is displayed when present.
 - **Tests.** `test/ui/dmr_session_test.dart` (8) and `test/ui/dmr_panel_test.dart`
@@ -296,7 +296,7 @@ touches IQ or PCM.
   real event has gone through `NativeDecoderBackend`. Live RTL-SDR/air and
   Android hardware checks have not been done.
 
-## 11. AMBE+2 voice output (t_5b101746)
+## 11. AMBE+2 voice output
 
 `native/src/dmr/vocoder.{hpp,cpp}` (target `sdrcore_dmr_voice`, linked into
 libsdrcore) reproduces OpenWebRX+'s DmrMode voice path in process:
@@ -337,8 +337,8 @@ mbelib + DigitalVoiceFilter + `csdr agc` on synthetic frames.
 Not verified / remaining: no open AMBE+2 speech encoder exists, so all test
 frames are synthetic parameter vectors (vocoder buzz, not speech). No
 over-the-air DMR voice was decoded. Audibility is unconfirmed;
-it still requires manual listening. The DMR backend (registry entry, 4FSK channel from
-t_8e3dfcc0, events, `{"voice":false}` mapping) still has to own one
-`VoiceOutput` and return `provides_audio() == true`. That wiring belongs to
-the integration card t_bc6f9eeb. Once the backend is registered, the UI from
+it still requires manual listening. The DMR backend (registry entry, 4FSK channel,
+events, `{"voice":false}` mapping) still has to own one
+`VoiceOutput` and return `provides_audio() == true`. That wiring is part of
+the backend integration. Once the backend is registered, the UI from
 §10 needs no volume control of its own.

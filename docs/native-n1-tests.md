@@ -1,7 +1,6 @@
 # N1 host-side native tests — scope, commands, and limits
 
-The host-test branch was integrated with the driver and Kotlin branches in
-`wt/t_ff2dd2b1`. The public ABI contract remains `native/include/sdrcore.h`.
+The host tests were integrated together with the driver and Kotlin work. The public ABI contract remains `native/include/sdrcore.h`.
 
 ## What is tested, and how
 
