@@ -12,6 +12,7 @@ if(MSVC)
 endif()
 
 add_subdirectory(third_party)
+include(third_party/dmr_framing.cmake)
 include(third_party/rds.cmake)
 include(third_party/fftw.cmake)
 # csdr-plus SSTV decoder sources (BSD-3) + SSTV-only Module shim; defines the
@@ -87,7 +88,7 @@ else()
 endif()
 target_compile_features(sdrcore PRIVATE cxx_std_17)
 find_package(Threads REQUIRED)
-target_link_libraries(sdrcore PRIVATE Threads::Threads sdrcore_rtlsdr sdrcore_hackrf sdrcore_rtl433 sdrcore_rds sdrcore_meshtastic sdrcore_csdr_sstv sdrcore_dump1090)
+target_link_libraries(sdrcore PRIVATE Threads::Threads sdrcore_rtlsdr sdrcore_hackrf sdrcore_rtl433 sdrcore_rds sdrcore_meshtastic sdrcore_csdr_sstv sdrcore_dump1090 sdrcore_dmr_framing)
 if(NOT WIN32)
     target_link_libraries(sdrcore PRIVATE m)
 endif()
@@ -119,6 +120,16 @@ set_target_properties(sdrcore PROPERTIES
     CXX_VISIBILITY_PRESET hidden
     VISIBILITY_INLINES_HIDDEN YES)
 target_include_directories(sdrcore PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+
+# Symbol-level DMR framing is independent of the signal-chain integration.
+if(NOT ANDROID AND PROJECT_IS_TOP_LEVEL)
+    enable_testing()
+    add_executable(sdrcore_dmr_framing_test tests/dmr_framing_test.cpp)
+    target_link_libraries(sdrcore_dmr_framing_test PRIVATE sdrcore_dmr_framing)
+    target_include_directories(sdrcore_dmr_framing_test PRIVATE
+        third_party/digiham_dmr/upstream third_party/digiham_dmr/compat)
+    add_test(NAME sdrcore_dmr_framing COMMAND sdrcore_dmr_framing_test)
+endif()
 
 # The per-sample DSP path cannot sustain 2.4 MS/s at -O0: Flutter debug
 # bundles (Linux runner and AGP debug APK) configure CMAKE_BUILD_TYPE=Debug and

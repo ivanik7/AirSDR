@@ -1,6 +1,7 @@
 # STATUS — DMR audit (OpenWebRX+ chain, digiham, codecserver, mbelib)
 
-Task t_5724f368. This is an audit and interface definition only; no DMR code exists in the app yet.
+Task t_5724f368 is the audit and interface definition. Section 9 tracks the
+subsequent symbol-level framing port; no live DMR decoder is registered yet.
 Child cards: t_8e3dfcc0 (filter + 4FSK), t_0c6cc09e (framing/metadata),
 t_5b101746 (AMBE synthesis + audio), t_e1e6186c (UI). Integration: t_bc6f9eeb.
 
@@ -193,6 +194,34 @@ No tuner control, no subprocess, no PCM/IQ through Dart.
 ## 8. Remaining gaps / not verified
 - No over-the-air DMR test yet; no local DMR IQ recording found. Child cards need a capture
   (Blog V4 on debian-ai) or a synthetic vector generated from the sync/EMB tables.
-- Talker-alias charset handling, embedded LC checksum behaviour and GPS formulas were read but not
-  executed.
+- Full talker-alias charset cases, nonzero GPS and embedded LC checksum failure
+  remain unverified; zero-coordinate/ISO-8859-1/four-fragment paths are tested in section 9.
 - Legal status outside US/EP not checked; this is not legal advice.
+
+## 9. Framing port (t_0c6cc09e)
+
+The GPL-3.0 digiham DMR phase, metadata, LC, CACH, EMB, slot-type, GPS,
+talker-alias and FEC sources are compiled as `sdrcore_dmr_framing` from
+`native/third_party/digiham_dmr/upstream/` (pinned provenance and local delta in
+`native/third_party/digiham_dmr/PROVENANCE.md`). `native/src/dmr/framing.hpp`
+exposes streaming 4800-symbol/s dibits to `Framing::on_symbols`, per-slot
+`SlotMeta` callbacks and three 9-byte interleaved AMBE frames per accepted
+voice burst. The adapter has no second tuner, subprocess, IQ/PCM FFI or audio
+sink. `reset()` clears partial bursts, reinitializes digiham and sends no-sync
+for both slots. Digiham's first active voice slot wins unless the slot mask
+mutes it; optional CC filtering withholds metadata and voice until EMB/slot-type
+CC is known. TS1 is slot 0, TS2 is slot 1. Group `target` is the talkgroup;
+unit-to-unit `target` is the destination radio ID. Privacy means PI header or
+the voice LC service-options privacy bit; the payload is never decrypted.
+`duration_ms` counts observed voice frames in 30-ms increments, not wall time.
+
+Host synthetic tests cover four BS/MS sync words at the three-bit-error limit,
+rejection above that limit, alternating CACH slot tracking, voice slot selection,
+CC filtering, symbol-stream chunk boundaries, AMBE dibit packing, reset,
+Hamming/QR/BPTC correction, LC group/direct IDs and privacy, zero-coordinate
+GPS, an ISO-8859-1 talker alias and four-fragment embedded LC. The native
+target and tests also compile for Android arm64 API 26. No matching DMR air
+capture, full BPTC LC over a burst, RS(12,9) verification, or codec PCM
+comparison has been exercised here; the oracle card t_371d403a owns that
+end-to-end check. The demodulator/receiver registration, vocoder and UI are
+separate child cards; DMR cannot be selected as a live decoder yet.
