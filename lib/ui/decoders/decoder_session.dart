@@ -11,6 +11,8 @@ import '../bands/bands.dart';
 import '../legacy/centered_receiver.dart';
 import 'decoder_contract.dart';
 import 'adsb_snapshot.dart';
+import 'meshtastic_keys.dart';
+import 'meshtastic_packets.dart';
 import 'meshtastic_tuning.dart';
 import 'dmr_call.dart';
 import 'rds_station.dart';
@@ -100,6 +102,10 @@ class DecoderSession extends ChangeNotifier {
   /// SSTV picture in progress plus the bounded session gallery; fed only
   /// by real native image events of the selected `sstv` decoder.
   final SstvReceiver sstv = SstvReceiver();
+
+  /// Meshtastic packet log, text messages and node list; fed only by real
+  /// native events of the selected `meshtastic` decoder.
+  final MeshtasticLog meshtastic = MeshtasticLog();
   int _afterSequence = 0;
   int? _streamGeneration;
   int _droppedEvents = 0;
@@ -281,6 +287,7 @@ class DecoderSession extends ChangeNotifier {
     _streamGeneration = null;
     _droppedEvents = 0;
     _messages.clear();
+    meshtastic.clearPackets();
     _adsbSnapshot = null;
     _clearDmr(keepHistory: keepDmrHistory);
   }
@@ -376,6 +383,7 @@ class DecoderSession extends ChangeNotifier {
       if (_streamGeneration != null &&
           event.streamGeneration != _streamGeneration) {
         _messages.clear();
+        meshtastic.clearPackets();
         _adsbSnapshot = null;
         _clearDmr();
         rds.clear();
@@ -439,6 +447,23 @@ class DecoderSession extends ChangeNotifier {
         if (_selectedId == 'dmr') {
           if (active && _isDmrEvent(data)) {
             _onDmrEvent(data, DateTime.now());
+            changed = true;
+          }
+          continue;
+        }
+        if (_selectedId == 'meshtastic') {
+          final packet = active
+              ? MeshtasticPacket.fromEvent(
+                  event.sequence,
+                  data,
+                  receivedAt: DateTime.now(),
+                  secrets: meshtasticKeySecrets(
+                    settingsFor('meshtastic')['channels'],
+                  ),
+                )
+              : null;
+          if (packet != null) {
+            meshtastic.add(packet);
             changed = true;
           }
           continue;
@@ -521,6 +546,12 @@ class DecoderSession extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Clears the packet log and text messages; [nodes] also forgets nodes.
+  void clearMeshtastic({bool nodes = false}) {
+    nodes ? meshtastic.clear() : meshtastic.clearPackets();
+    notifyListeners();
+  }
+
   @override
   void dispose() {
     _stopPolling();
@@ -566,10 +597,9 @@ class DecoderSession extends ChangeNotifier {
   void setSetting(String id, String key, Object value) {
     final descriptor = decoderById(id);
     final spec = descriptor?.settings.where((s) => s.key == key).firstOrNull;
-    if (spec == null ||
-        (spec.allowed.isNotEmpty && !spec.allowed.contains(value))) {
-      return;
-    }
+    final accepted = spec?.accept(value);
+    if (spec == null || accepted == null) return;
+    value = accepted;
     _settings.putIfAbsent(id, () => <String, Object>{})[key] = value;
     if (key == 'underlying' &&
         id == _selectedId &&
@@ -613,12 +643,7 @@ class DecoderSession extends ChangeNotifier {
     final descriptor = decoderById(resolvedId);
     _settings[resolvedId] = <String, Object>{
       for (final spec in descriptor?.settings ?? const <DecoderSetting>[])
-        spec.key:
-            (settings[spec.key] != null &&
-                (spec.allowed.isEmpty ||
-                    spec.allowed.contains(settings[spec.key])))
-            ? settings[spec.key]!
-            : spec.defaultValue,
+        spec.key: spec.accept(settings[spec.key]) ?? spec.defaultValue,
     };
     if (resolvedId != _selectedId) sstv.abort('deselect');
     _selectedId = resolvedId;

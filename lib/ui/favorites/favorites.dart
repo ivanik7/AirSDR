@@ -45,12 +45,7 @@ Map<String, Object> _normalizeDecoderSettings(
   if (descriptor == null) return const <String, Object>{};
   return <String, Object>{
     for (final spec in descriptor.settings)
-      spec.key:
-          (raw != null &&
-              raw[spec.key] != null &&
-              (spec.allowed.isEmpty || spec.allowed.contains(raw[spec.key])))
-          ? raw[spec.key]!
-          : spec.defaultValue,
+      spec.key: spec.accept(raw?[spec.key]) ?? spec.defaultValue,
   };
 }
 

@@ -223,6 +223,12 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND PROJECT_IS_TOP_LEVEL)
     target_compile_definitions(sdrcore_meshtastic_packet_test PRIVATE
         MESHTASTIC_VECTORS="${CMAKE_CURRENT_SOURCE_DIR}/tests/data/meshtastic_vectors.json")
     add_test(NAME sdrcore_meshtastic_packet COMMAND sdrcore_meshtastic_packet_test)
+    # Dart packet/node UI tests read real native events from this fixture.
+    add_executable(sdrcore_meshtastic_ui_fixture tests/meshtastic_ui_fixture.cpp)
+    target_link_libraries(sdrcore_meshtastic_ui_fixture PRIVATE sdrcore_meshtastic)
+    add_test(NAME sdrcore_meshtastic_ui_fixture COMMAND sdrcore_meshtastic_ui_fixture
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/data/meshtastic_vectors.json
+        ${CMAKE_CURRENT_SOURCE_DIR}/../test/ui/fixtures/meshtastic_native_events.json)
     # Check the N2 header layouts independently of the DSP implementation.
     # The integrator advances sdr_version only after all N2 layers are ready.
     add_library(sdrcore_v3_contract_compile OBJECT tests/v3_contract_compile.c)

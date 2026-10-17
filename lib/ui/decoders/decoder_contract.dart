@@ -3,6 +3,7 @@
 import 'dart:typed_data';
 
 import '../radio_controller.dart' show DemodMode;
+import 'meshtastic_keys.dart' show normalizeMeshtasticChannels;
 
 /// Data decoder IDs are distinct from stable v3 demodulator choice IDs.
 enum DecoderInput { audio, mpx, baseband, rawIq }
@@ -10,10 +11,26 @@ enum DecoderInput { audio, mpx, baseband, rawIq }
 enum DecoderResult { none, message, imageProgress, imageComplete, aircraft }
 
 class DecoderSetting {
-  const DecoderSetting(this.key, this.defaultValue, {this.allowed = const []});
+  const DecoderSetting(
+    this.key,
+    this.defaultValue, {
+    this.allowed = const [],
+    this.normalize,
+  });
   final String key;
   final Object defaultValue;
   final List<Object> allowed;
+
+  /// Structured values (lists/maps) that an [allowed] list cannot express:
+  /// returns the cleaned value, or null to reject it.
+  final Object? Function(Object value)? normalize;
+
+  /// The value to store for [value], or null if it is not acceptable.
+  Object? accept(Object? value) {
+    if (value == null) return null;
+    if (normalize != null) return normalize!(value);
+    return allowed.isEmpty || allowed.contains(value) ? value : null;
+  }
 }
 
 class DecoderDescriptor {
@@ -163,6 +180,10 @@ final decoderCatalog = <DecoderDescriptor>[
         'US', 'EU_433', 'EU_868', 'EU_866', 'EU_N_868', 'CN', 'JP',
         'ANZ', 'RU',
       ]),
+      // Ordered `{name, psk}` channel keys tried by the native packet layer
+      // (docs/status/meshtastic.md). User data: never logged or displayed.
+      DecoderSetting('channels', <Object>[],
+          normalize: normalizeMeshtasticChannels),
     ],
   ),
   DecoderDescriptor(
