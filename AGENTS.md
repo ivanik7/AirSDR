@@ -68,4 +68,5 @@ Never present a stub as finished. Label anything not tested as unverified.
 - When done: run gates in the worktree, merge `feat/<name>` into `master` only when the main checkout is clean, then rerun `flutter analyze && flutter test` on master and build the APK as applicable.
 - After every merge into `master` that passes those gates, run `git push origin master` (GitHub `ivanik7/AirSDR`). Fast-forward only: never force-push, never push `feat/*` branches. If the push is rejected, `git pull --ff-only` is not possible, or auth fails, report it in the task result instead of rewriting history.
 - In the final report, list changes, exact commands/results, master commit, verified behavior, and remaining gaps. If the user must decide or act, ask a precise question.
+- Versions and releases: `version:` in `pubspec.yaml` is the only hand-written version; cut releases with `tool/release.sh X.Y.Z` (`docs/releasing.md`).
 - Put long reports in `docs/status/*.md`, not in chat. New report files must be in English.

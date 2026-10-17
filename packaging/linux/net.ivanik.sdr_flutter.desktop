@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=AirSDR
+GenericName=SDR Receiver
+Comment=Software-defined radio receiver for RTL-SDR and HackRF
+Exec=airsdr
+Icon=net.ivanik.sdr_flutter
+Terminal=false
+Categories=AudioVideo;Audio;HamRadio;Network;
+Keywords=SDR;RTL-SDR;HackRF;radio;FM;receiver;
+StartupWMClass=net.ivanik.sdr_flutter

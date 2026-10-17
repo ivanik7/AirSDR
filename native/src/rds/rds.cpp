@@ -61,7 +61,7 @@ void Sink::reset() {
   // carry any of it across a stream/tune/mode/RBDS boundary. It is cheap to
   // rebuild (~2 us). The filter banks are not: constructing SubcarrierSet and
   // the liquid resampler designs every FIR/RRC bank again (~13 ms on the
-  // debian-ai host, more on the phone). reset() runs on the DSP thread up to
+  // Linux dev host, more on the phone). reset() runs on the DSP thread up to
   // four times per frequency switch (and on the caller's thread for every
   // VFO move), so a full rebuild here drained the 60 ms playback cushion and
   // punched an audible hole into the audio on every switch (t_8063d101).

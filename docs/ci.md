@@ -1,29 +1,36 @@
 # Continuous integration
 
-Workflow: `.github/workflows/android-apk.yml` (workflow name `build`).
+Workflow: `.github/workflows/ci.yml` (workflow name `ci`).
 
 ## Triggers
 
 - every push to `master` (every merged task pushes master, see AGENTS.md);
+- pull requests;
+- tags `v*` (also publish a GitHub release, see below);
 - manual `workflow_dispatch` from the Actions tab.
 
-Runs are grouped per ref with `cancel-in-progress`, so a newer push to master
-cancels a still-running older build.
+Runs are grouped per ref with `cancel-in-progress` (except tag runs), so a
+newer push cancels a still-running older build of the same ref.
 
-## Job `android` (ubuntu-latest)
+## Toolchain
 
-Toolchain, pinned to match local builds:
+All jobs run on `ubuntu-24.04`.
 
 | Component | Version | Source of truth |
 |---|---|---|
-| Flutter | 3.47.5 stable | `flutter --version` |
+| Flutter | 3.47.5 stable | `FLUTTER_VERSION` in the workflow |
 | JDK | 21 (Temurin) | `java -version` |
 | Android platform / build-tools | android-36 / 36.0.0 | `flutter.compileSdkVersion` |
 | NDK | 28.2.13676358 | `flutter.ndkVersion` (Flutter 3.47.5), `android/build.gradle.kts` |
 | CMake (Android) | 3.22.1 | `android/app/build.gradle.kts` |
 | Gradle | 9.3.1 | `android/gradle/wrapper/gradle-wrapper.properties` |
+| nFPM | 2.48.0 | `NFPM_VERSION` in the workflow |
 
-Steps:
+## Jobs
+
+`test`, `android` and `linux` run in parallel.
+
+### `test`
 
 1. `flutter pub get`, `flutter analyze`.
 2. `native/tests/run_host_tests.sh build/native-host-tests`: builds host
@@ -35,23 +42,50 @@ Steps:
    FFI tests run against real native code. Hardware tests stay skipped because
    `SDR_HW_TEST` is not set; tests gated on `SDRCORE_V3_PROBE_LIBRARY` stay
    skipped as well.
-4. `flutter build apk --release --target-platform android-arm64` and
-   `flutter build apk --debug`. libsdrcore for Android is built from source by
-   AGP/CMake (`native/CMakeLists.txt`); no prebuilt SDR libraries are
-   downloaded.
+
+### `android`
+
+`flutter build apk --release --target-platform android-arm64` and
+`flutter build apk --debug`. libsdrcore for Android is built from source by
+AGP/CMake (`native/CMakeLists.txt`); no prebuilt SDR libraries are downloaded.
+
+### `linux` and `linux-install`
+
+`flutter build linux --release`, an `ldd` check of the bundle, then
+`packaging/linux/build-packages.sh` builds `.deb`, `.rpm`, Arch
+`.pkg.tar.zst` and a portable `.tar.gz` with nFPM. See
+[linux-packages.md](linux-packages.md).
+
+`linux-install` then installs the packages with the native package manager on
+clean `debian:13`, `ubuntu:24.04`, `fedora:latest`, `opensuse/tumbleweed` and
+`archlinux:latest` containers and checks that every bundled library resolves.
+
+### `release` (tags `v*` only)
+
+After all jobs pass, checks the tag against `version:` in `pubspec.yaml` and
+creates a GitHub release with the APKs and Linux packages attached. Tags are
+made by `tool/release.sh`, see [releasing.md](releasing.md).
+
+## Versions
+
+Every build job runs `tool/version.sh` (full history, `fetch-depth: 0`):
+releases are `X.Y.Z`, other commits `X.Y.Z+git<N>.g<sha>`, and the Android
+versionCode is the commit count. See [releasing.md](releasing.md).
 
 Caches: Flutter SDK and pub cache (`subosito/flutter-action`), Gradle
 caches/wrapper, and the NDK + CMake SDK packages.
 
 ## Artifacts
 
-Each run uploads two APKs (uploaded unzipped, retention 30 days), where
-`<sha>` is the 8-character commit id:
+Each run uploads, where `<version>` is `FULL_VERSION` from `tool/version.sh`:
 
-- `AirSDR-<sha>-arm64-release.apk`
-- `AirSDR-<sha>-debug.apk`
+- `AirSDR-<version>-arm64-release.apk` and `AirSDR-<version>-debug.apk`
+  (uploaded unzipped);
+- `AirSDR-<version>-linux-x86_64` (a zip with the `.deb`, `.rpm`,
+  `.pkg.tar.zst` and `.tar.gz`).
 
-Download them from the run page in the Actions tab (requires a GitHub login).
+Retention is 30 days. Download them from the run page in the Actions tab
+(requires a GitHub login).
 
 ## Signing: CI APKs do not upgrade local builds
 
