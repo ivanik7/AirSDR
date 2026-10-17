@@ -4,7 +4,7 @@ Flutter Android and Linux app. The production SDR USB driver, DSP, demodulation,
 and audio path run in C/C++; Dart/Flutter handles the UI and control. The Dart SDR
 receiver was removed after native acceptance on the Linux host. Preserve native
 receiver behavior and user data. Decoder backends are future work.
-Receiver/DSP/UI acceptance uses the USB-attached RTL-SDR Blog V4 on `debian-ai`.
+Receiver/DSP/UI acceptance uses the USB-attached RTL-SDR Blog V4 on the Linux host.
 Android behaviour is checked on the Android emulator. Never use a real phone.
 License: GPL-3.0. Keep chat replies to the user concise and in Russian.
 
@@ -15,19 +15,13 @@ License: GPL-3.0. Keep chat replies to the user concise and in Russian.
 
 ## Read before working
 - `README.md` — current layers and directories.
-- `~/prj/docs/40-native-core-plan.md` and `~/prj/docs/10-architecture.md` — native architecture;
-  `~/prj/docs/30-openwebrx-decoders-plan.md` — future decoder sources. Historical Dart-port
-  reports and `~/prj/docs/WORKER_RULES.md` are reference material, not architecture policy.
-- Topic reports `~/prj/docs/01..04-*.md` (sources, DSP, waterfall/UI, alternatives) when relevant.
+- `docs/` — native ABI, ADRs, decoder architecture, desktop/emulator/CI notes.
 - `docs/status/*.md` — layer APIs and known gaps.
-- The `flutter-android-development` skill (including `references/sdr-port-notes.md`), and `c-driver-oracle-trace-diff` for driver verification.
 
 ## Environment
-- `source ~/prj/env.sh` before flutter/dart/adb (Flutter 3.47.5, JDK 21, Android SDK/NDK under `~/sdk`; no sudo assumed).
-- References: `~/prj/sdrpp` (SDR++), `~/prj/ref/{rtl-sdr,hackrf,hackrf_android,RFAnalyzer,rtl_tcp_andro-,legacy-sdr-ui,android-sdr-kit,openwebrx}`.
-- VM: 11 GB RAM, 8 cores. Run no more than one Gradle build at a time. After a build and before the full `flutter test` suite, stop Gradle/Kotlin daemons if timer-based tests become slow (`(cd android && ./gradlew --stop); pkill -f kotlin-daemon`).
+- Use the Flutter SDK version required by `pubspec.yaml`, JDK 21, and the Android SDK/NDK.
+- Run no more than one Gradle build at a time. After a build and before the full `flutter test` suite, stop Gradle/Kotlin daemons if timer-based tests become slow (`(cd android && ./gradlew --stop); pkill -f kotlin-daemon`).
 - `android/gradlew` and `gradle-wrapper.jar` are gitignored and missing from new worktrees; copy them from the main checkout if needed.
-- Keep git identity repository-local. New commits: author `Ivanik <ivan170102@gmail.com>` and trailer `Co-authored-by: Hermes Agent <hermes@hermes-agent.nousresearch.com>`.
 
 ## Contracts (do not change without a task-level reason)
 `native/include/sdrcore_v3.h`, `lib/native/native_radio_controller.dart`, and
@@ -68,4 +62,4 @@ Never present a stub as finished. Label anything not tested as unverified.
 - When done: run gates in the worktree, merge `wt/<task>` into `master` only when the main checkout is clean, then rerun `flutter analyze && flutter test` on master and build the APK as applicable.
 - After every merge into `master` that passes those gates, run `git push origin master` (GitHub `ivanik7/AirSDR`). Fast-forward only: never force-push, never push `wt/*` branches. If the push is rejected, `git pull --ff-only` is not possible, or auth fails, report it in the task result instead of rewriting history.
 - In the final report, list changes, exact commands/results, master commit, verified behavior, and remaining gaps. If the user must decide or act, ask a precise question.
-- Put long reports in `docs/status/*.md` or `~/prj/docs/`, not in chat. New report files must be in English.
+- Put long reports in `docs/status/*.md`, not in chat. New report files must be in English.
