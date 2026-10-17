@@ -110,7 +110,7 @@ void main() {
       ),
     );
     expect(session.active, isFalse);
-    expect(find.text('Недоступен в текущей нативной сборке'), findsOneWidget);
+    expect(find.text('Unavailable in the current native build'), findsOneWidget);
     final dropdown = tester.widget<DropdownButton<int>>(
       find.byKey(const ValueKey('dmrSetting-slot_filter')),
     );
@@ -176,16 +176,16 @@ void main() {
       });
       await tester.pump(const Duration(milliseconds: 150));
       expect(find.textContaining('TG 91'), findsOneWidget);
-      expect(find.textContaining('Источник 2620001'), findsOneWidget);
+      expect(find.textContaining('Source 2620001'), findsOneWidget);
       expect(find.textContaining('CC 1'), findsOneWidget);
       expect(find.byKey(const ValueKey('dmrEncrypted-s2')), findsOneWidget);
       expect(find.textContaining('UN7XYZ Test'), findsOneWidget);
       expect(find.textContaining('GPS: 43.25000, 76.95000'), findsOneWidget);
-      expect(find.textContaining('2.4 с'), findsOneWidget);
-      expect(find.text('Голос · синхр.'), findsOneWidget);
+      expect(find.textContaining('2.4 s'), findsOneWidget);
+      expect(find.text('Voice · sync'), findsOneWidget);
       backend.add(2, {'schema': 'dmr/1', 'protocol': 'DMR', 'slot': 1});
       await tester.pump(const Duration(milliseconds: 150));
-      expect(find.text('История вызовов · 1'), findsOneWidget);
+      expect(find.text('Call history · 1'), findsOneWidget);
       expect(find.byKey(const ValueKey('dmrEncrypted-h2')), findsOneWidget);
       expect(find.byKey(const ValueKey('dmrEncrypted-s2')), findsNothing);
       expect(tester.takeException(), isNull);
@@ -195,14 +195,14 @@ void main() {
       expect(backend.calls.last['slot_filter'], 2);
       expect(find.byKey(const ValueKey('dmrSlotMuted-1')), findsOneWidget);
       // History survives a filter change; the TS2-only mask can't drop TS2.
-      expect(find.text('История вызовов · 1'), findsOneWidget);
+      expect(find.text('Call history · 1'), findsOneWidget);
       final before = backend.calls.length;
       await tester.tap(find.byKey(const ValueKey('dmrSlotToggle-2')));
       await tester.pump();
       expect(backend.calls.length, before);
       await tester.tap(find.byKey(const ValueKey('dmrClearHistory')));
       await tester.pump();
-      expect(find.text('История вызовов · 0'), findsOneWidget);
+      expect(find.text('Call history · 0'), findsOneWidget);
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox());
       session.dispose();

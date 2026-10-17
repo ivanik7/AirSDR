@@ -41,7 +41,7 @@ void main() {
     await repo.load();
     final f = repo.add(
       frequencyHz: 99500000,
-      name: 'Своя FM',
+      name: 'My FM',
       mode: DemodMode.wfm,
       category: 'FM',
     );

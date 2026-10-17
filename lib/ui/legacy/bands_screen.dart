@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
-// Настройки → Диапазоны (task t_7b20878c): list sorted by start frequency,
+// Settings → Bands (task t_7b20878c): list sorted by start frequency,
 // create («+»), edit (tap on a row), delete (with confirmation).
 import 'package:flutter/material.dart';
 
@@ -29,18 +29,18 @@ class BandsScreen extends StatelessWidget {
     final ok = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Удалить диапазон?'),
+        title: const Text('Delete band?'),
         content: Text('${b.name} · ${formatBandRange(b)}'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('Отмена'),
+            child: const Text('Cancel'),
           ),
           FilledButton(
             key: const ValueKey('bandDeleteConfirm'),
             style: FilledButton.styleFrom(backgroundColor: LegacyColors.danger),
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('Удалить'),
+            child: const Text('Delete'),
           ),
         ],
       ),
@@ -51,11 +51,11 @@ class BandsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(
-      title: Text('Диапазоны', style: plex(size: 20, weight: FontWeight.w600)),
+      title: Text('Bands', style: plex(size: 20, weight: FontWeight.w600)),
     ),
     floatingActionButton: FloatingActionButton(
       key: const ValueKey('bandAdd'),
-      tooltip: 'Добавить диапазон',
+      tooltip: 'Add band',
       onPressed: () => _edit(context),
       child: const Icon(Icons.add),
     ),
@@ -67,7 +67,7 @@ class BandsScreen extends StatelessWidget {
           if (list.isEmpty) {
             return Center(
               child: Text(
-                'Диапазонов нет',
+                'No bands',
                 style: plex(size: 13, color: LegacyColors.muted),
               ),
             );
@@ -111,7 +111,7 @@ class BandsScreen extends StatelessWidget {
                                 ),
                               ),
                               Text(
-                                '${decoderById(b.decoderChoice)?.label ?? b.mode.label} · шаг ${formatStepKhz(b.stepHz)}',
+                                '${decoderById(b.decoderChoice)?.label ?? b.mode.label} · step ${formatStepKhz(b.stepHz)}',
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: plex(
@@ -124,7 +124,7 @@ class BandsScreen extends StatelessWidget {
                         ),
                         IconButton(
                           key: ValueKey('bandDelete-${b.id}'),
-                          tooltip: 'Удалить диапазон',
+                          tooltip: 'Delete band',
                           onPressed: () => _confirmDelete(context, b),
                           icon: const Icon(
                             Icons.delete_outline,
@@ -190,8 +190,8 @@ class _BandFormState extends State<BandForm> {
     if (s == null || e == null) {
       setState(
         () => error =
-            'введите ${s == null ? 'начало' : 'конец'} в МГц, '
-            'например 144.0',
+            'enter the ${s == null ? 'start' : 'end'} in MHz, '
+            'e.g. 144.0',
       );
       return;
     }
@@ -229,7 +229,7 @@ class _BandFormState extends State<BandForm> {
   @override
   Widget build(BuildContext context) => AlertDialog(
     title: Text(
-      widget.existing == null ? 'Новый диапазон' : 'Изменить диапазон',
+      widget.existing == null ? 'New band' : 'Edit band',
     ),
     content: SingleChildScrollView(
       child: Column(
@@ -240,7 +240,7 @@ class _BandFormState extends State<BandForm> {
             key: const ValueKey('bandName'),
             controller: name,
             maxLength: bandMaxNameLength,
-            decoration: _field('Название'),
+            decoration: _field('Name'),
           ),
           Row(
             children: [
@@ -251,7 +251,7 @@ class _BandFormState extends State<BandForm> {
                   keyboardType: const TextInputType.numberWithOptions(
                     decimal: true,
                   ),
-                  decoration: _field('Начало', 'МГц'),
+                  decoration: _field('Start', 'MHz'),
                 ),
               ),
               const SizedBox(width: 8),
@@ -262,7 +262,7 @@ class _BandFormState extends State<BandForm> {
                   keyboardType: const TextInputType.numberWithOptions(
                     decimal: true,
                   ),
-                  decoration: _field('Конец', 'МГц'),
+                  decoration: _field('End', 'MHz'),
                 ),
               ),
             ],
@@ -333,12 +333,12 @@ class _BandFormState extends State<BandForm> {
     actions: [
       TextButton(
         onPressed: () => Navigator.pop(context),
-        child: const Text('Отмена'),
+        child: const Text('Cancel'),
       ),
       FilledButton(
         key: const ValueKey('bandSave'),
         onPressed: _save,
-        child: const Text('Сохранить'),
+        child: const Text('Save'),
       ),
     ],
   );

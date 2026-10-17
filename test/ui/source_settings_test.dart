@@ -83,14 +83,14 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('Sample Rate'), findsNothing);
       expect(find.text('Gain 29.7 dB'), findsNothing);
-      expect(find.text('Коррекция PPM'), findsOneWidget);
-      expect(find.text('Питание антенны (Bias-T)'), findsOneWidget);
-      expect(find.text('Стерео'), findsNothing);
-      expect(find.textContaining('Мвыб/с'), findsOneWidget);
-      expect(find.textContaining('USB потери 3'), findsOneWidget);
-      expect(find.textContaining('выход mp_audio_stream'), findsOneWidget);
+      expect(find.text('PPM correction'), findsOneWidget);
+      expect(find.text('Antenna power (Bias-T)'), findsOneWidget);
+      expect(find.text('Stereo'), findsNothing);
+      expect(find.textContaining('MS/s'), findsOneWidget);
+      expect(find.textContaining('USB drops 3'), findsOneWidget);
+      expect(find.textContaining('output mp_audio_stream'), findsOneWidget);
 
-      await tester.tap(find.text('Питание антенны (Bias-T)'));
+      await tester.tap(find.text('Antenna power (Bias-T)'));
       await tester.pump();
       expect(c.applied.last, ('biasT', true));
 
@@ -102,7 +102,7 @@ void main() {
       expect(c.applied.last, ('ppm', 52));
 
       // Close the sheet; errors show as a snackbar.
-      Navigator.of(tester.element(find.text('Питание антенны (Bias-T)'))).pop();
+      Navigator.of(tester.element(find.text('Antenna power (Bias-T)'))).pop();
       await tester.pumpAndSettle();
       c.fail('RTL-SDR device disconnected');
       await tester.pump();

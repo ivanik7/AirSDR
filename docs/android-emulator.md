@@ -1,109 +1,109 @@
-# Android-эмулятор для UI/synthetic smoke (debian-ai)
+# Android emulator for UI/synthetic smoke (debian-ai)
 
-Эмулятор НЕ заменяет SM-F936B с RTL-SDR Blog V4. Здесь проверяются только старт приложения
-на Android, интерфейс, перестройка/режимы, DSP на синтетических IQ и отрисовка спектра/водопада.
-Для этой процедуры телефон не нужен, и трогать его нельзя.
+The emulator does NOT replace the SM-F936B with the RTL-SDR Blog V4. It checks only app startup
+on Android, the interface, retuning/modes, DSP on synthetic IQ, and spectrum/waterfall rendering.
+This procedure does not need the phone, and it must not be touched.
 
-| Проверяется на эмуляторе | Только на физическом телефоне с USB-SDR |
+| Checked on the emulator | Only on the physical phone with a USB SDR |
 |---|---|
-| установка/запуск debug APK, холодный старт | USB OTG, usbfs, разрешение USB, драйверы RTL-SDR/HackRF |
-| вкладки Приём / Пресеты / Настройки, раскладка 360×780 dp | реальный эфир, чувствительность, gain/AGC тюнера, PPM |
-| выбор `Synthetic signal generator`, Старт/Стоп | слышимость и качество звука (проверяется вручную) |
-| частота (клавиатура, шаг ◀ ▶), центрирование, режимы WFM/NFM/AM/… | производительность и нагрев на arm64, release-сборка |
-| живой спектр и водопад на синтетическом сигнале, отсутствие крэшей | фон/экран выключен, Samsung-специфика (One UI, Android 16) |
+| debug APK install/launch, cold start | USB OTG, usbfs, USB permission, RTL-SDR/HackRF drivers |
+| Receive / Presets / Settings tabs, 360×780 dp layout | real RF, sensitivity, tuner gain/AGC, PPM |
+| selecting `Synthetic signal generator`, Start/Stop | audibility and sound quality (checked manually) |
+| frequency (keyboard, step ◀ ▶), centering, WFM/NFM/AM/… modes | performance and heating on arm64, release build |
+| live spectrum and waterfall on a synthetic signal, no crashes | background/screen off, Samsung specifics (One UI, Android 16) |
 
-Перед приёмкой hardware-dependent изменений (драйверы, USB, источник, аудио, фоновой приём)
-проверка на телефоне остаётся обязательной; прохождение эмулятора её не заменяет.
+Before accepting hardware-dependent changes (drivers, USB, source, audio, background reception)
+the phone check remains mandatory; passing on the emulator does not replace it.
 
-## Состояние хоста (проверено 2026-09-29)
+## Host state (verified 2026-09-29)
 
-- Emulator 37.1.11, образ `system-images;android-35;default;x86_64` (Android 15, без Play),
-  AVD `sdr_api35` в `~/.android/avd/`: Pixel 4a, 720×1560 @320 dpi (360×780 dp), 2 GiB RAM,
-  4 ядра, data 6 GiB. SDK/AVD вне git, в репозитории только скрипт и эта инструкция.
-- KVM: `/dev/kvm` `root:kvm 0660`, `$USER` добавлен в группу `kvm` (`getent group kvm`).
-  В login-сессии, начатой до этого (например, в процессе Hermes gateway), группы ещё нет;
-  `tool/emulator.sh start` в таком случае сам запускает эмулятор через `sg kvm -c`.
-  Проверка: `sg kvm -c '~/sdk/android/emulator/emulator -accel-check'` → `KVM ... is installed and usable`.
-  Программную эмуляцию без KVM не используем.
-- Холодная загрузка — 18–30 с до `sys.boot_completed=1`; эмулятор занимает около 2–3 GiB RAM.
-  Между сессиями его не оставлять (у ВМ 11 GiB) и не запускать одновременно с Gradle-сборкой,
-  если памяти мало.
+- Emulator 37.1.11, image `system-images;android-35;default;x86_64` (Android 15, no Play),
+  AVD `sdr_api35` in `~/.android/avd/`: Pixel 4a, 720×1560 @320 dpi (360×780 dp), 2 GiB RAM,
+  4 cores, data 6 GiB. The SDK/AVD are outside git; the repository holds only the script and this guide.
+- KVM: `/dev/kvm` `root:kvm 0660`, `$USER` was added to the `kvm` group (`getent group kvm`).
+  A login session started before that (for example, in the Hermes gateway process) does not have the group yet;
+  in that case `tool/emulator.sh start` launches the emulator itself via `sg kvm -c`.
+  Check: `sg kvm -c '~/sdk/android/emulator/emulator -accel-check'` → `KVM ... is installed and usable`.
+  We do not use software emulation without KVM.
+- Cold boot takes 18–30 s to `sys.boot_completed=1`; the emulator uses about 2–3 GiB RAM.
+  Do not leave it running between sessions (the VM has 11 GiB) and do not run it alongside a Gradle build
+  if memory is tight.
 
-Установка с нуля (уже выполнена на debian-ai):
+Installation from scratch (already done on debian-ai):
 
 ```sh
 source ~/prj/env.sh
 sdkmanager 'emulator' 'system-images;android-35;default;x86_64'
 avdmanager create avd --name sdr_api35 --package 'system-images;android-35;default;x86_64' --device pixel_4a
-# в ~/.android/avd/sdr_api35.avd/config.ini: hw.lcd.width=720 hw.lcd.height=1560 hw.lcd.density=320 hw.ramSize=2G
+# in ~/.android/avd/sdr_api35.avd/config.ini: hw.lcd.width=720 hw.lcd.height=1560 hw.lcd.density=320 hw.ramSize=2G
 ```
 
-## Цикл разработчика
+## Developer loop
 
-Из корня репозитория (или worktree), `tool/emulator.sh` сам делает `source ~/prj/env.sh`:
+From the repository root (or a worktree); `tool/emulator.sh` runs `source ~/prj/env.sh` itself:
 
 ```sh
 tool/emulator.sh start        # headless: -no-window -no-audio -no-snapshot -gpu swiftshader_indirect -accel on
-tool/emulator.sh wait         # ждёт sys.boot_completed=1
+tool/emulator.sh wait         # waits for sys.boot_completed=1
 adb devices -l                # emulator-5554 ... model:Android_SDK_built_for_x86_64
 flutter build apk --debug
-tool/emulator.sh install      # adb install -r (данные приложения сохраняются) + запуск и проверка
-tool/emulator.sh shot recv    # recv.png (+ recv.xml, дамп UI через uiautomator)
+tool/emulator.sh install      # adb install -r (app data is kept) + launch and check
+tool/emulator.sh shot recv    # recv.png (+ recv.xml, UI dump via uiautomator)
 tool/emulator.sh logs         # emulator-logcat.txt: flutter, AndroidRuntime, libc/DEBUG
 tool/emulator.sh stop         # adb emu kill
 ```
 
-Вместо `build` + `install` можно `flutter run -d emulator-5554` (hot reload; проверено: первая
-сборка + установка ≈ 1 мин). Debug APK содержит x86_64. Release собирается только под arm64-v8a,
-на эмулятор его не ставить.
-Serial всегда указывать явно (`-s emulator-5554`, `-d emulator-5554`): телефон тоже виден в
-`adb devices`/`flutter devices` через Wi-Fi ADB. При другом `EMU_PORT` serial меняется.
+Instead of `build` + `install` you can use `flutter run -d emulator-5554` (hot reload; verified: first
+build + install ≈ 1 min). The debug APK contains x86_64. Release is built only for arm64-v8a;
+do not install it on the emulator.
+Always specify the serial explicitly (`-s emulator-5554`, `-d emulator-5554`): the phone is also visible in
+`adb devices`/`flutter devices` over Wi-Fi ADB. With a different `EMU_PORT` the serial changes.
 
-Эмулятор запускается в фоне (`nohup`). Если запускающий процесс убивается вместе с группой
-(так бывает у агентских терминалов с таймаутом), эмулятор тоже умрёт. В этом случае нужно запускать
-`tool/emulator.sh start` из отдельного постоянного shell/фоновой сессии.
+The emulator is started in the background (`nohup`). If the launching process is killed together with its group
+(this happens with agent terminals that have a timeout), the emulator dies too. In that case run
+`tool/emulator.sh start` from a separate persistent shell/background session.
 
-## Synthetic smoke (выполнен 2026-09-29, коммит ветки на базе 406ba64)
+## Synthetic smoke (run 2026-09-29, branch commit based on 406ba64)
 
-Координаты — для 720×1560; актуальные bounds брать из `tool/emulator.sh shot` (xml) либо
-`adb -s emulator-5554 exec-out uiautomator dump /dev/tty`. Элементы доступны по content-desc.
+Coordinates are for 720×1560; take current bounds from `tool/emulator.sh shot` (xml) or
+`adb -s emulator-5554 exec-out uiautomator dump /dev/tty`. Elements are reachable by content-desc.
 
-1. Первый запуск: системный диалог уведомлений → «Allow». Приём: «Нет устройства», статус
-   «ожидание USB SDR». Synthetic не выбирается автоматически, и это правильно.
-2. Выпадающий список устройств (tap 320 200) → `Synthetic signal generator` → статус «приём остановлен».
-3. «Старт» (tap 80 200) → кнопка становится «Стоп», статус `2.40 MS/s · audio drops 0`.
-   Спектр живой: несущие около 99.4 / 99.7 / 100.5 / 100.7 МГц, широкополосный горб около
-   100.1–100.3 МГц. Водопад пополняется: два снимка с интервалом 3 с отличаются.
-4. Шаг ▶ ×2 (tap 644 858) → 100.025 МГц. Режим NFM (tap 250 485) → `NFM · BW 12.5k`.
-   Прокрутка вниз, на клавиатуре `1 0 0 . 7 OK` → 100.700 МГц. После прокрутки вверх несущая
-   100.7 стоит под центральным маркером, ось 100–101.5M: центрирование работает.
-5. Вкладки «Пресеты» (9 сохранено · один приёмный канал; фильтры Все/FM/AIR/VHF/MAR/UHF)
-   и «Настройки» (устройство Synthetic, частота выборки 2.40 МГц, AGC, усиление RF, громкость)
-   открываются. `uiautomator dump` на «Настройках» отвечает `could not get idle state`, поэтому
-   там только скриншот.
-6. «Приём» → «Стоп»: кнопка снова «Старт», статус «приём остановлен». Два снимка через 3 с идентичны:
-   водопад остановлен.
-7. Повторный цикл `stop/start/wait/install` через скрипт: частота/режим сохранились
-   (`install -r`), Synthetic → Старт → AM (`AM · BW 10.0k`), спектр/водопад живые, Стоп.
-   В `emulator-logcat.txt` исключений нет.
+1. First launch: system notification dialog → "Allow". Receive: "No device", status
+   "waiting for USB SDR". Synthetic is not selected automatically, and that is correct.
+2. Device dropdown (tap 320 200) → `Synthetic signal generator` → status "reception stopped".
+3. "Start" (tap 80 200) → the button becomes "Stop", status `2.40 MS/s · audio drops 0`.
+   The spectrum is live: carriers near 99.4 / 99.7 / 100.5 / 100.7 MHz, a wideband hump near
+   100.1–100.3 MHz. The waterfall fills: two snapshots 3 s apart differ.
+4. Step ▶ ×2 (tap 644 858) → 100.025 MHz. NFM mode (tap 250 485) → `NFM · BW 12.5k`.
+   Scroll down, on the keyboard `1 0 0 . 7 OK` → 100.700 MHz. After scrolling back up the 100.7
+   carrier sits under the center marker, axis 100–101.5M: centering works.
+5. The "Presets" tab (9 saved · one receive channel; filters All/FM/AIR/VHF/MAR/UHF)
+   and "Settings" (device Synthetic, sample rate 2.40 MHz, AGC, RF gain, volume)
+   open. `uiautomator dump` on "Settings" answers `could not get idle state`, so
+   only a screenshot is taken there.
+6. "Receive" → "Stop": the button is "Start" again, status "reception stopped". Two snapshots 3 s apart are identical:
+   the waterfall is stopped.
+7. Repeated `stop/start/wait/install` cycle via the script: frequency/mode were kept
+   (`install -r`), Synthetic → Start → AM (`AM · BW 10.0k`), spectrum/waterfall live, Stop.
+   There are no exceptions in `emulator-logcat.txt`.
 
-Скриншоты: `~/prj/docs/screens/emulator-synthetic-{wfm-100M,nfm-100.7M,am-100.7M}.png`.
-Звук эмулятор не проверяет: он запущен с `-no-audio`, в приложении звук выключен.
+Screenshots: `~/prj/docs/screens/emulator-synthetic-{wfm-100M,nfm-100.7M,am-100.7M}.png`.
+The emulator does not check sound: it runs with `-no-audio`, and sound is off in the app.
 
-## Известные проблемы эмулятора
+## Known emulator issues
 
-- **Крэш при холодном старте (только эмулятор).** Периодически на старте падает с SIGSEGV в потоке
-  `1.raster`. Символизированный стек (`symbols.zip` движка `af7e796e…` для android-x64,
-  `llvm-symbolizer` из NDK): `impeller/renderer/backend/gles/blit_command_gles.cc:209`, путь
-  `GPUSurfaceGLImpeller` → `AiksContext` → `ContentContext` → `BlitPass::EncodeCommands`. Падает
-  инициализация Impeller (OpenGLES) на программном GLES эмулятора, до отрисовки кадров
-  приложения; к коду приложения это не относится. Частота плавает: в серии сразу после загрузки
-  было 7/8, позже 1/6 и 0/26. Минимальный `flutter create` при этом 0/10, так что уверенно
-  разделить «приложение/движок» не удалось. `--ez enable-impeller false` на intent не помогает
-  (Impeller остаётся включён). `tool/emulator.sh launch` ловит `Fatal signal` в logcat и делает
-  один повторный запуск. Tombstones: `adb -s emulator-5554 root; adb -s emulator-5554 shell ls /data/tombstones`.
-  На телефоне (arm64, свой GPU-драйвер) это отдельно не исследовалось; в предыдущих QA-сессиях
-  такой крэш не фиксировали. Если появится там — это отдельная задача.
-- `-gpu swangle` и `-gpu lavapipe` на этой ВМ: qemu молча завершается на первом кадре приложения.
-  `-gpu swiftshader` работает так же, как `swiftshader_indirect` (по умолчанию).
-- `uiautomator dump` не работает на постоянно анимированных экранах (`could not get idle state`).
+- **Cold-start crash (emulator only).** It occasionally crashes at startup with SIGSEGV in the
+  `1.raster` thread. Symbolized stack (`symbols.zip` of engine `af7e796e…` for android-x64,
+  `llvm-symbolizer` from the NDK): `impeller/renderer/backend/gles/blit_command_gles.cc:209`, path
+  `GPUSurfaceGLImpeller` → `AiksContext` → `ContentContext` → `BlitPass::EncodeCommands`. Impeller
+  (OpenGLES) initialization fails on the emulator's software GLES, before any app frames
+  are drawn; it is unrelated to the app code. The rate varies: in a series right after boot
+  it was 7/8, later 1/6 and 0/26. A minimal `flutter create` app gives 0/10, so it was not possible
+  to separate "app/engine" with confidence. `--ez enable-impeller false` on the intent does not help
+  (Impeller stays enabled). `tool/emulator.sh launch` catches `Fatal signal` in logcat and makes
+  one retry launch. Tombstones: `adb -s emulator-5554 root; adb -s emulator-5554 shell ls /data/tombstones`.
+  This was not investigated separately on the phone (arm64, its own GPU driver); earlier QA sessions
+  did not record such a crash. If it shows up there, it is a separate task.
+- `-gpu swangle` and `-gpu lavapipe` on this VM: qemu exits silently on the app's first frame.
+  `-gpu swiftshader` behaves the same as `swiftshader_indirect` (the default).
+- `uiautomator dump` does not work on constantly animated screens (`could not get idle state`).

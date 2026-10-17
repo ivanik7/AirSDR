@@ -128,7 +128,7 @@ void main() {
     await tester.pump();
     expect(find.byKey(const ValueKey('decoderPanel-rtl_433')), findsOneWidget);
     expect(
-      find.text('Недоступен в текущей нативной сборке'),
+      find.text('Unavailable in the current native build'),
       findsOneWidget,
       reason: 'unavailable in this backend: preview only, never started',
     );
@@ -176,7 +176,7 @@ void main() {
     expect(activeFinder, findsOneWidget);
     await tester.longPress(activeFinder);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Сохранить как пресет'));
+    await tester.tap(find.text('Save as preset'));
     await tester.pumpAndSettle();
     await tester.enterText(
       find.byKey(const ValueKey('presetName')),
@@ -220,7 +220,7 @@ void main() {
     final f = favorites.entries.firstWhere((e) => e.name == 'Sensors');
     await tester.tap(find.byKey(ValueKey('favoriteMenu-${f.id}')));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Изменить').last);
+    await tester.tap(find.text('Edit').last);
     await tester.pumpAndSettle();
     await tester.enterText(
       find.byKey(const ValueKey('favoriteName')),
@@ -267,7 +267,7 @@ void main() {
     await tester.pump();
     await tester.tap(find.byKey(ValueKey('favoriteMenu-${preset.id}')));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Изменить').last);
+    await tester.tap(find.text('Edit').last);
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('favoriteDecoder')));
     await tester.pumpAndSettle();

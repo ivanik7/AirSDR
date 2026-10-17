@@ -1,37 +1,37 @@
-# STATUS — авто-контраст водопада (t_16c68e1b)
+# STATUS — waterfall auto-contrast (t_16c68e1b)
 
-## Что сделано
-- `lib/ui/auto_levels.dart` — алгоритм. На каждую FFT-строку: шум = 20-й перцентиль валидных бинов
-  (отброшены NaN/−inf и «нули» ≤ −190 dB), пик = максимум. Строки агрегируются в секундные бакеты
-  (среднее шума, максимум пика), кольцо на 30 с (истекает и по времени — пауза фона не держит старые данные).
-  Цели: `min = floor − 5`, `max = max(floor + 25, peak + 3)`. Сглаживание: расширение диапазона τ=0,25 с,
-  сужение τ=1,5 с; 2 с после сброса — быстро в обе стороны; изменения < 0,5 dB не перерисовывают водопад.
-  Все константы — `AutoLevelTuning`.
-- Сброс окна: смена центра LO / частоты выборки / вида (`viewChanged`), gain, AGC, устройства, старт/стоп,
-  а также любая строка с другим частотным диапазоном.
-- `SdrUiState`: `autoLevels`, `setAutoLevels()` (сохраняется в SharedPreferences `waterfall_auto_levels_v1`),
-  `loadSettings()`, `autoNoiseFloor`/`autoPeak`. `setLevels()` не изменён по смыслу.
-- UI: `main_screen.dart` — чекбокс «Авто» у слайдера Max (в обоих местах: landscape-панель и portrait-раскрывашка).
-  Legacy (реальное приложение): Настройки → новый раздел «ВОДОПАД»: переключатель «Авто-контраст» с текущими
-  «Шум … dB · пик … dB за 30 с», слайдеры Max/Min (раньше их в legacy-UI не было).
-- Решение по UX: в режиме Авто слайдеры показывают авто-значения и заблокированы; выключение Авто
-  оставляет текущие уровни как стартовые для ручной подстройки.
+## What was done
+- `lib/ui/auto_levels.dart` — the algorithm. Per FFT row: noise floor = 20th percentile of valid bins
+  (NaN/−inf and "zeros" ≤ −190 dB discarded), peak = maximum. Rows are aggregated into one-second buckets
+  (mean of noise, max of peak), in a 30 s ring (it also expires by time — a background pause does not keep stale data).
+  Targets: `min = floor − 5`, `max = max(floor + 25, peak + 3)`. Smoothing: range expansion τ=0.25 s,
+  narrowing τ=1.5 s; for 2 s after a reset — fast in both directions; changes < 0.5 dB do not redraw the waterfall.
+  All constants are in `AutoLevelTuning`.
+- Window reset: LO center / sample rate / view change (`viewChanged`), gain, AGC, device, start/stop,
+  and any row with a different frequency range.
+- `SdrUiState`: `autoLevels`, `setAutoLevels()` (persisted in SharedPreferences `waterfall_auto_levels_v1`),
+  `loadSettings()`, `autoNoiseFloor`/`autoPeak`. `setLevels()` is unchanged in meaning.
+- UI: `main_screen.dart` — an "Auto" checkbox next to the Max slider (in both places: the landscape panel and the portrait expander).
+  Legacy (the real app): Settings → new "WATERFALL" section: an "Auto contrast" switch showing the current
+  "Noise … dB · peak … dB over 30 s", Max/Min sliders (the legacy UI did not have them before).
+- UX decision: in Auto mode the sliders show the auto values and are locked; turning Auto off
+  keeps the current levels as the starting point for manual adjustment.
 
-## Тесты
-- `test/ui/auto_levels_test.dart` (10): шум → min≈пол−5, max=пол+25; появление несущей → max вверх;
-  пропала → держится до выхода из окна, потом вниз; сужение плавное; смена диапазона → сброс;
-  reset(); DC-спайк/нули/NaN/спад на краю не ломают пол; пустые строки; ограничение бакетов; пауза > окна.
-- `test/ui/auto_levels_ui_test.dart` (8): интеграция с SdrUiState (выкл. по умолчанию, ретюн/gain сбрасывают,
-  выкл. сохраняет уровни, персистентность), виджеты MainScreen и legacy-настроек.
+## Tests
+- `test/ui/auto_levels_test.dart` (10): noise → min≈floor−5, max=floor+25; a carrier appearing → max goes up;
+  carrier gone → held until it leaves the window, then goes down; narrowing is smooth; range change → reset;
+  reset(); DC spike/zeros/NaN/edge roll-off do not break the floor; empty rows; bucket limit; pause > window.
+- `test/ui/auto_levels_ui_test.dart` (8): integration with SdrUiState (off by default, retune/gain reset,
+  turning off keeps levels, persistence), MainScreen and legacy settings widgets.
 
-## Проверено на телефоне (SM-F936B, RTL-SDR Blog V4, обложка)
-Скриншоты `~/prj/docs/screens/t_16c68e1b-*.png`:
-- 104.2 WFM, Авто вкл.: шум −58, пик −29 → Min −63 / Max −26; FM-станции контрастно видны (03, 07).
-- 145.5 NFM (пустой участок): через ~5 с перестроился на Min −64 / Max −33..−34, водопад — ровный шум без
-  «каши» и без насыщения (05, 06, 08, 09). Пик −36..−39 — это выбросы шума (max по ~10⁵ бинам за окно),
-  верх держит пол+25.
-- Обратно на 104.2 — снова Min −63 / Max −26.
-Оставлено: Авто на телефоне включено (настройка приложения, сохраняется).
+## Checked on the phone (SM-F936B, RTL-SDR Blog V4, cover screen)
+Screenshots `~/prj/docs/screens/t_16c68e1b-*.png`:
+- 104.2 WFM, Auto on: noise −58, peak −29 → Min −63 / Max −26; FM stations clearly visible (03, 07).
+- 145.5 NFM (empty segment): after ~5 s it settled at Min −64 / Max −33..−34, the waterfall is flat noise without
+  "mush" and without saturation (05, 06, 08, 09). Peak −36..−39 is noise outliers (max over ~10⁵ bins per window),
+  the top is held by floor+25.
+- Back on 104.2 — again Min −63 / Max −26.
+Left as is: Auto is on on the phone (an app setting, persisted).
 
-## Не сделано / можно позже
-- Константы не вынесены в настройки (по ТЗ необязательно).
+## Not done / possible later
+- Constants are not exposed as settings (optional per the spec).

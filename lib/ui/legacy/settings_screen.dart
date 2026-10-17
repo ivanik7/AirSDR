@@ -26,7 +26,7 @@ class SettingsScreen extends StatelessWidget {
   /// Waterfall levels (Max/Min + Auto); the section is hidden without it.
   final SdrUiState? spectrum;
 
-  /// Frequency bands (Настройки → Диапазоны); the row is hidden without it.
+  /// Frequency bands (Settings → Bands); the row is hidden without it.
   final BandsRepository? bands;
 
   @override
@@ -40,25 +40,25 @@ class SettingsScreen extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(14, 12, 14, 18),
         children: [
           Text(
-            'Настройки приёмника',
+            'Receiver settings',
             style: plex(size: 22, weight: FontWeight.w600),
           ),
           Text(
-            d?.name ?? 'Устройство не выбрано',
+            d?.name ?? 'No device selected',
             style: plex(size: 12, color: LegacyColors.muted),
           ),
           const SizedBox(height: 14),
-          _section('ПОДКЛЮЧЕНИЕ К SDR'),
+          _section('SDR CONNECTION'),
           _row(
-            'Выбрать устройство',
-            'Автоподключение при обнаружении SDR',
+            'Select device',
+            'Auto-connect when an SDR is detected',
             trailing: SizedBox(
               width: 150,
               child: DropdownButton<SdrDeviceInfo>(
                 key: const ValueKey('legacyDevice'),
                 isExpanded: true,
                 value: dropdownDeviceValue(r),
-                hint: const Text('Не найдено'),
+                hint: const Text('Not found'),
                 items: [
                   for (final device in r.devices)
                     DropdownMenuItem(
@@ -75,38 +75,38 @@ class SettingsScreen extends StatelessWidget {
             ),
           ),
           _row(
-            'Приём',
+            'Reception',
             r.running
-                ? 'Активен · ${formatMhz(r.tunedFrequency)} MHz'
-                : 'Остановлен',
+                ? 'Active · ${formatMhz(r.tunedFrequency)} MHz'
+                : 'Stopped',
             trailing: FilledButton.icon(
               key: const ValueKey('legacyStartStop'),
               onPressed: () => r.running ? r.stop() : receiver.start(),
               icon: Icon(r.running ? Icons.stop : Icons.play_arrow),
-              label: Text(r.running ? 'Стоп' : 'Старт'),
+              label: Text(r.running ? 'Stop' : 'Start'),
             ),
           ),
           _row(
-            'Устройство',
-            d?.name ?? 'Не найдено',
+            'Device',
+            d?.name ?? 'Not found',
             trailing: IconButton(
-              tooltip: 'Обновить устройства',
+              tooltip: 'Refresh devices',
               onPressed: r.running ? null : r.refreshDevices,
               icon: const Icon(Icons.refresh),
             ),
           ),
           _row(
-            'Параметры устройства',
-            'Особые параметры источника',
+            'Device settings',
+            'Source-specific options',
             trailing: TextButton(
               onPressed: () => showSourceSettingsSheet(context, r),
-              child: const Text('Открыть'),
+              child: const Text('Open'),
             ),
           ),
           if (d != null)
             _row(
-              'Частота выборки',
-              'Ширина обзора спектра',
+              'Sample rate',
+              'Spectrum span',
               trailing: DropdownButton<double>(
                 value: d.sampleRates.contains(r.sampleRate)
                     ? r.sampleRate
@@ -121,7 +121,7 @@ class SettingsScreen extends StatelessWidget {
                     DropdownMenuItem(
                       value: rate,
                       child: Text(
-                        '${(rate / 1000000).toStringAsFixed(2)} МГц',
+                        '${(rate / 1000000).toStringAsFixed(2)} MHz',
                         style: plex(size: 12),
                       ),
                     ),
@@ -132,17 +132,17 @@ class SettingsScreen extends StatelessWidget {
               (r.linkState == DeviceLinkState.permissionDenied ||
                   r.linkState == DeviceLinkState.failed))
             _row(
-              'Подключение USB',
-              'Нет доступа к устройству',
+              'USB connection',
+              'No access to the device',
               trailing: TextButton(
                 key: const ValueKey('legacyRetryUsb'),
                 onPressed: r.retryDevice,
-                child: const Text('Повторить'),
+                child: const Text('Retry'),
               ),
             ),
           if (r.lastError != null)
             _row(
-              'Ошибка',
+              'Error',
               r.lastError!,
               trailing: IconButton(
                 onPressed: r.clearError,
@@ -150,38 +150,38 @@ class SettingsScreen extends StatelessWidget {
               ),
             ),
           _row(
-            'Статус',
-            'Диагностика приёма',
+            'Status',
+            'Reception diagnostics',
             trailing: TextButton(
               key: const ValueKey('legacyShowStatus'),
               onPressed: () => _showStatus(context),
-              child: const Text('Показать'),
+              child: const Text('Show'),
             ),
           ),
-          _section('ПАРАМЕТРЫ ПРИЁМНИКА'),
+          _section('RECEIVER OPTIONS'),
           if (bands case final b?)
             ListenableBuilder(
               listenable: b,
               builder: (context, _) => _row(
-                'Диапазоны',
-                '${b.entries.length} · модуляция и шаг по частоте',
+                'Bands',
+                '${b.entries.length} · mode and frequency step',
                 trailing: TextButton(
                   key: const ValueKey('settingsBands'),
                   onPressed: () => BandsScreen.open(context, b),
-                  child: const Text('Открыть'),
+                  child: const Text('Open'),
                 ),
               ),
             ),
           _row(
-            'AGC приёмника',
-            'Автоматическое усиление',
+            'Receiver AGC',
+            'Automatic gain',
             trailing: Switch(
               value: r.agc,
               onChanged: d?.hasAgc == true ? r.setAgc : null,
             ),
           ),
           _slider(
-            'Усиление RF',
+            'RF gain',
             r.gain,
             g?.min ?? 0,
             g?.max ?? 1,
@@ -213,10 +213,10 @@ class SettingsScreen extends StatelessWidget {
               children: [
                 Row(
                   children: [
-                    Expanded(child: Text('Статус', style: plex(size: 20))),
+                    Expanded(child: Text('Status', style: plex(size: 20))),
                     IconButton(
                       key: const ValueKey('legacyCloseStatus'),
-                      tooltip: 'Закрыть',
+                      tooltip: 'Close',
                       onPressed: () => Navigator.pop(sheetContext),
                       icon: const Icon(Icons.close),
                     ),
@@ -238,17 +238,17 @@ class SettingsScreen extends StatelessWidget {
     final auto = s.autoLevels;
     final floor = s.autoNoiseFloor;
     return [
-      _section('ВОДОПАД'),
+      _section('WATERFALL'),
       _row(
-        'Скорость водопада',
-        'Высота строки FFT · не зависит от размера окна',
+        'Waterfall speed',
+        'FFT row height · independent of window size',
         trailing: DropdownButton<int>(
           key: const ValueKey('waterfallSpeed'),
           value: s.waterfallRowHeight,
           items: const [
-            DropdownMenuItem(value: 1, child: Text('Медленно')),
-            DropdownMenuItem(value: 2, child: Text('Нормально')),
-            DropdownMenuItem(value: 4, child: Text('Быстро')),
+            DropdownMenuItem(value: 1, child: Text('Slow')),
+            DropdownMenuItem(value: 2, child: Text('Normal')),
+            DropdownMenuItem(value: 4, child: Text('Fast')),
           ],
           onChanged: (height) {
             if (height != null) s.setWaterfallRowHeight(height);
@@ -256,13 +256,13 @@ class SettingsScreen extends StatelessWidget {
         ),
       ),
       _row(
-        'Авто-контраст',
+        'Auto contrast',
         auto
             ? (floor == null
-                  ? 'Шум и пики за ${AutoLevelTuning.window.inSeconds} с · ждёт спектр'
-                  : 'Шум ${floor.round()} dB · пик ${s.autoPeak!.round()} dB '
-                        'за ${AutoLevelTuning.window.inSeconds} с')
-            : 'Выкл. · уровни задаются вручную',
+                  ? 'Noise and peaks over ${AutoLevelTuning.window.inSeconds} s · waiting for spectrum'
+                  : 'Noise ${floor.round()} dB · peak ${s.autoPeak!.round()} dB '
+                        'over ${AutoLevelTuning.window.inSeconds} s')
+            : 'Off · levels set manually',
         trailing: Switch(
           key: const ValueKey('legacyAutoLevels'),
           value: auto,

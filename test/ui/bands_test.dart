@@ -68,21 +68,21 @@ void main() {
     });
 
     test('step labels', () {
-      expect(formatStepKhz(5000), '5 кГц');
-      expect(formatStepKhz(6250), '6.25 кГц');
-      expect(formatStepKhz(12500), '12.5 кГц');
-      expect(formatStepKhz(200000), '200 кГц');
+      expect(formatStepKhz(5000), '5 kHz');
+      expect(formatStepKhz(6250), '6.25 kHz');
+      expect(formatStepKhz(12500), '12.5 kHz');
+      expect(formatStepKhz(200000), '200 kHz');
     });
   });
 
   group('defaults', () {
     test('sorted, non-overlapping, steps from the list, on their grid', () {
       expect(defaultBands.map((b) => b.name), [
-        'CB 27 МГц',
+        'CB 27 MHz',
         'FM',
-        'Авиа',
-        '2 м (любительский)',
-        'Морской',
+        'Aircraft',
+        '2 m (amateur)',
+        'Marine',
         'ISM 433',
         'PMR446',
         'ISM 868',
@@ -119,10 +119,10 @@ void main() {
       }
       // Channel grids of the other defaults are nodes of their steps.
       for (final (name, first, spacing, count) in [
-        ('Морской', 156025000, 25000, 57),
+        ('Marine', 156025000, 25000, 57),
         ('ISM 433', 433075000, 25000, 69), // LPD69
         ('PMR446', 446006250, 12500, 16),
-        ('2 м (любительский)', 144000000, 12500, 161),
+        ('2 m (amateur)', 144000000, 12500, 161),
       ]) {
         final b = defaultBands.firstWhere((b) => b.name == name);
         for (var i = 0; i < count; i++) {
@@ -459,7 +459,7 @@ void main() {
       expect(repo.bandAt(100000000)!.name, 'FM');
       expect(repo.bandAt(87499999), isNull);
       expect(repo.bandAt(108000001), isNull);
-      expect(repo.bandAt(125000000)!.name, 'Авиа');
+      expect(repo.bandAt(125000000)!.name, 'Aircraft');
       expect(repo.bandAt(50000000), isNull);
     });
   });
@@ -501,12 +501,12 @@ void main() {
       },
     );
 
-    test('keypad into Авиа: AM, 25 kHz', () {
+    test('keypad into Aircraft: AM, 25 kHz', () {
       _typeMhz(r, '118.1');
       expect(radio.mode, DemodMode.am);
       expect(r.stepHz, 25000);
       expect(radio.tunedFrequency, 118100000);
-      expect(r.currentBand!.name, 'Авиа');
+      expect(r.currentBand!.name, 'Aircraft');
     });
 
     test('the band is chosen by the typed value, the snap stays inside', () {
@@ -549,7 +549,7 @@ void main() {
       _typeMhz(r, '145.5');
       expect(radio.mode, DemodMode.nfm);
       expect(r.stepHz, 12500);
-      expect(r.currentBand!.name, '2 м (любительский)');
+      expect(r.currentBand!.name, '2 m (amateur)');
     });
 
     test('without bands (null) the receiver behaves as before', () {
@@ -600,10 +600,10 @@ void main() {
     });
 
     test('preset/channel: its own mode wins, the step is the band\'s', () {
-      r.apply(125000000, DemodMode.nfm); // "preset" in Авиа with NFM
+      r.apply(125000000, DemodMode.nfm); // "preset" in Aircraft with NFM
       expect(radio.mode, DemodMode.nfm);
       expect(r.stepHz, 25000);
-      expect(r.currentBand!.name, 'Авиа');
+      expect(r.currentBand!.name, 'Aircraft');
       expect(radio.tunedFrequency, 125000000);
       // The band is "entered": a keypad tune inside keeps NFM.
       _typeMhz(r, '126.0');
@@ -614,7 +614,7 @@ void main() {
       final fm = bands.entries.firstWhere((b) => b.name == 'FM');
       bands.edit(
         fm.id,
-        name: 'FM вещание',
+        name: 'FM broadcast',
         startHz: fm.startHz,
         endHz: fm.endHz,
         mode: DemodMode.nfm,
@@ -624,7 +624,7 @@ void main() {
       expect(radio.mode, DemodMode.nfm);
       expect(r.stepHz, 200000);
       expect(radio.tunedFrequency, 100100000);
-      expect(r.currentBand!.name, 'FM вещание');
+      expect(r.currentBand!.name, 'FM broadcast');
     });
   });
 
@@ -722,7 +722,7 @@ void main() {
       category: 'VHF',
     );
 
-    test('sections by band start, presets by frequency, «Вне» last, '
+    test('sections by band start, presets by frequency, "Out of band" last, '
         'empty sections hidden', () async {
       final bands = BandsRepository();
       await bands.load();
@@ -734,7 +734,7 @@ void main() {
         fav('out0', 30000000),
         fav('fm0', 88000000),
       ], bands.entries);
-      expect(groups.map((g) => g.band?.name), ['FM', 'Авиа', null]);
+      expect(groups.map((g) => g.band?.name), ['FM', 'Aircraft', null]);
       expect(groups.map((g) => g.presets.map((f) => f.id).toList()), [
         ['fm0', 'fm1'],
         ['air1', 'air2'],
@@ -766,7 +766,7 @@ void main() {
   });
 
   test('band range text', () {
-    expect(formatBandRange(defaultBands[1]), '87.500–108.000 МГц');
+    expect(formatBandRange(defaultBands[1]), '87.500–108.000 MHz');
   });
 
   test('presetCategoryFor stays a valid storage category', () {

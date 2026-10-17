@@ -131,7 +131,7 @@ class ChannelController {
           ?.name ??
       '';
 
-  /// "+ канал": a new slot with the current frequency/mode, made active.
+  /// "+ channel": a new slot with the current frequency/mode, made active.
   ReceiverChannel add() {
     cancelScan?.call();
     final hz = radio.tunedFrequency.round();
@@ -177,7 +177,7 @@ class ChannelController {
     Map<String, Object>? decoderSettings,
   }) {
     final i = channels.indexOf(id);
-    if (i < 0) return 'канал не найден';
+    if (i < 0) return 'channel not found';
     final c = channels.channels[i];
     try {
       favorites.add(
@@ -210,7 +210,7 @@ String channelDisplayName(int hz, DemodMode mode, Iterable<Favorite> presets) =>
     presets.where((f) => f.frequencyHz == hz).firstOrNull?.name ??
     '${mode.label} ${formatMhz(hz)}';
 
-/// Storage category of a preset created from a channel. The Пресеты tab
+/// Storage category of a preset created from a channel. The Presets tab
 /// groups presets by band (bands.dart) and no longer shows categories; the
 /// field is kept only so the favorites storage format stays readable by older
 /// builds, so any valid category would do. Kept deterministic by frequency.

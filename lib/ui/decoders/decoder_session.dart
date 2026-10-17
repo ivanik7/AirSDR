@@ -226,7 +226,7 @@ class DecoderSession extends ChangeNotifier {
           _stopPolling();
           _failure = _selectedId == 'adsb'
               ? 'not ready: set sample rate 2.4 MS/s'
-              : 'Недостаточная частота выборки IQ: выберите не менее 200 кГц';
+              : 'IQ sample rate too low: choose at least 200 kHz';
           radio.decoderBackend?.select(null, const <String, Object>{});
         } else if (running && !_attached) {
           _attachSelected();
@@ -321,15 +321,15 @@ class DecoderSession extends ChangeNotifier {
       if (isAvailable(id) && radio.running) {
         final modes = decoderById(id)?.underlyingModes;
         _failure = modes != null
-            ? 'Не готов: нужен режим ${modes.map((m) => m.label).join(', ')} '
-                  '(сейчас ${radio.mode.label})'
-            : 'Несовместимый режим приёма';
+            ? 'Not ready: mode required: ${modes.map((m) => m.label).join(', ')} '
+                  '(now ${radio.mode.label})'
+            : 'Incompatible receive mode';
       }
       backend?.select(null, const <String, Object>{});
       return;
     }
     if (_needsBaseband(id) && decoderRateHz == 0) {
-      _failure = 'Недостаточная частота выборки IQ: выберите не менее 200 кГц';
+      _failure = 'IQ sample rate too low: choose at least 200 kHz';
       backend.select(null, const <String, Object>{});
       return;
     }
@@ -342,7 +342,7 @@ class DecoderSession extends ChangeNotifier {
     final ok = backend.select(id, _config(id));
     if (!ok) {
       backend.select(null, const <String, Object>{});
-      _failure = 'Нативный декодер отклонил выбор';
+      _failure = 'Native decoder rejected the selection';
       return;
     }
     _attached = true;

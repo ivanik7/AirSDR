@@ -116,9 +116,9 @@ class ReceptionService : Service() {
         super.onCreate()
         current = this
         val manager = getSystemService(NotificationManager::class.java)
-        manager.createNotificationChannel(NotificationChannel(CHANNEL, "Приём AirSDR",
+        manager.createNotificationChannel(NotificationChannel(CHANNEL, "AirSDR reception",
             NotificationManager.IMPORTANCE_LOW).apply {
-            description = "Активный радиоприём"
+            description = "Active radio reception"
             setSound(null, null)
         })
     }
@@ -259,9 +259,9 @@ class ReceptionService : Service() {
         return Notification.Builder(this, CHANNEL)
             .setSmallIcon(R.drawable.ic_stat_airsdr)
             .setContentTitle("AirSDR")
-            .setContentText("$mhz МГц · $mode")
+            .setContentText("$mhz MHz · $mode")
             .setContentIntent(open)
-            .addAction(Notification.Action.Builder(null, "Стоп", stop).build())
+            .addAction(Notification.Action.Builder(null, "Stop", stop).build())
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .build()

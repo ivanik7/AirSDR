@@ -24,28 +24,28 @@ Future<void> showSourceSettingsSheet(
 }
 
 const _settingLabels = <String, String>{
-  'gain': 'Усиление RF',
-  'tunerAgc': 'АРУ тюнера',
-  'directSampling': 'Прямая дискретизация',
-  'ppm': 'Коррекция PPM',
-  'biasT': 'Питание антенны (Bias-T)',
-  'offsetTuning': 'Смещение настройки',
-  'rtlAgc': 'АРУ RTL',
-  'bandwidth': 'Полоса RF-фильтра',
-  'lnaGain': 'Усиление LNA',
-  'vgaGain': 'Усиление VGA',
-  'amp': 'Усилитель HackRF',
-  'noise': 'Уровень шума (dBFS)',
-  'format': 'Формат IQ',
+  'gain': 'RF gain',
+  'tunerAgc': 'Tuner AGC',
+  'directSampling': 'Direct sampling',
+  'ppm': 'PPM correction',
+  'biasT': 'Antenna power (Bias-T)',
+  'offsetTuning': 'Offset tuning',
+  'rtlAgc': 'RTL AGC',
+  'bandwidth': 'RF filter bandwidth',
+  'lnaGain': 'LNA gain',
+  'vgaGain': 'VGA gain',
+  'amp': 'HackRF amp',
+  'noise': 'Noise level (dBFS)',
+  'format': 'IQ format',
 };
 
 String _settingLabel(SourceSetting s) => _settingLabels[s.id] ?? s.label;
 
 String _choiceLabel(String id, String value) => switch ((id, value)) {
-  ('directSampling', 'Disabled') => 'Выкл.',
-  ('directSampling', 'I branch') => 'Ветвь I',
-  ('directSampling', 'Q branch') => 'Ветвь Q',
-  ('bandwidth', 'Auto') => 'Авто',
+  ('directSampling', 'Disabled') => 'Off',
+  ('directSampling', 'I branch') => 'I branch',
+  ('directSampling', 'Q branch') => 'Q branch',
+  ('bandwidth', 'Auto') => 'Auto',
   _ => value,
 };
 
@@ -70,16 +70,16 @@ class SourceSettingsPanel extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
             child: Text(switch (radio.selectedDevice) {
-              null => 'Устройство не выбрано',
+              null => 'No device selected',
               final device when device.id.startsWith('synth:') =>
-                'Генератор сигнала',
+                'Signal generator',
               final device => device.name,
             }, style: theme.textTheme.titleMedium),
           ),
           if (radio.selectedDevice == null)
             const ListTile(
               dense: true,
-              title: Text('Выберите устройство в настройках'),
+              title: Text('Select a device in Settings'),
             ),
           for (final s in settings)
             // The shared controls are on the main Settings tab. RTL AGC is
@@ -114,10 +114,10 @@ class SourceSettingsPanel extends StatelessWidget {
 String statsLine(RadioController radio) {
   final st = radio.stats;
   final parts = <String>[
-    '${(radio.sampleRate / 1e6).toStringAsFixed(2)} Мвыб/с',
-    if (st['droppedBuffers'] is num) 'USB потери ${st['droppedBuffers']}',
-    if (st['audioDropped'] is num) 'потери аудио ${st['audioDropped']}',
-    if (st['audioOutput'] is String) 'выход ${st['audioOutput']}',
+    '${(radio.sampleRate / 1e6).toStringAsFixed(2)} MS/s',
+    if (st['droppedBuffers'] is num) 'USB drops ${st['droppedBuffers']}',
+    if (st['audioDropped'] is num) 'audio drops ${st['audioDropped']}',
+    if (st['audioOutput'] is String) 'output ${st['audioOutput']}',
   ];
   return parts.join(' · ');
 }

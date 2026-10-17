@@ -34,17 +34,17 @@ class DmrDecoderPanel extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('DMR · 12,5 кГц', style: plex(size: 14)),
+              Text('DMR · 12.5 kHz', style: plex(size: 14)),
               const SizedBox(height: 4),
               Text(
                 !available
-                    ? 'Недоступен в текущей нативной сборке'
+                    ? 'Unavailable in the current native build'
                     : !running
-                    ? 'Приём остановлен'
+                    ? 'Reception stopped'
                     : session.failureReason ??
                           (session.active
-                              ? 'Декодирование активно'
-                              : 'Декодер не запущен'),
+                              ? 'Decoding active'
+                              : 'Decoder not running'),
                 key: const ValueKey('dmrStatus'),
                 style: plex(
                   size: 12,
@@ -54,13 +54,13 @@ class DmrDecoderPanel extends StatelessWidget {
                 ),
               ),
               Text(
-                'Частота — общий VFO · громкость — общая настройка аудио · '
-                'потеряно событий: ${session.droppedEvents}',
+                'Frequency is the shared VFO · volume is the shared audio setting · '
+                'dropped events: ${session.droppedEvents}',
                 style: plex(size: 11, color: LegacyColors.muted),
               ),
               Text(
-                'Поиск позывных по DMR ID (radioid.net) не поддерживается: '
-                'показываются только данные из эфира.',
+                'Callsign lookup by DMR ID (radioid.net) is not supported: '
+                'only over-the-air data is shown.',
                 key: const ValueKey('dmrIdLookupNote'),
                 style: plex(size: 11, color: LegacyColors.muted),
               ),
@@ -76,25 +76,25 @@ class DmrDecoderPanel extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Фильтры', style: plex(size: 14)),
+              Text('Filters', style: plex(size: 14)),
               _filter(
-                'Таймслот',
+                'Timeslot',
                 'slot_filter',
                 settings['slot_filter'] as int,
-                const {3: 'Оба', 1: 'TS1', 2: 'TS2'},
+                const {3: 'Both', 1: 'TS1', 2: 'TS2'},
               ),
               _filter(
-                'Цветовой код',
+                'Color code',
                 'color_code',
                 settings['color_code'] as int,
-                {for (var i = -1; i < 16; i++) i: i < 0 ? 'Любой' : '$i'},
+                {for (var i = -1; i < 16; i++) i: i < 0 ? 'Any' : '$i'},
               ),
               Material(
                 type: MaterialType.transparency,
                 child: SwitchListTile(
                   key: const ValueKey('dmrVoice'),
                   contentPadding: EdgeInsets.zero,
-                  title: Text('Голос', style: plex(size: 13)),
+                  title: Text('Voice', style: plex(size: 13)),
                   value: settings['voice'] as bool,
                   onChanged: session.canConfigure('dmr')
                       ? (value) => session.setSetting('dmr', 'voice', value)
@@ -109,7 +109,7 @@ class DmrDecoderPanel extends StatelessWidget {
           children: [
             Expanded(
               child: Text(
-                'История вызовов · ${session.dmrHistory.length}',
+                'Call history · ${session.dmrHistory.length}',
                 style: plex(size: 14),
               ),
             ),
@@ -118,7 +118,7 @@ class DmrDecoderPanel extends StatelessWidget {
               onPressed: session.dmrHistory.isEmpty
                   ? null
                   : session.clearDmrHistory,
-              child: const Text('Очистить'),
+              child: const Text('Clear'),
             ),
           ],
         ),
@@ -183,17 +183,17 @@ class DmrDecoderPanel extends StatelessWidget {
                     Padding(
                       padding: const EdgeInsets.only(right: 8),
                       child: Text(
-                        'Отключён',
+                        'Disabled',
                         key: ValueKey('dmrSlotMuted-${slot + 1}'),
                         style: plex(size: 11, color: LegacyColors.danger),
                       ),
                     ),
                   Text(
                     sync == 'voice'
-                        ? 'Голос · синхр.'
+                        ? 'Voice · sync'
                         : sync == 'data'
-                        ? 'Данные · синхр.'
-                        : 'Нет синхронизации',
+                        ? 'Data · sync'
+                        : 'No sync',
                     key: ValueKey('dmrSync-${slot + 1}'),
                     style: plex(
                       size: 11,
@@ -207,7 +207,7 @@ class DmrDecoderPanel extends StatelessWidget {
               const SizedBox(height: 4),
               if (call == null)
                 Text(
-                  'Нет текущего вызова',
+                  'No current call',
                   style: plex(size: 12, color: LegacyColors.muted),
                 )
               else
@@ -221,25 +221,25 @@ class DmrDecoderPanel extends StatelessWidget {
 
   Widget _callDetails(DmrCall call, {bool history = false}) {
     final parts = <String>[
-      if (call.type != null) call.type == 'group' ? 'Групповой' : 'Прямой',
+      if (call.type != null) call.type == 'group' ? 'Group' : 'Private',
       if (call.target != null)
-        '${call.type == 'group' ? 'TG' : 'Адресат'} ${call.target}',
-      if (call.source != null) 'Источник ${call.source}',
+        '${call.type == 'group' ? 'TG' : 'Target'} ${call.target}',
+      if (call.source != null) 'Source ${call.source}',
       if (call.colorCode != null) 'CC ${call.colorCode}',
     ];
     final details = <String>[
-      if (call.alias != null) 'Псевдоним: ${call.alias}',
+      if (call.alias != null) 'Alias: ${call.alias}',
       if (call.latitude != null && call.longitude != null)
         'GPS: ${call.latitude!.toStringAsFixed(5)}, '
             '${call.longitude!.toStringAsFixed(5)}',
-      if (call.voice == 'unavailable') 'Аудио недоступно',
-      if (call.voice == 'muted') 'Аудио выключено',
+      if (call.voice == 'unavailable') 'Audio unavailable',
+      if (call.voice == 'muted') 'Audio muted',
       if (call.durationMs != null)
-        'Длительность (голосовые кадры): '
-            '${(call.durationMs! / 1000).toStringAsFixed(1)} с'
+        'Duration (voice frames): '
+            '${(call.durationMs! / 1000).toStringAsFixed(1)} s'
       else if (history)
-        'Длительность (по событиям): '
-            '${call.elapsed(call.endedAt!).inSeconds} с',
+        'Duration (by events): '
+            '${call.elapsed(call.endedAt!).inSeconds} s',
       if (history) 'TS${call.slot + 1} · ${_clock(call.startedAt)}',
     ];
     return Column(
@@ -251,7 +251,7 @@ class DmrDecoderPanel extends StatelessWidget {
             Expanded(
               child: Text(
                 parts.isEmpty
-                    ? 'Вызов · метаданные не получены'
+                    ? 'Call · no metadata received'
                     : parts.join(' · '),
                 style: plex(size: 12),
               ),
@@ -277,7 +277,7 @@ class DmrDecoderPanel extends StatelessWidget {
                     ),
                     const SizedBox(width: 3),
                     Text(
-                      'Шифр.',
+                      'Enc.',
                       style: plex(size: 11, color: LegacyColors.danger),
                     ),
                   ],

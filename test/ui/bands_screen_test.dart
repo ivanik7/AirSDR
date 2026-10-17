@@ -33,28 +33,28 @@ void main() {
       );
       await tester.tap(find.byKey(const ValueKey('settingsBands')));
       await tester.pumpAndSettle();
-      expect(find.text('Диапазоны'), findsWidgets);
+      expect(find.text('Bands'), findsWidgets);
       expect(tester.takeException(), isNull);
 
       await tester.tap(find.byKey(const ValueKey('bandAdd')));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('bandSave')));
       await tester.pumpAndSettle();
-      expect(find.textContaining('введите начало'), findsOneWidget);
+      expect(find.textContaining('enter the start'), findsOneWidget);
       await tester.enterText(
         find.byKey(const ValueKey('bandName')),
-        'Своя полоса',
+        'Custom band',
       );
       await tester.enterText(find.byKey(const ValueKey('bandStart')), '100');
       await tester.enterText(find.byKey(const ValueKey('bandEnd')), '101');
       await tester.tap(find.byKey(const ValueKey('bandSave')));
       await tester.pumpAndSettle();
-      expect(find.textContaining('пересечение с «FM»'), findsOneWidget);
+      expect(find.textContaining('overlaps "FM"'), findsOneWidget);
       await tester.enterText(find.byKey(const ValueKey('bandStart')), '300');
       await tester.enterText(find.byKey(const ValueKey('bandEnd')), '301');
       await tester.tap(find.byKey(const ValueKey('bandSave')));
       await tester.pumpAndSettle();
-      final created = bands.entries.singleWhere((b) => b.name == 'Своя полоса');
+      final created = bands.entries.singleWhere((b) => b.name == 'Custom band');
       expect(created.startHz, 300000000);
       expect(tester.takeException(), isNull);
 
@@ -70,8 +70,8 @@ void main() {
       );
       await tester.tap(find.byKey(ValueKey('bandDelete-${created.id}')));
       await tester.pumpAndSettle();
-      expect(find.text('Удалить диапазон?'), findsOneWidget);
-      await tester.tap(find.text('Отмена'));
+      expect(find.text('Delete band?'), findsOneWidget);
+      await tester.tap(find.text('Cancel'));
       await tester.pumpAndSettle();
       expect(bands.byId(created.id), isNotNull);
       await tester.tap(find.byKey(ValueKey('bandDelete-${created.id}')));

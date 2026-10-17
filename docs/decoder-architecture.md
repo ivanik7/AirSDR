@@ -124,7 +124,7 @@ live bounded snapshot, not raw frames. Host RF yielded no aircraft in a
   `RadioController`. Holds the current preview id and per-decoder settings
   (defaulted/validated against `DecoderSetting.allowed`) and the live log.
 - `lib/ui/decoders/decoder_panels.dart` — `DecoderSelector` (one scrollable
-  dropdown over `decoderCatalog`, data rows marked "Недоступен" unless the
+  dropdown over `decoderCatalog`, data rows marked "Unavailable" unless the
   backend reports them) and the selected-only panels:
   `VoiceDecoderPanel` (bandwidth/squelch/demod options such as WFM stereo),
   live `Rtl433DecoderPanel`, `AdsbPanel` (in `adsb_panel.dart`),

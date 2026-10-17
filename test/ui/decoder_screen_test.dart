@@ -108,7 +108,7 @@ void main() {
       expect(radio.bandwidth, DemodMode.nfm.params.defaultBandwidth);
       await tester.ensureVisible(find.byKey(const ValueKey('squelchType')));
       await tester.pump();
-      await tester.tap(find.text('Ручной'));
+      await tester.tap(find.text('Manual'));
       await tester.pump();
       expect(radio.squelchType, SquelchType.manual);
       await tester.drag(
@@ -117,7 +117,7 @@ void main() {
       );
       await tester.pump();
       expect(radio.squelchLevel, isNot(-50));
-      await tester.tap(find.text('Авто'));
+      await tester.tap(find.text('Auto'));
       await tester.pump();
       expect(radio.squelchType, SquelchType.auto);
       await tester.pumpWidget(
@@ -133,7 +133,7 @@ void main() {
       expect(radio.running, isTrue);
       await tester.tap(find.byKey(const ValueKey('tab-3')));
       await tester.pump();
-      expect(find.text('Настройки приёмника'), findsOneWidget);
+      expect(find.text('Receiver settings'), findsOneWidget);
       await tester.tap(find.byKey(const ValueKey('tab-1')));
       await tester.pump();
       expect(radio.mode, DemodMode.nfm);
@@ -230,7 +230,7 @@ void main() {
         findsOneWidget,
       );
       expect(find.byKey(const ValueKey('decoderResult-sstv')), findsNothing);
-      expect(find.text('Недоступен в текущей нативной сборке'), findsOneWidget);
+      expect(find.text('Unavailable in the current native build'), findsOneWidget);
       expect(
         find.byKey(const ValueKey('decoderSetting-rtl_433-frequency_hz')),
         findsNothing,
@@ -264,7 +264,7 @@ void main() {
         findsOneWidget,
       );
       // ADS-B uses the current tuned IQ tap, not a second/taken-over tuner.
-      expect(find.textContaining('единственный приёмник'), findsNothing);
+      expect(find.textContaining('single receiver'), findsNothing);
       expect(find.text('Start'), findsNothing);
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox());
@@ -343,14 +343,14 @@ void main() {
     );
     await tester.pump(const Duration(milliseconds: 120));
     expect(find.text('Weather · ID 17 · temperature_C: 21.5'), findsOneWidget);
-    expect(find.textContaining('Потеряно событий: 2'), findsOneWidget);
+    expect(find.textContaining('Dropped events: 2'), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('rtl433Message-1')));
     await tester.pump();
     expect(find.byKey(const ValueKey('rtl433Json-1')), findsOneWidget);
     expect(tester.takeException(), isNull);
     await tester.tap(find.byKey(const ValueKey('rtl433Clear')));
     await tester.pump();
-    expect(find.text('Сообщений пока нет'), findsOneWidget);
+    expect(find.text('No messages yet'), findsOneWidget);
     await tester.pumpWidget(const SizedBox());
     await radio.stop();
     radio.dispose();

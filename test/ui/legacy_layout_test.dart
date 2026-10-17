@@ -52,7 +52,7 @@ void main() {
         await favorites.load();
         favorites.add(
           frequencyHz: 99912345,
-          name: 'Очень длинное название пользовательской станции для проверки',
+          name: 'Very long custom station name used for the overflow check',
           mode: DemodMode.values.last,
           category: 'FM',
         );
@@ -117,7 +117,7 @@ void main() {
           category: 'FM',
         ),
       ),
-      contains('название'),
+      contains('name'),
     );
     final first = repo.entries.first;
     expect(
@@ -129,7 +129,7 @@ void main() {
           category: 'FM',
         ),
       ),
-      contains('уже есть'),
+      contains('already in the list'),
     );
     expect(
       reason(
@@ -141,7 +141,7 @@ void main() {
           minHz: 24000000,
         ),
       ),
-      contains('диапазона'),
+      contains('device range'),
     );
     repo.dispose();
   });
@@ -164,13 +164,13 @@ void main() {
     final f = favorites.entries.first;
     await tester.tap(find.byKey(ValueKey('favoriteMenu-${f.id}')));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Изменить').last);
+    await tester.tap(find.text('Edit').last);
     await tester.pumpAndSettle();
     expect(
-      find.text('Частота ${(f.frequencyHz / 1000000).toStringAsFixed(3)} MHz'),
+      find.text('Frequency ${(f.frequencyHz / 1000000).toStringAsFixed(3)} MHz'),
       findsOneWidget,
     );
-    expect(find.text('Частота 99.900 MHz'), findsNothing);
+    expect(find.text('Frequency 99.900 MHz'), findsNothing);
     await tester.pumpWidget(const SizedBox());
     radio.dispose();
     favorites.dispose();
@@ -195,12 +195,12 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('favoriteSave')));
     await tester.pumpAndSettle();
-    expect(find.textContaining('введите название'), findsOneWidget);
+    expect(find.textContaining('enter a name'), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('favoriteMenu-builtin-fm')));
     await tester.pumpAndSettle();
     await tester.pump();
     expect(
-      find.textContaining('Не удалось сохранить'),
+      find.textContaining('Could not save'),
       findsNothing,
       reason: 'stale error must clear on the next action',
     );

@@ -83,7 +83,7 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
 
   void key(String label) {
     final ok = widget.receiver.pressKey(label);
-    setState(() => feedback = ok ? null : 'Неверная частота');
+    setState(() => feedback = ok ? null : 'Invalid frequency');
   }
 
   @override
@@ -113,7 +113,7 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
             entering: f.entry.isNotEmpty,
             trailing: f.entry.isNotEmpty
                 ? IconButton(
-                    tooltip: 'Очистить ввод',
+                    tooltip: 'Clear input',
                     onPressed: () => key('CLR'),
                     icon: const Icon(Icons.close, size: 17),
                   )
@@ -121,8 +121,8 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
                     // Real mute, independent of the fixed full app volume; starts muted.
                     key: const ValueKey('legacyMute'),
                     tooltip: widget.scanner.userMuted
-                        ? 'Включить звук'
-                        : 'Выключить звук',
+                        ? 'Unmute'
+                        : 'Mute',
                     onPressed: () => widget.scanner.active
                         ? widget.scanner.setUserMuted(!widget.scanner.userMuted)
                         : r.setMuted(!r.muted),
@@ -212,7 +212,7 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
                 width: 160,
                 child: PopupMenuButton<int>(
                   key: const ValueKey('legacyStep'),
-                  tooltip: 'Шаг',
+                  tooltip: 'Step',
                   initialValue: f.stepHz,
                   onSelected: (hz) => setState(() => f.setStepHz(hz)),
                   itemBuilder: (context) => [
@@ -237,7 +237,7 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
                             fit: BoxFit.scaleDown,
                             alignment: Alignment.centerLeft,
                             child: Text(
-                              'ШАГ ${_stepLabel(f.stepHz)}',
+                              'STEP ${_stepLabel(f.stepHz)}',
                               style: plex(size: 12, color: LegacyColors.accent),
                             ),
                           ),
@@ -435,8 +435,8 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
 }
 
 String _stepLabel(int hz) => hz >= 1000000
-    ? '${hz ~/ 1000000} МГц'
-    : '${hz % 1000 == 0 ? hz ~/ 1000 : hz / 1000} кГц';
+    ? '${hz ~/ 1000000} MHz'
+    : '${hz % 1000 == 0 ? hz ~/ 1000 : hz / 1000} kHz';
 
 /// Frequency readout with a geometry that never depends on the text: the
 /// font size is chosen once for the available width so that the longest
@@ -528,14 +528,14 @@ class _FixedFrequencyRow extends StatelessWidget {
 
 /// Status line text while not receiving (cover display: keep it short).
 String linkStatusText(DeviceLinkState s) => switch (s) {
-  DeviceLinkState.idle => 'приём остановлен',
-  DeviceLinkState.waiting => 'ожидание USB SDR',
-  DeviceLinkState.connecting => 'подключение…',
-  DeviceLinkState.receiving => 'приём',
-  DeviceLinkState.permissionDenied => 'нет разрешения USB',
-  DeviceLinkState.disconnected => 'устройство отключено, ожидание',
-  DeviceLinkState.stoppedByUser => 'приём остановлен',
-  DeviceLinkState.failed => 'ошибка подключения',
+  DeviceLinkState.idle => 'reception stopped',
+  DeviceLinkState.waiting => 'waiting for USB SDR',
+  DeviceLinkState.connecting => 'connecting…',
+  DeviceLinkState.receiving => 'receiving',
+  DeviceLinkState.permissionDenied => 'USB permission denied',
+  DeviceLinkState.disconnected => 'device disconnected, waiting',
+  DeviceLinkState.stoppedByUser => 'reception stopped',
+  DeviceLinkState.failed => 'connection error',
 };
 
 /// Short receive-screen stats: "2.40 MS/s · USB drops 99 · audio drops 0".

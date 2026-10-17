@@ -266,7 +266,7 @@ touches IQ or PCM.
   when `privacy==true` (indication only), talker alias and GPS. A card
   shows a live call only while `sync=="voice"`. As upstream does, tapping a
   card toggles that slot in the `slot_filter` bitmask. The UI will not mute
-  both slots, and a muted slot is labelled "Отключён".
+  both slots, and a muted slot is labelled "Disabled".
 - **Call lifecycle.** A call is identified by slot + source + target + type.
   Alias, GPS, privacy and `duration_ms` persist for the rest of that call,
   because they arrive in separate LC blocks. A call ends and moves to
@@ -278,7 +278,7 @@ touches IQ or PCM.
 - **History.** It is session-local, newest first, bounded to 100 entries,
   and can be cleared. It shows duration from native `duration_ms` (voice
   frames × 30 ms) when present; otherwise it shows the Dart event span,
-  labelled "по событиям".
+  labelled "event-driven".
 - **Not implemented, shown honestly.** radioid.net ID lookup, callsign
   enrichment and the map pin need network access, and the panel states
   that lookup is unsupported. The panel has no volume control: DMR voice

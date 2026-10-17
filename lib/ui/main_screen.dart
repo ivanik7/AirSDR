@@ -504,12 +504,12 @@ class _ControlsPanel extends StatelessWidget {
     return <Widget>[
       Row(
         children: [
-          const Text('Водопад'),
+          const Text('Waterfall'),
           const Spacer(),
           Tooltip(
             message:
-                'Авто Max/Min: шум и пики за последние '
-                '${AutoLevelTuning.window.inSeconds} с',
+                'Auto Max/Min: noise and peaks over the last '
+                '${AutoLevelTuning.window.inSeconds} s',
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -518,7 +518,7 @@ class _ControlsPanel extends StatelessWidget {
                   value: auto,
                   onChanged: (v) => ui.setAutoLevels(v ?? false),
                 ),
-                const Text('Авто'),
+                const Text('Auto'),
               ],
             ),
           ),

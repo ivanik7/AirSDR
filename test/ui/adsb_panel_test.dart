@@ -105,27 +105,27 @@ void main() {
       ),
     );
     await tester.pump(const Duration(milliseconds: 150));
-    expect(find.textContaining('Сообщений/с: 3.0'), findsOneWidget);
+    expect(find.textContaining('Messages/s: 3.0'), findsOneWidget);
     await tester.ensureVisible(
       find.byKey(const ValueKey('adsbAircraft-ABC123')),
     );
     await tester.tap(find.byKey(const ValueKey('adsbAircraft-ABC123')));
     await tester.pump();
-    expect(find.textContaining('Высота: 24000 ft'), findsOneWidget);
+    expect(find.textContaining('Altitude: 24000 ft'), findsOneWidget);
     await tester.ensureVisible(find.byKey(const ValueKey('adsbLocation')));
     await tester.tap(find.byKey(const ValueKey('adsbLocation')));
     await tester.pumpAndSettle();
     await tester.enterText(find.byKey(const ValueKey('adsbLatitude')), '51.5');
     await tester.enterText(find.byKey(const ValueKey('adsbLongitude')), '-0.1');
-    await tester.tap(find.text('Сохранить'));
+    await tester.tap(find.text('Save'));
     await tester.pumpAndSettle();
     final prefs = await SharedPreferences.getInstance();
     expect(prefs.getDouble('adsb.receiver.latitude'), 51.5);
     await tester.ensureVisible(find.byKey(const ValueKey('adsbSort')));
     await tester.tap(find.byKey(const ValueKey('adsbSort')));
     await tester.pump();
-    expect(find.text('По расстоянию'), findsOneWidget);
-    expect(find.textContaining('0.0 км'), findsWidgets);
+    expect(find.text('By distance'), findsOneWidget);
+    expect(find.textContaining('0.0 km'), findsWidgets);
     expect(tester.takeException(), isNull);
     // Each native snapshot is complete: an empty update removes old tracks.
     backend.events.add(

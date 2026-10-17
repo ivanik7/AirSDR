@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
-// "КАНАЛЫ" block of the Приём tab (tiles + "+ канал" + long-press menu from
+// "CHANNELS" block of the Receive tab (tiles + "+ channel" + long-press menu from
 // the old UI's _ChannelsSection), but honest about the single receiver:
 // exactly one slot is active and only it shows a (real) level.
 //
@@ -40,7 +40,7 @@ class ChannelsSection extends StatefulWidget {
   final SignalMeter meter;
 
   /// The one decoder selection (shell-scoped): the tuned active tile shows
-  /// its label, and "Сохранить как пресет" carries it over. Null keeps the
+  /// its label, and "Save as preset" carries it over. Null keeps the
   /// pre-existing behaviour (plain voice/audio preset, tile shows its mode).
   final DecoderSession? decoderSession;
 
@@ -96,7 +96,7 @@ class _ChannelsSectionState extends State<ChannelsSection> {
 
   void _select(ReceiverChannel c) {
     final ok = widget.controller.select(c.id);
-    if (!ok) _snack('Частота канала вне диапазона устройства');
+    if (!ok) _snack('Channel frequency is outside the device range');
   }
 
   void _snack(String text) => ScaffoldMessenger.maybeOf(context)
@@ -115,11 +115,11 @@ class _ChannelsSectionState extends State<ChannelsSection> {
       color: LegacyColors.card,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       items: [
-        _item('preset', Icons.bookmark_add_outlined, 'Сохранить как пресет'),
+        _item('preset', Icons.bookmark_add_outlined, 'Save as preset'),
         _item(
           'delete',
           Icons.delete_outline,
-          'Удалить',
+          'Delete',
           color: LegacyColors.danger,
         ),
       ],
@@ -168,7 +168,7 @@ class _ChannelsSectionState extends State<ChannelsSection> {
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, update) => AlertDialog(
-          title: const Text('Сохранить как пресет'),
+          title: const Text('Save as preset'),
           content: TextFormField(
             key: const ValueKey('presetName'),
             initialValue: name,
@@ -176,7 +176,7 @@ class _ChannelsSectionState extends State<ChannelsSection> {
             maxLength: 60,
             onChanged: (v) => name = v,
             decoration: InputDecoration(
-              labelText: 'Название',
+              labelText: 'Name',
               helperText:
                   '${formatMhz(c.frequencyHz)} MHz · ${_decoderLabel(c)}',
               errorText: error,
@@ -185,18 +185,18 @@ class _ChannelsSectionState extends State<ChannelsSection> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context, false),
-              child: const Text('Отмена'),
+              child: const Text('Cancel'),
             ),
             FilledButton(
               key: const ValueKey('presetNameSave'),
               onPressed: () {
                 if (name.trim().isEmpty) {
-                  update(() => error = 'введите название');
+                  update(() => error = 'enter a name');
                   return;
                 }
                 Navigator.pop(context, true);
               },
-              child: const Text('Сохранить'),
+              child: const Text('Save'),
             ),
           ],
         ),
@@ -231,8 +231,8 @@ class _ChannelsSectionState extends State<ChannelsSection> {
     );
     _snack(
       saveError == null
-          ? 'Сохранено как пресет'
-          : 'Не удалось сохранить: $saveError',
+          ? 'Saved as preset'
+          : 'Could not save: $saveError',
     );
   }
 
@@ -337,7 +337,7 @@ class _ChannelsSectionState extends State<ChannelsSection> {
                     children: [
                       Flexible(
                         child: Text(
-                          'КАНАЛЫ · ${all.length}',
+                          'CHANNELS · ${all.length}',
                           key: const ValueKey('channelsHeader'),
                           maxLines: 1,
                           softWrap: false,
@@ -351,8 +351,8 @@ class _ChannelsSectionState extends State<ChannelsSection> {
                           flex: 2,
                           child: Text(
                             receiving == null
-                                ? 'Скан…'
-                                : 'Приём: ${widget.controller.displayName(receiving)}',
+                                ? 'Scan…'
+                                : 'Receiving: ${widget.controller.displayName(receiving)}',
                             key: const ValueKey('channelScanStatus'),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
@@ -372,16 +372,16 @@ class _ChannelsSectionState extends State<ChannelsSection> {
                     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   ),
                   child: Text(
-                    '+ канал',
+                    '+ channel',
                     style: plex(size: 12, color: LegacyColors.accent),
                   ),
                 ),
                 Tooltip(
                   message: widget.scanner.canStart || widget.scanner.active
-                      ? 'Последовательный приём каналов'
+                      ? 'Sequential channel scan'
                       : !widget.radio.running
-                      ? 'Сначала включите приёмник'
-                      : 'Выберите канал с авто-шумодавом; нужно минимум два (без WFM/RAW)',
+                      ? 'Turn the receiver on first'
+                      : 'Select a channel with auto squelch; at least two are needed (no WFM/RAW)',
                   child: TextButton(
                     key: const ValueKey('channelScanToggle'),
                     onPressed: widget.scanner.active
@@ -395,7 +395,7 @@ class _ChannelsSectionState extends State<ChannelsSection> {
                       tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     ),
                     child: Text(
-                      widget.scanner.active ? 'Стоп скан' : 'Скан',
+                      widget.scanner.active ? 'Stop scan' : 'Scan',
                       style: plex(size: 12, color: LegacyColors.accent),
                     ),
                   ),
@@ -426,7 +426,7 @@ class _ChannelsSectionState extends State<ChannelsSection> {
                   child: all.isEmpty
                       ? Center(
                           child: Text(
-                            'Нет каналов — «+ канал» добавит текущую частоту',
+                            'No channels — "+ channel" adds the current frequency',
                             key: const ValueKey('channelsRow'),
                             textAlign: TextAlign.center,
                             style: plex(size: 11, color: LegacyColors.muted),
@@ -708,7 +708,7 @@ class _ChannelTileState extends State<_ChannelTile> {
               ),
               if (widget.scanning && c.mode.params.autoSquelch == null)
                 const Tooltip(
-                  message: 'Не сканируется: нет авто-шумодава',
+                  message: 'Not scanned: no auto squelch',
                   child: Padding(
                     padding: EdgeInsets.only(left: 3),
                     child: Icon(
