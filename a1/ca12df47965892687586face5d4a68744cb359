@@ -1,0 +1,82 @@
+docs/status/adsb-backend.md
+  s_e77c211b32326d::t_e1cd14d259ffb3 13
+  s_e77c211b32326d::t_fb9f90479549fb 17
+docs/status/adsb-audit.md
+  s_e77c211b32326d::t_e1cd14d259ffb3 27
+docs/status/rds.md
+  s_e77c211b32326d::t_fb9f90479549fb 50
+  s_e77c211b32326d::t_07f0358b6535fd 56
+docs/status/adsb-ui.md
+  s_e77c211b32326d::t_f76663292c50da 7
+docs/status/sstv-audit.md
+  s_e77c211b32326d::t_fb9f90479549fb 10,44
+  s_e77c211b32326d::t_e1cd14d259ffb3 3
+docs/native-n1-tests.md
+  s_e77c211b32326d::t_07f0358b6535fd 3
+docs/status/meshtastic.md
+  s_e77c211b32326d::t_07f0358b6535fd 3,5-6,8
+docs/status/dmr.md
+  s_e77c211b32326d::t_07f0358b6535fd 3,5-6,160,168,178,184,210,234-236,238,285,299,340-343
+  s_e77c211b32326d::t_e1cd14d259ffb3 87,204
+native/third_party/mbelib/PROVENANCE.md
+  s_e77c211b32326d::t_07f0358b6535fd 3
+docs/lora-upstream-feasibility.md
+  s_e77c211b32326d::t_e1cd14d259ffb3 97
+  s_e77c211b32326d::t_07f0358b6535fd 3,40
+docs/native-n2-adr.md
+  s_e77c211b32326d::t_07f0358b6535fd 95,181
+  s_e77c211b32326d::t_e1cd14d259ffb3 166
+docs/status/sstv-oracle.md
+  s_e77c211b32326d::t_07f0358b6535fd 1,47
+docs/status/sstv-ui.md
+  s_e77c211b32326d::t_07f0358b6535fd 3,82,103-104
+  s_e77c211b32326d::t_e1cd14d259ffb3 64
+docs/status/sstv.md
+  s_e77c211b32326d::t_07f0358b6535fd 3-6,134-135,146,157-159,162
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "0.0.62",
+  "base_commit_sha": "a1ca12df47965892687586face5d4a68744cb359",
+  "prompts": {},
+  "sessions": {
+    "s_e77c211b32326d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b303db26-d426-488f-ab2e-08a738d5da48",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "ivanik <ivan170102@gmail.com>",
+      "usage": [
+        {
+          "model": "claude-opus-5-5",
+          "input_tokens": 36,
+          "output_tokens": 10205,
+          "cache_read_tokens": 3918328,
+          "cache_write_5m_tokens": 0,
+          "cache_write_1h_tokens": 26598,
+          "assistant_messages": 18,
+          "turns": 1,
+          "ai_wall_ms": 10556,
+          "first_ts": "2026-10-17T17:09:25.020Z",
+          "last_ts": "2026-10-17T17:11:11.387Z",
+          "session_total_output_tokens": 141534
+        }
+      ],
+      "tools": [
+        {
+          "tool": "Bash",
+          "model": "claude-opus-5-5",
+          "calls": 10,
+          "result_chars": 13382,
+          "result_input_tokens": 20,
+          "result_cache_write_5m_tokens": 0,
+          "result_cache_write_1h_tokens": 13004,
+          "call_output_tokens": 5901
+        }
+      ],
+      "accepted_lines": 59,
+      "overridden_lines": 0
+    }
+  }
+}
