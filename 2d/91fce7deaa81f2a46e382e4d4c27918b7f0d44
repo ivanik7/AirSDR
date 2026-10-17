@@ -1,0 +1,75 @@
+tool/release.sh
+  s_869592f4bed1b5::t_33b7c72061d98b 1-74
+packaging/linux/build-packages.sh
+  s_869592f4bed1b5::t_386b02c1b6a359 10-12,30,69-73,81,86-87,142-146,148
+.github/workflows/ci.yml
+  s_869592f4bed1b5::t_ef098de56ec0df 77,79-80,82-84,143-146,149-152,158-159,188,190-191,193-195,209,218-221,235,290-297
+tool/version.sh
+  s_869592f4bed1b5::t_f744a4578b8075 1-61
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "0.0.62",
+  "base_commit_sha": "2d91fce7deaa81f2a46e382e4d4c27918b7f0d44",
+  "prompts": {},
+  "sessions": {
+    "s_869592f4bed1b5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b809de21-5f70-4065-8879-406547bd3aaf",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "ivanik <ivan170102@gmail.com>",
+      "usage": [
+        {
+          "model": "claude-opus-5-5",
+          "input_tokens": 78,
+          "output_tokens": 48502,
+          "cache_read_tokens": 8213200,
+          "cache_write_5m_tokens": 0,
+          "cache_write_1h_tokens": 51951,
+          "assistant_messages": 39,
+          "turns": 2,
+          "ai_wall_ms": 148894,
+          "first_ts": "2026-10-17T17:42:25.461Z",
+          "last_ts": "2026-10-17T17:51:45.650Z",
+          "session_total_output_tokens": 138775
+        }
+      ],
+      "tools": [
+        {
+          "tool": "Bash",
+          "model": "claude-opus-5-5",
+          "calls": 11,
+          "result_chars": 5654,
+          "result_input_tokens": 22,
+          "result_cache_write_5m_tokens": 0,
+          "result_cache_write_1h_tokens": 13060,
+          "call_output_tokens": 10179
+        },
+        {
+          "tool": "Monitor",
+          "model": "claude-opus-5-5",
+          "calls": 1,
+          "result_chars": 302,
+          "result_input_tokens": 2,
+          "result_cache_write_5m_tokens": 0,
+          "result_cache_write_1h_tokens": 630,
+          "call_output_tokens": 501
+        },
+        {
+          "tool": "Write",
+          "model": "claude-opus-5-5",
+          "calls": 2,
+          "result_chars": 326,
+          "result_input_tokens": 4,
+          "result_cache_write_5m_tokens": 0,
+          "result_cache_write_1h_tokens": 5608,
+          "call_output_tokens": 5424
+        }
+      ],
+      "accepted_lines": 189,
+      "overridden_lines": 0
+    }
+  }
+}
