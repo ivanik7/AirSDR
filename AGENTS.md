@@ -9,7 +9,7 @@ Android behaviour is checked on the Android emulator. Never use a real phone.
 License: GPL-3.0. Keep chat replies to the user concise and in Russian.
 
 ## Language policy
-- The project is English-only: documentation, code comments, test names, user-facing UI strings, agent/subagent prompts, and kanban task bodies.
+- The project is English-only: documentation, code comments, test names, user-facing UI strings, and agent/subagent prompts.
 - Exceptions: upstream sources under `native/third_party/`, intentional non-ASCII test vectors, and legacy data that must match old saves byte for byte (e.g. the v1 favorites migration pool).
 - This policy covers project files only; chat replies to the user stay in Russian.
 
@@ -37,9 +37,9 @@ Build native libraries from source with license checks; never route high-rate IQ
 Do not restore deleted Dart receive/DSP code as a shortcut for future UI tasks.
 
 ## Delegating large tasks
-When a card spans independently implementable programming subsystems (for example USB drivers,
-C ABI/FFI, DSP, Android lifecycle, and tests), lead `sdr-dev` first fixes their shared contract,
-then **delegates implementation**, not merely research, to subagents with `delegate_task`.
+When a task spans independently implementable programming subsystems (for example USB drivers,
+C ABI/FFI, DSP, Android lifecycle, and tests), the lead agent first fixes their shared contract,
+then **delegates implementation**, not merely research, to subagents.
 Give each child disjoint file ownership or a separate worktree/branch, the shared contract, and testable acceptance criteria.
 The lead integrates the results, runs native and Flutter tests itself, performs the single Gradle build,
 and owns Linux-host and emulator QA. Do not manufacture delegation for a single indivisible fix. If delegation is unavailable,
@@ -63,9 +63,9 @@ Never present a stub as finished. Label anything not tested as unverified.
 - Never use a real phone: no `adb` to physical devices, no installs, screenshots, or USB permission dialogs on a phone.
 - Only the user can confirm audible sound; an audio sink reporting "started" is not proof.
 
-## Git / kanban
-- Tasks come from board `sdr`; each task uses `.worktrees/<task-id>` on `wt/<task-id>`. Commit regularly.
-- When done: run gates in the worktree, merge `wt/<task-id>` into `~/prj/sdr_flutter` only when the main checkout is clean, then rerun `flutter analyze && flutter test` on master and build the APK as applicable.
+## Git
+- Each task uses its own worktree `.worktrees/<task>` on branch `wt/<task>`. Commit regularly.
+- When done: run gates in the worktree, merge `wt/<task>` into `master` only when the main checkout is clean, then rerun `flutter analyze && flutter test` on master and build the APK as applicable.
 - After every merge into `master` that passes those gates, run `git push origin master` (GitHub `ivanik7/AirSDR`). Fast-forward only: never force-push, never push `wt/*` branches. If the push is rejected, `git pull --ff-only` is not possible, or auth fails, report it in the task result instead of rewriting history.
-- In `kanban_complete`, report changes, exact commands/results, master commit, verified behavior, and remaining gaps. If the user must decide or act, use `kanban_block` with the precise question.
+- In the final report, list changes, exact commands/results, master commit, verified behavior, and remaining gaps. If the user must decide or act, ask a precise question.
 - Put long reports in `docs/status/*.md` or `~/prj/docs/`, not in chat. New report files must be in English.
