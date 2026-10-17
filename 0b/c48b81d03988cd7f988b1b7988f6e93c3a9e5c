@@ -1,0 +1,79 @@
+packaging/linux/build-packages.sh
+  s_869592f4bed1b5::t_2c0f7d0136addb 118,120-121
+  s_869592f4bed1b5::t_8145cc0a688474 1-81,83-117,119,122-167
+  s_869592f4bed1b5::t_1fa4b7243bd585 82
+docs/linux-packages.md
+  s_869592f4bed1b5::t_5265323a846969 1-23,25-61
+  s_869592f4bed1b5::t_2c0f7d0136addb 24
+packaging/linux/postinstall.sh
+  s_869592f4bed1b5::t_5e3e2788523c57 1-8
+docs/ci.md
+  s_869592f4bed1b5::t_7869cdf6999f77 3,8-9,12-13,15,17,21,27,29-33,45-68,75,77-80,82-83
+packaging/linux/net.ivanik.sdr_flutter.desktop
+  s_869592f4bed1b5::t_2d9600e3db77bf 1-11
+packaging/linux/airsdr-blacklist-dvb.conf
+  s_869592f4bed1b5::t_b80a8b87a1f3c0 1-8
+native/src/rds/rds.cpp
+  s_869592f4bed1b5::t_7105bff143ef85 64
+.github/workflows/ci.yml
+  s_869592f4bed1b5::t_2d23884c0e1488 1-2,4-6,8-11,14-17,19-32,34-35,72,76-87,90-170,234-235
+  s_869592f4bed1b5::t_32def29fc8fb28 3,7,12-13,18,33,36-71,73-75,88-89,171-233,236-298
+packaging/linux/airsdr.sh
+  s_869592f4bed1b5::t_2c0f7d0136addb 1-7
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "0.0.62",
+  "base_commit_sha": "0bc48b81d03988cd7f988b1b7988f6e93c3a9e5c",
+  "prompts": {},
+  "sessions": {
+    "s_869592f4bed1b5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b809de21-5f70-4065-8879-406547bd3aaf",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "ivanik <ivan170102@gmail.com>",
+      "usage": [
+        {
+          "model": "claude-opus-5-5",
+          "input_tokens": 134,
+          "output_tokens": 73769,
+          "cache_read_tokens": 11080465,
+          "cache_write_5m_tokens": 0,
+          "cache_write_1h_tokens": 102121,
+          "assistant_messages": 67,
+          "turns": 2,
+          "ai_wall_ms": 162456,
+          "first_ts": "2026-10-17T17:31:55.418Z",
+          "last_ts": "2026-10-17T17:39:42.849Z",
+          "session_total_output_tokens": 80703
+        }
+      ],
+      "tools": [
+        {
+          "tool": "Bash",
+          "model": "claude-opus-5-5",
+          "calls": 28,
+          "result_chars": 37683,
+          "result_input_tokens": 54,
+          "result_cache_write_5m_tokens": 0,
+          "result_cache_write_1h_tokens": 36825,
+          "call_output_tokens": 18552
+        },
+        {
+          "tool": "Write",
+          "model": "claude-opus-5-5",
+          "calls": 6,
+          "result_chars": 1094,
+          "result_input_tokens": 8,
+          "result_cache_write_5m_tokens": 0,
+          "result_cache_write_1h_tokens": 12030,
+          "call_output_tokens": 13270
+        }
+      ],
+      "accepted_lines": 481,
+      "overridden_lines": 0
+    }
+  }
+}
