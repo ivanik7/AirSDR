@@ -59,6 +59,12 @@ Never present a stub as finished. Label anything not tested as unverified.
 
 ## Git
 - Each task uses its own worktree `.worktrees/<task>` on branch `wt/<task>`. Commit regularly.
+- Never commit directly on `master` (no `git commit`, `git commit --amend`, `git cherry-pick`, or `git revert` while `master` is checked out). All work is committed on the task branch; `master` changes only by merging a finished `wt/<task>` branch as described below.
+- Feature branch names:
+  - Format: `wt/<task>`, where `<task>` is lowercase ASCII kebab-case (`a-z`, `0-9`, `-`), 2–5 words, at most 40 characters.
+  - Describe the change, not the agent or the date: `wt/rds-ps-decoder`, `wt/fix-usb-reattach`, `wt/docs-cleanup`. Avoid vague names such as `wt/fix`, `wt/tmp`, `wt/test`, `wt/claude-1`.
+  - The worktree directory matches the branch suffix: branch `wt/<task>` lives in `.worktrees/<task>`.
+  - One branch per task; do not reuse the name of an existing or already merged branch (add a distinguishing word instead).
 - When done: run gates in the worktree, merge `wt/<task>` into `master` only when the main checkout is clean, then rerun `flutter analyze && flutter test` on master and build the APK as applicable.
 - After every merge into `master` that passes those gates, run `git push origin master` (GitHub `ivanik7/AirSDR`). Fast-forward only: never force-push, never push `wt/*` branches. If the push is rejected, `git pull --ff-only` is not possible, or auth fails, report it in the task result instead of rewriting history.
 - In the final report, list changes, exact commands/results, master commit, verified behavior, and remaining gaps. If the user must decide or act, ask a precise question.
