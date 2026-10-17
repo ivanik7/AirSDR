@@ -48,7 +48,7 @@ state why in the task report; do not describe lead-authored code as subagent wor
 ## Quality gates
 1. `flutter analyze` — no issues.
 2. `flutter test` — green; each fix gets a regression test (RED before GREEN).
-3. `flutter build apk --debug` succeeds (release: `--release --target-platform android-arm64`).
+3. `flutter build apk --debug` succeeds (release: `--release --split-per-abi --target-platform android-arm,android-arm64,android-x64`).
 4. Check device-visible receiver/UI changes on the Linux host with the attached RTL-SDR (`xvfb-run`, screenshots, WAV); check Android-only behaviour on the Android emulator (`docs/android-emulator.md`). Say explicitly what stayed unverified.
 Never present a stub as finished. Label anything not tested as unverified.
 

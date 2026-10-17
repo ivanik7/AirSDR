@@ -78,6 +78,16 @@ target_compile_definitions(sdrcore_dump1090 PRIVATE
     _POSIX_C_SOURCE=200112L
     _DEFAULT_SOURCE)
 
+# cpu.c probes ARMv7 NEON/VFPv4 with the glibc names HWCAP_ARM_NEON and
+# HWCAP_ARM_VFPv4; bionic's <asm/hwcap.h> calls them HWCAP_NEON and
+# HWCAP_VFPv4. Map them on 32-bit ARM Android instead of patching cpu.c. The
+# generic starch flavour is used either way, so the probe result is unused.
+if(ANDROID AND ANDROID_ABI STREQUAL "armeabi-v7a")
+    target_compile_definitions(sdrcore_dump1090 PRIVATE
+        HWCAP_ARM_NEON=HWCAP_NEON
+        HWCAP_ARM_VFPv4=HWCAP_VFPv4)
+endif()
+
 # Upstream builds with -Wall -Wmissing-declarations -Werror of its own; we
 # do not re-apply this app's own warning policy to vendored code (same
 # policy as sdrcore_rtl433 / sdrcore_liquid in this directory). -O2 keeps

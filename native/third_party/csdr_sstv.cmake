@@ -24,5 +24,13 @@ target_compile_features(sdrcore_csdr_sstv PUBLIC cxx_std_17)
 # narrowing in SSTV timing math, printf-style format diagnostics already
 # bounded by patch 4); do not apply this app's warning policy to it.
 target_compile_options(sdrcore_csdr_sstv PRIVATE -w)
+
+# Bionic defines PAGE_SIZE as a macro on 32-bit ABIs, which breaks the local
+# `PAGE_SIZE` constant in ringbuffer.cpp; compat/bionic_no_page_size.h drops
+# it without patching the vendored source.
+if(ANDROID)
+    target_compile_options(sdrcore_csdr_sstv PRIVATE
+        -include ${CMAKE_CURRENT_LIST_DIR}/compat/bionic_no_page_size.h)
+endif()
 find_package(Threads REQUIRED)
 target_link_libraries(sdrcore_csdr_sstv PUBLIC Threads::Threads)

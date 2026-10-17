@@ -57,10 +57,11 @@ android {
         // flag during build.
         versionCode = flutter.versionCode
         versionName = flutter.versionName
-        // Build our new core only for arm64; keep other debug ABIs for Flutter/emulators.
+        // libsdrcore for every ABI Flutter ships in release builds. Flutter has
+        // no 32-bit x86 release engine, so x86 is not built.
         externalNativeBuild {
             cmake {
-                abiFilters.add("arm64-v8a")
+                abiFilters.addAll(listOf("armeabi-v7a", "arm64-v8a", "x86_64"))
             }
         }
     }
@@ -95,13 +96,11 @@ android {
     }
 }
 
-// Release target is arm64-v8a only: libsdrcore is built for arm64-v8a.
-// Debug keeps Flutter's emulator ABIs; missing native ABI is reported in the UI.
+// Release ships armeabi-v7a, arm64-v8a and x86_64 (one APK per ABI in CI).
+// Drop ABIs without libsdrcore so no APK installs where the core is missing.
 androidComponents {
     onVariants(selector().withBuildType("release")) { variant ->
-        variant.packaging.jniLibs.excludes.addAll(
-            listOf("lib/armeabi-v7a/**", "lib/armeabi/**", "lib/x86/**", "lib/x86_64/**"),
-        )
+        variant.packaging.jniLibs.excludes.addAll(listOf("lib/armeabi/**", "lib/x86/**"))
     }
 }
 

@@ -155,52 +155,56 @@ jobs:
           printf '%s' "$KEYSTORE_BASE64" | base64 -d > "$keystore"
           echo "ANDROID_KEYSTORE_FILE=$keystore" >> "$GITHUB_ENV"
 
-      - name: Build release APK (arm64)
+      # One APK per ABI. force-version-code-ignoring-abi keeps versionCode
+      # equal to BUILD_NUMBER instead of adding Flutter's 1000 * ABI offset.
+      - name: Build release APKs
         env:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: >-
-          flutter build apk --release --target-platform android-arm64
+          flutter build apk --release --split-per-abi
+          --target-platform android-arm,android-arm64,android-x64
           --build-name "${{ steps.ver.outputs.FULL_VERSION }}"
           --build-number "${{ steps.ver.outputs.BUILD_NUMBER }}"
+          -P force-version-code-ignoring-abi=true
 
-      - name: Build debug APK
-        run: >-
-          flutter build apk --debug
-          --build-name "${{ steps.ver.outputs.FULL_VERSION }}"
-          --build-number "${{ steps.ver.outputs.BUILD_NUMBER }}"
-
-      - name: Show release signing certificate
-        run: |
-          apksigner="$(ls -d "$ANDROID_HOME"/build-tools/36.0.0)/apksigner"
-          "$apksigner" verify --print-certs build/app/outputs/flutter-apk/app-release.apk | grep -E "DN|SHA-256"
-
-      - name: Rename APKs
+      - name: Check and rename APKs
         id: apk
         run: |
           out=build/app/outputs/flutter-apk
-          release="AirSDR-${{ steps.ver.outputs.FULL_VERSION }}-arm64-release.apk"
-          debug="AirSDR-${{ steps.ver.outputs.FULL_VERSION }}-debug.apk"
-          mv "$out/app-release.apk" "$out/$release"
-          mv "$out/app-debug.apk" "$out/$debug"
+          apksigner="$ANDROID_HOME/build-tools/36.0.0/apksigner"
+          for abi in arm64-v8a armeabi-v7a x86_64; do
+            src="$out/app-$abi-release.apk"
+            unzip -l "$src" | grep -q "lib/$abi/libsdrcore.so"
+            "$apksigner" verify --print-certs "$src" | grep -E "DN|SHA-256"
+            dst="$out/AirSDR-${{ steps.ver.outputs.FULL_VERSION }}-android-$abi.apk"
+            mv "$src" "$dst"
+            echo "${abi//-/_}=$dst" >> "$GITHUB_OUTPUT"
+          done
           ls -l "$out"
-          echo "release=$out/$release" >> "$GITHUB_OUTPUT"
-          echo "debug=$out/$debug" >> "$GITHUB_OUTPUT"
 
       # archive: false uploads the APK itself; the artifact name is the file name.
-      - name: Upload release APK
+      - name: Upload arm64-v8a APK
         uses: actions/upload-artifact@v7
         with:
-          path: ${{ steps.apk.outputs.release }}
+          path: ${{ steps.apk.outputs.arm64_v8a }}
           archive: false
           if-no-files-found: error
           retention-days: 30
 
-      - name: Upload debug APK
+      - name: Upload armeabi-v7a APK
         uses: actions/upload-artifact@v7
         with:
-          path: ${{ steps.apk.outputs.debug }}
+          path: ${{ steps.apk.outputs.armeabi_v7a }}
+          archive: false
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload x86_64 APK
+        uses: actions/upload-artifact@v7
+        with:
+          path: ${{ steps.apk.outputs.x86_64 }}
           archive: false
           if-no-files-found: error
           retention-days: 30

@@ -1,6 +1,6 @@
 # AirSDR
 
-Flutter receiver for RTL-SDR and HackRF on Android (API 26+, arm64-v8a) and Linux desktop; shared native core and Dart desktop glue also target macOS and Windows (runner packaging is pending). GPL-3.0-or-later. The C++ `libsdrcore` ABI v3 is the **only production receiver**: USB drivers, IQ ingestion, FFT, demodulation and audio stay native. Dart/Flutter owns the UI and low-rate control/FFT snapshots. There is one receiver, one VFO and one audio stream. `SDR_ENGINE=dart` and the Dart engine fallback were removed in N5; an incompatible or missing native library is reported as an error, never replaced with a mock receiver. Older Android API 24/25 devices cannot install this version because native AAudio needs API 26.
+Flutter receiver for RTL-SDR and HackRF on Android (API 26+; arm64-v8a, armeabi-v7a, x86_64), Linux, macOS and Windows desktop (CI builds macOS and Windows, which have not been run on hardware yet). GPL-3.0-or-later. The C++ `libsdrcore` ABI v3 is the **only production receiver**: USB drivers, IQ ingestion, FFT, demodulation and audio stay native. Dart/Flutter owns the UI and low-rate control/FFT snapshots. There is one receiver, one VFO and one audio stream. `SDR_ENGINE=dart` and the Dart engine fallback were removed in N5; an incompatible or missing native library is reported as an error, never replaced with a mock receiver. Older Android API 24/25 devices cannot install this version because native AAudio needs API 26.
 
 ## Layout
 
@@ -27,10 +27,10 @@ native/tests/run_host_tests.sh
 native/tests/n2/run_n2_oracles.sh --hw  # requires RTL-SDR; includes baseline and 600-second soak
 flutter build linux --debug
 flutter build apk --debug
-flutter build apk --release --target-platform android-arm64
+flutter build apk --release --split-per-abi --target-platform android-arm,android-arm64,android-x64
 ```
 
-For FFI tests, set `SDRCORE_HOST_LIBRARY` or `SDRCORE_V3_PROBE_LIBRARY` to the absolute path of a host `libsdrcore.so`; without them the opt-in tests are skipped. On Linux the app loads the bundled `libsdrcore.so`, needs access to `/dev/bus/usb/*` and defaults to the native null audio sink; set `SDR_AUDIO_SINK=wav:<path>` or `alsa:<pcm>` for output. Android debug APKs can also target emulator ABIs, but a missing arm64 native library is an error, not fake reception. Release is arm64-v8a only, currently signed with the debug key.
+For FFI tests, set `SDRCORE_HOST_LIBRARY` or `SDRCORE_V3_PROBE_LIBRARY` to the absolute path of a host `libsdrcore.so`; without them the opt-in tests are skipped. On Linux the app loads the bundled `libsdrcore.so`, needs access to `/dev/bus/usb/*` and defaults to the native null audio sink; set `SDR_AUDIO_SINK=wav:<path>` or `alsa:<pcm>` for output. On Android a missing native library for the device ABI is an error, not fake reception. Release APKs are split per ABI and signed with the release key (`docs/ci.md`, Signing); releases are cut with `tool/release.sh` (`docs/releasing.md`).
 
 Receiver acceptance runs on a Linux host with an attached RTL-SDR Blog V4 (`run_n2_oracles.sh --hw`, `xvfb-run` screenshots, WAV). Android-only behaviour is checked on the Android emulator (`docs/android-emulator.md`); USB OTG, AAudio audibility and detach/replug on real Android hardware are not covered by automated checks.
 

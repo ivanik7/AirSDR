@@ -279,7 +279,7 @@ final class SdrCore {
   /// symbols; every ABI 2 signature and the SdrStats layout are unchanged.
   static const maxAbiVersion = 3;
 
-  /// On Android loads the packaged arm64 library. On desktops resolves an
+  /// On Android loads the packaged library for the device ABI. On desktops resolves an
   /// explicit path, `$SDRCORE_HOST_LIBRARY`, the runner bundle, then the
   /// platform loader path, in that order.
   factory SdrCore.open({String? libraryPath}) {

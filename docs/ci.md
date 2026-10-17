@@ -46,8 +46,11 @@ All jobs run on `ubuntu-24.04`.
 
 ### `android`
 
-`flutter build apk --release --target-platform android-arm64` and
-`flutter build apk --debug`. libsdrcore for Android is built from source by
+`flutter build apk --release --split-per-abi` for armeabi-v7a, arm64-v8a and
+x86_64 (Flutter has no 32-bit x86 release engine), with
+`force-version-code-ignoring-abi` so every APK's versionCode is the commit
+count. Each APK is checked for its `libsdrcore.so` and its signing
+certificate is printed. No debug APK is built in CI. libsdrcore for Android is built from source by
 AGP/CMake (`native/CMakeLists.txt`); no prebuilt SDR libraries are downloaded.
 
 ### `linux` and `linux-install`
@@ -99,8 +102,9 @@ caches/wrapper, and the NDK + CMake SDK packages.
 
 Each run uploads, where `<version>` is `FULL_VERSION` from `tool/version.sh`:
 
-- `AirSDR-<version>-arm64-release.apk` and `AirSDR-<version>-debug.apk`
-  (uploaded unzipped);
+- `AirSDR-<version>-android-arm64-v8a.apk`, `...-android-armeabi-v7a.apk`
+  and `...-android-x86_64.apk` (uploaded unzipped; most phones need
+  arm64-v8a);
 - `AirSDR-<version>-linux-x86_64` (a zip with the `.deb`, `.rpm`,
   `.pkg.tar.zst` and `.tar.gz`);
 - `AirSDR-<version>-macos.dmg` and `AirSDR-<version>-windows-x86_64.zip`

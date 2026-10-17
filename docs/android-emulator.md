@@ -2,18 +2,18 @@
 
 The Android emulator is the only Android target used for agent verification; real phones are
 never used. It checks app startup on Android, the interface, and Android integration
-(permissions, notification, lifecycle). `libsdrcore` is built only for arm64-v8a
-(`android/app/build.gradle.kts`), so on the x86_64 emulator the app shows the honest
-native-unavailable state instead of a receiver. The emulator does not cover the native receiver, USB OTG, real RF, tuner gain/PPM, audio quality,
-arm64 release performance, or vendor-specific background behaviour; report those as
-unverified.
+(permissions, notification, lifecycle). `libsdrcore` is built for armeabi-v7a, arm64-v8a
+and x86_64 (`android/app/build.gradle.kts`), so the emulator loads the real native core;
+with no USB SDR attached it shows the no-device state. The emulator does not cover USB OTG,
+real RF, tuner gain/PPM, audio quality, release performance on phones, or vendor-specific
+background behaviour; report those as unverified.
 
 | Checked on the emulator | Not covered (unverified) |
 |---|---|
 | debug APK install/launch, cold start | native receiver, DSP, audio (no x86_64 `libsdrcore`) |
 | Receive / Decoder / Presets / Settings tabs, 360×780 dp layout | real RF, sensitivity, tuner gain, PPM |
 | visible native-unavailable error state | USB OTG, USB permission, RTL-SDR/HackRF drivers |
-| presets, bands, settings screens and their persistence | audibility and sound quality, arm64 performance |
+| presets, bands, settings screens and their persistence | audibility and sound quality, performance on phones |
 | notification permission prompt | foreground service, screen-off/background on real devices |
 
 Receiver and DSP behaviour with a real SDR are verified on the Linux host with the attached
@@ -57,7 +57,8 @@ tool/emulator.sh stop         # adb emu kill
 ```
 
 Instead of `build` + `install` you can use `flutter run -d emulator-5554` (hot reload). The debug
-APK contains x86_64; release is built only for arm64-v8a, do not install it on the emulator.
+APK contains every ABI; CI's x86_64 release APK also runs on the emulator, but it is signed
+with the release key, so uninstall a debug build first.
 Always pass the serial explicitly (`-s emulator-5554`, `-d emulator-5554`) so no other adb
 device is touched. A different `EMU_PORT` changes the serial.
 
