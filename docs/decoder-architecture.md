@@ -19,7 +19,7 @@ The v1 decoder extension sends only bounded low-rate JSON events to Dart.
 ## One decoder list (UI contract)
 
 The Decoder tab and the preset editor show ONE flat list,
-`decoderCatalog`: NFM, WFM, AM, USB, LSB, DSB, CW, RAW, then SSTV,
+`decoderCatalog`: NFM, WFM, AM, USB, LSB, DSB, CW, RAW, then DMR, SSTV,
 rtl_433, ADS-B and any later data decoder. There is no generic "Audio"
 entry and no second mode picker.
 
@@ -31,6 +31,11 @@ entry and no second mode picker.
   calls `CenteredReceiver.changeMode` (one retune, recentered VFO). They are
   always available because v3 implements them; they never go through the
   optional decoder extension and have no decoder factory.
+- `dmr` is a voice mode in the same list but not a v3 demodulator:
+  `voice` is true and `demodMode` is null. It is a native decoder-extension
+  engine on the baseband tap (STATUS-dmr.md §7, §10); session code tells
+  demod rows apart by `demodMode != null`, never by `voice`. Its AMBE audio
+  is meant to replace demod audio natively; Dart only shows metadata.
 - Data rows (`sstv`, `rtl_433`, `adsb`) are optional native decoder
   extension engines. Their availability comes only from
   `DecoderBackend.availableIds`; `rtl_433` is listed when the native

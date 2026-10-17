@@ -11,6 +11,7 @@ import '../bands/bands.dart';
 import '../legacy/centered_receiver.dart';
 import 'decoder_contract.dart';
 import 'adsb_snapshot.dart';
+import 'dmr_call.dart';
 import 'rds_station.dart';
 import 'sstv_image.dart';
 
@@ -53,8 +54,11 @@ class DecoderMessage {
 }
 
 class DecoderSession extends ChangeNotifier {
-  DecoderSession(this.radio, {CenteredReceiver? receiver})
-    : _receiver = receiver ?? CenteredReceiver(radio) {
+  DecoderSession(
+    this.radio, {
+    CenteredReceiver? receiver,
+    this.dmrCallTimeout = const Duration(seconds: 3),
+  }) : _receiver = receiver ?? CenteredReceiver(radio) {
     _wasRunning = radio.running;
     _lastTunedFrequency = radio.tunedFrequency;
     _lastVfoOffset = radio.vfoOffset;
@@ -69,9 +73,18 @@ class DecoderSession extends ChangeNotifier {
   }
   final RadioController radio;
   final CenteredReceiver _receiver;
+
+  /// A DMR slot with no native event for this long is treated as idle:
+  /// its call moves to history and its sync indicator clears.
+  final Duration dmrCallTimeout;
   late String _selectedId = decoderIdForMode(radio.mode);
   final Map<String, Map<String, Object>> _settings = {};
   final List<DecoderMessage> _messages = [];
+  final List<DmrCall?> _dmrSlots = [null, null];
+  final List<String?> _dmrSync = [null, null];
+  final List<DateTime?> _dmrLastSeen = [null, null];
+  final List<DmrCall> _dmrHistory = [];
+  static const dmrHistoryLimit = 100;
   AdsbSnapshot? _adsbSnapshot;
   AdsbSnapshot? get adsbSnapshot => _adsbSnapshot;
   Timer? _pollTimer;
@@ -103,6 +116,15 @@ class DecoderSession extends ChangeNotifier {
       radio.decoderBackend is RbdsDecoderBackend &&
       (radio.decoderBackend! as RbdsDecoderBackend).rbdsAvailable;
   List<DecoderMessage> get messages => List.unmodifiable(_messages);
+
+  /// Current call per timeslot (index 0 = TS1, 1 = TS2), null when idle.
+  List<DmrCall?> get dmrSlots => List.unmodifiable(_dmrSlots);
+
+  /// Native sync state per timeslot: `voice`, `data` or null (no sync).
+  List<String?> get dmrSync => List.unmodifiable(_dmrSync);
+
+  /// Ended calls, newest first, bounded to [dmrHistoryLimit].
+  List<DmrCall> get dmrHistory => List.unmodifiable(_dmrHistory);
   int get inputRateHz => radio.sampleRate.round();
   bool get adsbInputReady =>
       inputRateHz >= 2400000 &&
@@ -121,6 +143,13 @@ class DecoderSession extends ChangeNotifier {
   };
   bool isAvailable(String id) => availableIds.contains(id);
   bool canConfigure(String id) => _canAttach(id);
+
+  /// Selections that only switch the v3 demodulator (no native decoder).
+  static bool _isDemod(String id) => decoderById(id)?.demodMode != null;
+
+  /// Decoders fed by the ~250 kS/s VFO-centred complex baseband tap.
+  static bool _needsBaseband(String id) =>
+      decoderById(id)?.input == DecoderInput.baseband;
 
   /// A band with a data decoder selects it on entry; a voice-only band just
   /// sets the mode, which a voice selection follows (see [_radioChanged]).
@@ -189,9 +218,9 @@ class DecoderSession extends ChangeNotifier {
       _lastVfoOffset = radio.vfoOffset;
       _lastSampleRate = rate;
       rds.clear();
-      if (decoderById(_selectedId)?.voice != true) {
+      if (!_isDemod(_selectedId)) {
         _resetEvents();
-        if ((rate != 0 && decoderRateHz == 0 && _selectedId == 'rtl_433') ||
+        if ((rate != 0 && decoderRateHz == 0 && _needsBaseband(_selectedId)) ||
             (_selectedId == 'adsb' && !adsbInputReady)) {
           _attached = false;
           _stopPolling();
@@ -215,7 +244,7 @@ class DecoderSession extends ChangeNotifier {
       _attachSelected();
     }
     _wasRunning = running;
-    if (decoderById(_selectedId)?.voice == true) {
+    if (_isDemod(_selectedId)) {
       final next = decoderIdForMode(radio.mode);
       if (_selectedId != next) _selectedId = next;
     }
@@ -240,12 +269,20 @@ class DecoderSession extends ChangeNotifier {
     _pollTimer = null;
   }
 
-  void _resetEvents() {
+  void _resetEvents({bool keepDmrHistory = false}) {
     _afterSequence = 0;
     _streamGeneration = null;
     _droppedEvents = 0;
     _messages.clear();
     _adsbSnapshot = null;
+    _clearDmr(keepHistory: keepDmrHistory);
+  }
+
+  void _clearDmr({bool keepHistory = false}) {
+    _dmrSlots.fillRange(0, 2, null);
+    _dmrSync.fillRange(0, 2, null);
+    _dmrLastSeen.fillRange(0, 2, null);
+    if (!keepHistory) _dmrHistory.clear();
   }
 
   void _startPolling() {
@@ -266,13 +303,13 @@ class DecoderSession extends ChangeNotifier {
     }
   }
 
-  void _attachSelected() {
+  void _attachSelected({bool keepDmrHistory = false}) {
     _stopPolling();
     _attached = false;
     _failure = null;
     final id = _selectedId;
     final backend = radio.decoderBackend;
-    if (decoderById(id)?.voice == true) {
+    if (_isDemod(id)) {
       backend?.select(null, const <String, Object>{});
       if (radio.mode == DemodMode.wfm) {
         _applyRbds();
@@ -291,7 +328,7 @@ class DecoderSession extends ChangeNotifier {
       backend?.select(null, const <String, Object>{});
       return;
     }
-    if (id == 'rtl_433' && decoderRateHz == 0) {
+    if (_needsBaseband(id) && decoderRateHz == 0) {
       _failure = 'Недостаточная частота выборки IQ: выберите не менее 200 кГц';
       backend.select(null, const <String, Object>{});
       return;
@@ -309,7 +346,7 @@ class DecoderSession extends ChangeNotifier {
       return;
     }
     _attached = true;
-    _resetEvents();
+    _resetEvents(keepDmrHistory: keepDmrHistory);
     _startPolling();
   }
 
@@ -331,6 +368,7 @@ class DecoderSession extends ChangeNotifier {
           event.streamGeneration != _streamGeneration) {
         _messages.clear();
         _adsbSnapshot = null;
+        _clearDmr();
         rds.clear();
         sstv.abort('restart');
         changed = true;
@@ -389,6 +427,13 @@ class DecoderSession extends ChangeNotifier {
           }
           continue;
         }
+        if (_selectedId == 'dmr') {
+          if (active && _isDmrEvent(data)) {
+            _onDmrEvent(data, DateTime.now());
+            changed = true;
+          }
+          continue;
+        }
         if (!active || _selectedId != 'rtl_433') continue;
         _messages.insert(
           0,
@@ -405,11 +450,60 @@ class DecoderSession extends ChangeNotifier {
         // A malformed native payload is not a message.
       }
     }
+    if (_selectedId == 'dmr' && _expireDmr(DateTime.now())) changed = true;
     if (changed) notifyListeners();
+  }
+
+  static bool _isDmrEvent(Map<String, dynamic> data) =>
+      data['schema'] == 'dmr/1' &&
+      data['protocol'] == 'DMR' &&
+      (data['slot'] == 0 || data['slot'] == 1);
+
+  void _archiveDmr(int slot, DateTime now) {
+    final call = _dmrSlots[slot];
+    if (call == null) return;
+    _dmrHistory.insert(0, call.end(now));
+    if (_dmrHistory.length > dmrHistoryLimit) _dmrHistory.removeLast();
+    _dmrSlots[slot] = null;
+  }
+
+  void _onDmrEvent(Map<String, dynamic> data, DateTime now) {
+    final slot = data['slot'] as int;
+    final sync = data['sync'];
+    _dmrSync[slot] = sync == 'voice' || sync == 'data' ? sync as String : null;
+    _dmrLastSeen[slot] = sync == null ? null : now;
+    final current = _dmrSlots[slot];
+    final next = DmrCall.fromEvent(data, now, current);
+    if (current != null &&
+        (next == null || current.startedAt != next.startedAt)) {
+      _archiveDmr(slot, now);
+    }
+    _dmrSlots[slot] = next;
+  }
+
+  /// Upstream digiham only reports sync loss after its counters run out; a
+  /// silent slot (signal gone, decoder starved) must not show a live call.
+  bool _expireDmr(DateTime now) {
+    var changed = false;
+    for (var slot = 0; slot < 2; slot++) {
+      final lastSeen = _dmrLastSeen[slot];
+      if (lastSeen != null && now.difference(lastSeen) >= dmrCallTimeout) {
+        _archiveDmr(slot, now);
+        _dmrSync[slot] = null;
+        _dmrLastSeen[slot] = null;
+        changed = true;
+      }
+    }
+    return changed;
   }
 
   void clearMessages() {
     _messages.clear();
+    notifyListeners();
+  }
+
+  void clearDmrHistory() {
+    _dmrHistory.clear();
     notifyListeners();
   }
 
@@ -429,10 +523,11 @@ class DecoderSession extends ChangeNotifier {
     super.dispose();
   }
 
-  Map<String, Object> _config(String id) => {
-    'version': 1,
-    'settings': settingsFor(id),
-  };
+  /// DMR uses the flat `dmr/1` config audited in STATUS-dmr.md §7.3;
+  /// other data decoders use the versioned `{version, settings}` envelope.
+  Map<String, Object> _config(String id) => id == 'dmr'
+      ? {'schema': 'dmr/1', ...settingsFor(id)}
+      : {'version': 1, 'settings': settingsFor(id)};
 
   Map<String, Object> settingsFor(String id) {
     final descriptor = decoderById(id);
@@ -491,8 +586,9 @@ class DecoderSession extends ChangeNotifier {
       }
       rds.clear();
     }
-    if (id == _selectedId && descriptor?.voice != true && _canAttach(id)) {
-      _attachSelected();
+    if (id == _selectedId && !_isDemod(id) && _canAttach(id)) {
+      // A filter change restarts the native decoder; finished calls remain.
+      _attachSelected(keepDmrHistory: id == 'dmr');
     }
     notifyListeners();
   }

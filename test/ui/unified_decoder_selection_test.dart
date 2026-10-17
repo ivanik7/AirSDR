@@ -36,14 +36,21 @@ void main() {
         'demod:3',
         'demod:5',
         'demod:7',
+        'dmr',
         'sstv',
         'rtl_433',
         'adsb',
       ]);
       expect(
-        decoderCatalog.where((d) => d.voice).length,
+        decoderCatalog.where((d) => d.demodMode != null).length,
         DemodMode.values.length,
       );
+      // DMR is a voice mode in the same list, decoded natively (no v3 demod).
+      expect(
+        decoderCatalog.where((d) => d.voice).map((d) => d.id),
+        contains('dmr'),
+      );
+      expect(decoderById('dmr')!.demodMode, isNull);
       expect(decoderById('voice'), isNull);
     },
   );

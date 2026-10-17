@@ -163,6 +163,9 @@ void main() {
       );
       await tester.tap(find.byKey(const ValueKey('favoriteDecoder')));
       await tester.pumpAndSettle();
+      // The open menu scrolls; later catalog rows can start off-screen.
+      await tester.ensureVisible(find.text('rtl_433').last);
+      await tester.pumpAndSettle();
       await tester.tap(find.text('rtl_433').last);
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('favoriteSave')));

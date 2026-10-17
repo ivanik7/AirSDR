@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'decoder_contract.dart';
 import 'adsb_panel.dart';
 import 'decoder_session.dart';
+import 'dmr_panel.dart';
 import 'rds_widgets.dart';
 import 'sstv_panel.dart';
 import '../legacy/centered_receiver.dart';
@@ -42,13 +43,14 @@ Widget _voicePanel(DecoderPanelContext c) =>
 /// to the WFM panel only, data decoders show only their own results.
 final Map<String, DecoderPanelBuilder> decoderPanels = {
   for (final d in decoderCatalog)
-    if (d.voice && d.demodMode != DemodMode.wfm) d.id: _voicePanel,
+    if (d.demodMode != null && d.demodMode != DemodMode.wfm) d.id: _voicePanel,
   decoderIdForMode(DemodMode.wfm): (c) => WfmDecoderPanel(
     controller: c.controller,
     receiver: c.receiver,
     session: c.session,
   ),
   'rtl_433': (c) => Rtl433DecoderPanel(session: c.session),
+  'dmr': (c) => DmrDecoderPanel(session: c.session),
   'sstv': (c) => SstvDecoderPanel(session: c.session),
   'adsb': (c) => AdsbPanel(session: c.session, receiver: c.receiver),
 };
@@ -67,7 +69,7 @@ Widget buildDecoderPanel({
       decoderById(decoderIdForMode(controller.mode))!;
   final builder =
       decoderPanels[descriptor.id] ??
-      (descriptor.voice
+      (descriptor.demodMode != null
           ? _voicePanel
           : (c) => DecoderPlaceholderPanel(
               descriptor: c.descriptor,
