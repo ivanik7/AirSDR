@@ -1,0 +1,200 @@
+docs/native-n1-android-lifecycle.md
+  s_3328c7e6df19c5::t_d9c7b3b0826499 58-59
+native/third_party/RDS-PROVENANCE.md
+  s_3328c7e6df19c5::t_a89087375421d8 3
+docs/status/adsb.md
+  s_3328c7e6df19c5::t_a89087375421d8 11
+  s_3328c7e6df19c5::t_9f8d5ba05f1b36 12
+docs/native-n2-adr.md
+  s_3328c7e6df19c5::t_cf5701e9552c8e 6-7,9,13,97-98,177-179
+docs/native-n2-oracles.md
+  s_3328c7e6df19c5::t_532db01563f9be 3-4,6-7,31,42,47,51,72
+android/app/src/main/kotlin/net/ivanik/sdr_flutter/NativeUsbSession.kt
+  s_3328c7e6df19c5::t_d9c7b3b0826499 7
+docs/lora-upstream-feasibility.md
+  s_3328c7e6df19c5::t_a89087375421d8 4
+docs/status/sstv.md
+  s_3328c7e6df19c5::t_a89087375421d8 55,157
+native/third_party/csdr_sstv/PROVENANCE.md
+  s_3328c7e6df19c5::t_a89087375421d8 6
+native/third_party/NOTICE.md
+  s_3328c7e6df19c5::t_a89087375421d8 38,77,175-176,179-180
+native/third_party/rtl_433/PROVENANCE.md
+  s_3328c7e6df19c5::t_a89087375421d8 5
+docs/status/sstv-oracle.md
+  s_3328c7e6df19c5::t_d7440999924bef 45
+native/third_party/mbelib/PROVENANCE.md
+  s_3328c7e6df19c5::t_a89087375421d8 6
+docs/status/rds.md
+  s_3328c7e6df19c5::t_9f8d5ba05f1b36 12,27
+  s_3328c7e6df19c5::t_d7440999924bef 48
+docs/status/dmr.md
+  s_3328c7e6df19c5::t_a89087375421d8 11,205
+  s_3328c7e6df19c5::t_d7440999924bef 297,339
+native/third_party/dump1090/PROVENANCE.md
+  s_3328c7e6df19c5::t_a89087375421d8 7,274-275
+docs/native-n1-tests.md
+  s_3328c7e6df19c5::t_d9c7b3b0826499 55-56,121,123
+docs/status/adsb-audit.md
+  s_3328c7e6df19c5::t_a89087375421d8 3
+docs/status/adsb-oracle.md
+  s_3328c7e6df19c5::t_a89087375421d8 3,7
+  s_3328c7e6df19c5::t_d7440999924bef 22
+native/third_party/digiham_dmr/PROVENANCE.md
+  s_3328c7e6df19c5::t_a89087375421d8 4
+docs/status/rtl433.md
+  s_3328c7e6df19c5::t_d7440999924bef 18
+  s_3328c7e6df19c5::t_a89087375421d8 7
+docs/status/sstv-ui.md
+  s_3328c7e6df19c5::t_a89087375421d8 75
+  s_3328c7e6df19c5::t_d7440999924bef 109-111
+docs/native-n1-adr.md
+  s_3328c7e6df19c5::t_d9c7b3b0826499 3,66,68
+README.md
+  s_3328c7e6df19c5::t_376774a15bd499 3,18,35
+docs/ci.md
+  s_3328c7e6df19c5::t_cf5701e9552c8e 7,15,20,60
+docs/android-emulator.md
+  s_3328c7e6df19c5::t_1141d7395d056f 17
+  s_3328c7e6df19c5::t_2c0b857984bed0 1,3,8-9,11,14,18-30,32-33,35,45-46,59-62,64-66,68-70,74-81
+  s_3328c7e6df19c5::t_e48d378c58d33a 4-7,13,15-16
+tool/emulator.sh
+  s_3328c7e6df19c5::t_2c0b857984bed0 2-3,14-15,18-20,23
+docs/decoder-architecture.md
+  s_3328c7e6df19c5::t_4863afcf7276b4 263,267,409-412,484-485
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "0.0.62",
+  "base_commit_sha": "085c26b210d996164835e305ed898184af5df445",
+  "prompts": {},
+  "sessions": {
+    "s_3328c7e6df19c5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6c9d9ebb-b10b-4ec2-a4f0-b94074f20c43",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "ivanik <ivan170102@gmail.com>",
+      "usage": [
+        {
+          "model": "claude-opus-5-5",
+          "input_tokens": 158,
+          "output_tokens": 50128,
+          "cache_read_tokens": 13347828,
+          "cache_write_5m_tokens": 0,
+          "cache_write_1h_tokens": 163001,
+          "assistant_messages": 79,
+          "turns": 2,
+          "ai_wall_ms": 83188,
+          "first_ts": "2026-10-17T16:59:49.044Z",
+          "last_ts": "2026-10-17T17:08:40.108Z",
+          "session_total_output_tokens": 128994
+        }
+      ],
+      "tools": [
+        {
+          "tool": "Bash",
+          "model": "claude-opus-5-5",
+          "calls": 34,
+          "result_chars": 101575,
+          "result_input_tokens": 68,
+          "result_cache_write_5m_tokens": 0,
+          "result_cache_write_1h_tokens": 69288,
+          "call_output_tokens": 21529
+        },
+        {
+          "tool": "Read",
+          "model": "claude-opus-5-5",
+          "calls": 1,
+          "result_chars": 2359,
+          "result_input_tokens": 2,
+          "result_cache_write_5m_tokens": 0,
+          "result_cache_write_1h_tokens": 3438,
+          "call_output_tokens": 446
+        }
+      ],
+      "accepted_lines": 138,
+      "overridden_lines": 0
+    },
+    "s_e77c211b32326d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b303db26-d426-488f-ab2e-08a738d5da48",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "ivanik <ivan170102@gmail.com>",
+      "usage": [
+        {
+          "model": "claude-opus-5-5",
+          "input_tokens": 472,
+          "output_tokens": 131329,
+          "cache_read_tokens": 26790935,
+          "cache_write_5m_tokens": 0,
+          "cache_write_1h_tokens": 401892,
+          "assistant_messages": 226,
+          "turns": 17,
+          "ai_wall_ms": 335278,
+          "first_ts": "2026-10-17T16:08:16.379Z",
+          "last_ts": "2026-10-17T17:09:10.174Z",
+          "session_total_output_tokens": 131329
+        }
+      ],
+      "tools": [
+        {
+          "tool": "Agent",
+          "model": "claude-opus-5-5",
+          "calls": 5,
+          "result_chars": 5275,
+          "result_input_tokens": 2,
+          "result_cache_write_5m_tokens": 0,
+          "result_cache_write_1h_tokens": 4808,
+          "call_output_tokens": 13885
+        },
+        {
+          "tool": "Bash",
+          "model": "claude-opus-5-5",
+          "calls": 87,
+          "result_chars": 169031,
+          "result_input_tokens": 172,
+          "result_cache_write_5m_tokens": 0,
+          "result_cache_write_1h_tokens": 128370,
+          "call_output_tokens": 45341
+        },
+        {
+          "tool": "Edit",
+          "model": "claude-opus-5-5",
+          "calls": 3,
+          "result_chars": 331,
+          "result_input_tokens": 6,
+          "result_cache_write_5m_tokens": 0,
+          "result_cache_write_1h_tokens": 1576,
+          "call_output_tokens": 1338
+        },
+        {
+          "tool": "Monitor",
+          "model": "claude-opus-5-5",
+          "calls": 1,
+          "result_chars": 1578,
+          "result_input_tokens": 2,
+          "result_cache_write_5m_tokens": 0,
+          "result_cache_write_1h_tokens": 731,
+          "call_output_tokens": 129
+        },
+        {
+          "tool": "Read",
+          "model": "claude-opus-5-5",
+          "calls": 5,
+          "result_chars": 16995,
+          "result_input_tokens": 10,
+          "result_cache_write_5m_tokens": 0,
+          "result_cache_write_1h_tokens": 9835,
+          "call_output_tokens": 839
+        }
+      ],
+      "context_at_start_tokens": 47597,
+      "accepted_lines": 0,
+      "overridden_lines": 0
+    }
+  }
+}
