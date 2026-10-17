@@ -8,7 +8,7 @@ t_5b101746 (AMBE synthesis + audio), t_e1e6186c (UI). Integration: t_bc6f9eeb.
 Labels: **[verified]** = read in the pinned source or primary record listed below.
 **[unverified]** = inference or secondary source, not checked against a primary record.
 
-## 1. Pinned reference sources (all local under `~/prj/ref/openwebrx`)
+## 1. Pinned reference sources (all local under `<refs>/openwebrx`)
 
 | Repo | Commit (date) | License |
 |---|---|---|
@@ -202,7 +202,7 @@ No tuner control, no subprocess, no PCM/IQ through Dart.
   remains a documented approximation of OpenWebRX+'s FFT selector; a
   same-recording oracle comparison is not yet available.
 - No over-the-air DMR test yet; no local DMR IQ recording found. Child cards need a capture
-  (Blog V4 on debian-ai) or a synthetic vector generated from the sync/EMB tables.
+  (Blog V4 on the Linux host) or a synthetic vector generated from the sync/EMB tables.
 - Full talker-alias charset cases, nonzero GPS and embedded LC checksum failure
   remain unverified; zero-coordinate/ISO-8859-1/four-fragment paths are tested in section 9.
 - Legal status outside US/EP not checked; this is not legal advice.
@@ -294,7 +294,7 @@ touches IQ or PCM.
   history retention, generation clear or expiry fails the matching test.
 - **Not verified.** No native `dmr` backend is registered on master, so no
   real event has gone through `NativeDecoderBackend`. Live RTL-SDR/air and
-  phone checks have not been done.
+  Android hardware checks have not been done.
 
 ## 11. AMBE+2 voice output (t_5b101746)
 
@@ -336,7 +336,7 @@ mbelib + DigitalVoiceFilter + `csdr agc` on synthetic frames.
 
 Not verified / remaining: no open AMBE+2 speech encoder exists, so all test
 frames are synthetic parameter vectors (vocoder buzz, not speech). No
-over-the-air DMR voice was decoded. Audibility on the phone is unconfirmed;
+over-the-air DMR voice was decoded. Audibility is unconfirmed;
 it still requires manual listening. The DMR backend (registry entry, 4FSK channel from
 t_8e3dfcc0, events, `{"voice":false}` mapping) still has to own one
 `VoiceOutput` and return `provides_audio() == true`. That wiring belongs to

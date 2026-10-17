@@ -1,6 +1,6 @@
 #!/bin/sh
-# Headless Android emulator loop for UI / synthetic-source smoke (see docs/android-emulator.md).
-# Does NOT replace the SM-F936B + RTL-SDR check: no USB OTG, no real RF, no audio quality.
+# Headless Android emulator loop for UI smoke (see docs/android-emulator.md).
+# No USB OTG, no real RF, no audio quality.
 #
 #   tool/emulator.sh start     # boot AVD headless (KVM) in the background, returns immediately
 #   tool/emulator.sh wait      # block until sys.boot_completed=1 (<= 5 min)
@@ -11,14 +11,16 @@
 #   tool/emulator.sh stop      # adb emu kill
 #   tool/emulator.sh status    # adb devices -l + boot flag
 #
-# Env: AVD (sdr_api35), EMU_PORT (5554), EMU_GPU (swiftshader_indirect). The serial is always
-# emulator-$EMU_PORT so the phone attached over Wi-Fi ADB is never touched.
+# Env: AVD (sdr_api35), EMU_PORT (5554), EMU_GPU (swiftshader_indirect), ANDROID_HOME. The serial
+# is always emulator-$EMU_PORT so other adb devices are never touched.
 set -eu
 
-. "$HOME/prj/env.sh"
+# Optional local toolchain setup; otherwise ANDROID_HOME must already be set.
+if [ -n "${SDR_ENV:-}" ]; then . "$SDR_ENV"; fi
+: "${ANDROID_HOME:?set ANDROID_HOME or SDR_ENV}"
 AVD=${AVD:-sdr_api35}
 EMU_PORT=${EMU_PORT:-5554}
-# swangle and lavapipe made qemu exit as soon as the app rendered its first frame on this VM.
+# swangle and lavapipe made qemu exit as soon as the app rendered its first frame on a KVM VM.
 EMU_GPU=${EMU_GPU:-swiftshader_indirect}
 SERIAL="emulator-$EMU_PORT"
 EMULATOR="$ANDROID_HOME/emulator/emulator"

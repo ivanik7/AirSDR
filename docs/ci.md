@@ -4,7 +4,7 @@ Workflow: `.github/workflows/android-apk.yml` (workflow name `build`).
 
 ## Triggers
 
-- every push to `master` (each merged task card pushes master, see AGENTS.md);
+- every push to `master` (every merged task pushes master, see AGENTS.md);
 - manual `workflow_dispatch` from the Actions tab.
 
 Runs are grouped per ref with `cancel-in-progress`, so a newer push to master
@@ -12,12 +12,12 @@ cancels a still-running older build.
 
 ## Job `android` (ubuntu-latest)
 
-Toolchain, pinned to the local build host (`~/prj/env.sh` on debian-ai):
+Toolchain, pinned to match local builds:
 
 | Component | Version | Source of truth |
 |---|---|---|
 | Flutter | 3.47.5 stable | `flutter --version` |
-| JDK | 21 (Temurin) | `~/sdk/jdk` |
+| JDK | 21 (Temurin) | `java -version` |
 | Android platform / build-tools | android-36 / 36.0.0 | `flutter.compileSdkVersion` |
 | NDK | 28.2.13676358 | `flutter.ndkVersion` (Flutter 3.47.5), `android/build.gradle.kts` |
 | CMake (Android) | 3.22.1 | `android/app/build.gradle.kts` |
@@ -57,7 +57,7 @@ Download them from the run page in the Actions tab (requires a GitHub login).
 
 The release build type still uses the debug signing config
 (`android/app/build.gradle.kts`). On CI that is the runner's freshly generated
-`~/.android/debug.keystore`, which differs from the debug key on debian-ai and
+`~/.android/debug.keystore`, which differs from the debug key of a local build host and
 can differ between runs. Consequences:
 
 - `adb install -r` of a CI APK over an app installed from a local build fails

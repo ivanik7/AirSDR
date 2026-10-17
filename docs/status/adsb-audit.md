@@ -1,6 +1,6 @@
 # ADS-B source audit and embedding plan
 
-Scope: FlightAware `dump1090` at `0339a57b89cd6e61856cbb13ae342c31ae7be5ac` (`~/prj/ref/openwebrx/ext/dump1090`) and OpenWebRX+ at `f1e0d1a` (`~/prj/ref/openwebrx/openwebrx-plus`). This is a source/feasibility audit, **not** a working ADS-B decoder.
+Scope: FlightAware `dump1090` at `0339a57b89cd6e61856cbb13ae342c31ae7be5ac` (`<refs>/openwebrx/ext/dump1090`) and OpenWebRX+ at `f1e0d1a` (`<refs>/openwebrx/openwebrx-plus`). This is a source/feasibility audit, **not** a working ADS-B decoder.
 
 ## Actual OpenWebRX+ behavior
 

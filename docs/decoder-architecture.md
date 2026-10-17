@@ -260,12 +260,11 @@ edit: its row is generated from `DemodMode` order in `decoderCatalog`.
 - **Live-air decoding is unverified.** A host RTL-SDR Blog V4 streamed ADS-B
   at 1090 MHz / 2.4 MS/s, but no aircraft were decoded during the 30-second
   measurement (see `docs/status/adsb.md`). Neither synthetic IQ nor a running tuner
-  establishes antenna/analog RF reception or Android phone behavior.
+  establishes antenna/analog RF reception or behaviour on real Android hardware.
 
 ## WFM RDS integration contract (implemented; validation in docs/status/rds.md)
 
-This section supersedes the historical RDS/SDR++ suggestion in
-`~/prj/docs/30-openwebrx-decoders-plan.md`. The implementation target is the
+This section supersedes the earlier RDS/SDR++ suggestion. The implementation target is the
 OpenWebRX+ **redsea** chain, not a newly written or simplified RDS decoder.
 RDS is implicit in `demod:1` WFM, never a new catalog entry or a selectable
 `Decoder` instance. It must not mute/stall the existing stereo audio, change
@@ -407,13 +406,10 @@ with pinned provenance, `LICENSE` and each original copyright header:
 - `meson.build:37-116` declares libsndfile, nlohmann_json, iconv and
   liquid-dsp. The first is file-only; the second is JSON output; iconv is
   enhanced text/TMC locations; liquid is used **at runtime** for AGC, FIR,
-  NCO/PLL, RRC symbol sync, PSK modem and rational resampler. No standalone
-  liquid source checkout was found under `~/prj/ref`, nor were the above
-  libraries available via this host's pkg-config at documentation time;
-  Android build and CPU use are therefore **not yet verified**. Pin a
-  compatible liquid-dsp revision, build it from source with an NDK-compatible
-  recipe for arm64-v8a (including headers and any required math linkage), and validate
-  native host and Android linkage/size. Replacing those DSP blocks with
+  NCO/PLL, RRC symbol sync, PSK modem and rational resampler. Implemented:
+  redsea 1.3.1, liquid-dsp 1.6.0 and nlohmann/json 3.11.3 are vendored and
+  built from source for host and Android (`native/third_party/RDS-PROVENANCE.md`);
+  validation results are in `docs/status/rds.md`. Replacing those DSP blocks with
   homegrown code is *not* automatically more faithful or smaller; only
   select that fallback after a documented, measured build/license obstacle
   and same-MPX oracle comparison. Preserve upstream 57 kHz recovery first.
@@ -485,5 +481,5 @@ before our event coalescing, excluding only explicitly added BLER/sync keys;
 also test native block/FEC and PI/PS/RT A/B reset against redsea's included
 `test/resources/mpx-testfile-yksi.flac` and `rds2-minirds-192k.flac` after
 license-safe decoding. Check no WFM stereo underruns, rate/bandwidth gating,
-generation/tune resets, Android arm64 linkage and size. These are future
-acceptance criteria, **not** tests completed by this documentation card.
+generation/tune resets, Android arm64 linkage and size. Results of these
+checks are recorded in `docs/status/rds.md`.

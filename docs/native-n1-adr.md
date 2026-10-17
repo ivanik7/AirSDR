@@ -1,6 +1,6 @@
 # ADR: N1 native USB IQ acquisition (ABI revision 2)
 
-Status: ABI 2 implementation integrated; phone acceptance pending. The authoritative binary declarations are in `native/include/sdrcore.h`. This ADR does not promise DSP, audio, a production native UI controller, or device parity.
+Status: ABI 2 implementation integrated. ABI 3 (`docs/native-n2-adr.md`) is the production receiver; ABI 2 remains exported for the Kotlin diagnostic bridge. The authoritative binary declarations are in `native/include/sdrcore.h`. This ADR does not promise DSP, audio, a production native UI controller, or device parity.
 
 ## ABI and lifecycle
 
@@ -63,6 +63,6 @@ Vendored source revisions, patch provenance, licensing, and build selection are 
 
 ## Verification and acceptance boundary
 
-On host: CMake/CTest (four targets), fake-fd ownership/error/lifecycle, independent checksum oracle, Kotlin JUnit fake-bridge tests, and real Dart FFI calls into the host `.so`. Android arm64 `.so`, debug APK, and release APK are build gates. These tests do not substitute for on-device proof of libusb open-by-fd, 2.4 MSPS throughput, USB detach, or foreground lifecycle. Native commands run on the plugin's serial `sdrcore-control` thread, not the main thread (see `docs/native-n1-android-lifecycle.md`); open/stop/detach latency on hardware is unmeasured and must be checked during phone QA.
+On host: CMake/CTest (four targets), fake-fd ownership/error/lifecycle, independent checksum oracle, Kotlin JUnit fake-bridge tests, and real Dart FFI calls into the host `.so`. Android arm64 `.so`, debug APK, and release APK are build gates. These tests do not substitute for on-device proof of libusb open-by-fd, 2.4 MSPS throughput, USB detach, or foreground lifecycle. Native commands run on the plugin's serial `sdrcore-control` thread, not the main thread (see `docs/native-n1-android-lifecycle.md`); open/stop/detach latency on Android hardware is unmeasured and remains unverified.
 
-Acceptance requires an Android phone with RTL-SDR Blog V4 connected over OTG and exclusive ADB permission: native open/configure at 2.4 MSPS, at least ten minutes of timestamped counters, stop/restart, stop → retune/change gain → restart, physical detach/replug, teardown with no fd leak/double close, and comparison with the Dart receiver without clearing data. HackRF hardware is unavailable and remains unverified. Keep N2 gated and the Dart path the default until phone acceptance is recorded.
+Receiver acceptance moved to the Linux host with an attached RTL-SDR Blog V4 (`docs/native-n2-adr.md`). Android USB OTG open-by-fd, detach/replug and fd teardown on real hardware remain unverified; HackRF hardware is unavailable and remains unverified.

@@ -35,7 +35,7 @@ internal interface that bridges these drivers into the engine.
 ## librtlsdr — `rtl-sdr/`
 
 - Upstream: https://github.com/osmocom/rtl-sdr, pinned at the project's
-  already-checked-out `~/prj/ref/rtl-sdr` revision
+  already-checked-out `<refs>/rtl-sdr` revision
   **797f8143266d983c56d8f35d2d442527529dd8a5** (2026-08-12).
 - License: **GPL-2.0-or-later** (`rtl-sdr/COPYING`)
 - Vendored: library-only sources (CLI tools `rtl_sdr.c`/`rtl_fm.c`/etc. are
@@ -74,7 +74,7 @@ internal interface that bridges these drivers into the engine.
 ## libhackrf — `hackrf/libhackrf/`
 
 - Upstream: https://github.com/greatscottgadgets/hackrf, pinned at the
-  project's already-checked-out `~/prj/ref/hackrf` revision
+  project's already-checked-out `<refs>/hackrf` revision
   **7f96cc8e3fa625c4263a71ba8dd44d1f6110e4fa** (2026-09-17), `host/libhackrf/`
   subtree only.
 - License: **BSD-3-Clause** (per-file header in `hackrf.c`/`hackrf.h`)
@@ -172,12 +172,12 @@ protobufs are GPL-3.0 and this project is GPL-3.0-or-later, so the combined
 ## Reproducing the pin / patch provenance
 
 ```
-# rtl-sdr base (already pinned in the repo's ~/prj/ref checkout):
-git -C ~/prj/ref/rtl-sdr log -1 --format='%H %ci'
+# rtl-sdr base (already pinned in the local reference checkout):
+git -C <refs>/rtl-sdr log -1 --format='%H %ci'
 # -> 797f8143266d983c56d8f35d2d442527529dd8a5 2026-08-12 00:11:56 +0200
 
-# hackrf base (already pinned in the repo's ~/prj/ref checkout):
-git -C ~/prj/ref/hackrf log -1 --format='%H %ci'
+# hackrf base (already pinned in the local reference checkout):
+git -C <refs>/hackrf log -1 --format='%H %ci'
 # -> 7f96cc8e3fa625c4263a71ba8dd44d1f6110e4fa 2026-09-17 11:09:19 -0400
 
 # open-by-fd source commits (for reference only; not vendored wholesale):

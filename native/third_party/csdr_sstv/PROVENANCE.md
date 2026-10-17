@@ -3,7 +3,7 @@
 ## Upstream pin
 
 Source: `csdr-plus`, commit `f26b52071c4a127fc8193d058c249cac57585de4`
-(local reference checkout `~/prj/ref/openwebrx/csdr-plus`).
+(local reference checkout `<refs>/openwebrx/csdr-plus`).
 Files copied verbatim unless noted otherwise below.
 
 ## Files in this directory

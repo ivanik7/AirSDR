@@ -3,14 +3,14 @@
 N5 supersession: ABI v3 is now the sole production receiver; the
 `SDR_ENGINE` selector, Dart receive fallback and Android API 24/25 support
 described in this N2 record were removed. Android minSdk is 26. The pre-N5
-sections below remain historical parity/acceptance evidence; see
-`docs/native-n5-inventory.md` and README for the current boundary.
+sections below remain historical parity/acceptance evidence; see README for
+the current boundary.
 
-Status: **implemented and integrated (t_848e6a1c)**. The declarations in
+Status: **implemented and integrated**. The declarations in
 `native/include/sdrcore_v3.h` are the binary authority. `sdr_version()` returns
 **3** and all seven `sdr_v3_*` symbols are exported. ABI 3 is a strict superset:
 legacy ABI 2 clients (Dart `SdrCore`, Kotlin `NativeUsbSession`) accept versions
-2..3. Results and remaining gaps: `STATUS-n2-integration.md`.
+2..3.
 
 ## Decision and compatibility
 
@@ -94,8 +94,8 @@ native stop/close and claim release. L1's Linux Dart receiver is not supported:
 show native-required state if the v3 library cannot load, not synthetic rows.
 After the complete Linux-host acceptance override in task `t_58a4efeb`, native
 may become the Android default; N5, not N2, removes Dart DSP/drivers later.
-This ADR supersedes the old phone-only N2 gates in plan 40; the phone check is
-separate and non-blocking.
+This ADR supersedes the earlier phone-only N2 gates; acceptance runs on the
+Linux host.
 
 ## Data, buffer lifetime and backpressure
 
@@ -174,9 +174,9 @@ AM/NFM/WFM/SSB/CW producing non-silent frames in WAV/null, stop/restart, drop
 stats compared with `rtl_test`, and a short local-FM WFM WAV for manual listening. Run host
 CTest/oracles and Flutter analyze/test, Linux debug/release, Android debug and
 arm64 release, ABI exports and 16 KiB page alignment. Android-only
-ForegroundService, AAudio and fd handoff need unit/host tests; actual phone
-behavior is **unverified** in N2 without a separate phone-check task and does
-not block Linux acceptance. The Dart receiver remains available until N5.
+ForegroundService, AAudio and fd handoff need unit/host tests and the Android
+emulator; behaviour on real Android hardware is **unverified** and does not
+block Linux acceptance. The Dart receiver remains available until N5.
 
 ## N2 close-out: Android wiring and default engine (t_58a4efeb)
 

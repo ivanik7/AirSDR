@@ -3,7 +3,7 @@
 Vendored unmodified for DMR AMBE+2 voice synthesis (task t_5b101746).
 
 - Upstream: mbelib (szechyjs/mbelib), the copy OpenWebRX+ ships in
-  `~/prj/ref/openwebrx/ext/mbelib`, commit `9a04ed5c78176a9965f3d43f7aa1b1f5330e771f`
+  `<refs>/openwebrx/ext/mbelib`, commit `9a04ed5c78176a9965f3d43f7aa1b1f5330e771f`
   ("fixes for MSVC 14.1"), library version 1.3.x.
 - License: ISC (see `COPYRIGHT`), compatible with GPL-3.0-or-later.
 - Files: mbelib.c/.h, mbelib_const.h, ecc.c, ecc_const.h, ambe3600x2450.c,

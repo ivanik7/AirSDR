@@ -1,7 +1,7 @@
 # LoRa / Meshtastic upstream verification and porting feasibility
 
 Card t_21d361f6. Research only: no code changed. All results below come from
-real runs on debian-ai (2026-10-11), unless explicitly marked unverified.
+real runs on the Linux host (2026-10-11), unless explicitly marked unverified.
 
 ## 1. OpenWebRX+ reference chain (openwebrx-plus @ f1e0d1ac7dfa)
 

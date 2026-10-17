@@ -4,7 +4,7 @@
 
 Source: FlightAware `dump1090` (dump1090-fa), commit
 `0339a57b89cd6e61856cbb13ae342c31ae7be5ac` (2026-07-01 15:08:02 -0500), local
-reference checkout `~/prj/ref/openwebrx/ext/dump1090` (vendored as part of
+reference checkout `<refs>/openwebrx/ext/dump1090` (vendored as part of
 OpenWebRX+'s `ext/` tree; upstream project is
 https://github.com/flightaware/dump1090). See
 `docs/status/adsb-audit.md` for the source/feasibility audit this embedding
@@ -271,8 +271,8 @@ recorded in this task's final report (not duplicated here to avoid
 drifting out of sync with re-runs); re-run with:
 
 ```
-cmake -S native -B "$HOME/.hermes/profiles/sdr-dev/cache/scratch/adsb-build" -DCMAKE_BUILD_TYPE=Release
-cmake --build "$HOME/.hermes/profiles/sdr-dev/cache/scratch/adsb-build" -j3 --target sdrcore_adsb_backend_test
+cmake -S native -B "build/adsb-build" -DCMAKE_BUILD_TYPE=Release
+cmake --build "build/adsb-build" -j3 --target sdrcore_adsb_backend_test
 ```
 
 (or see the parent `native/CMakeLists.txt`'s own `add_subdirectory(third_party)`

@@ -9,7 +9,7 @@ Recordings: windytan/redsea commit `7555c9f6259d50718697ee8c9f218ea012c6892c`, `
 Reproduce (substitute a different scratch path if needed):
 
 ```sh
-S=$HOME/.hermes/profiles/sdr-dev/cache/scratch
+S=${TMPDIR:-/tmp}/rds-validate; mkdir -p "$S"
 REV=7555c9f6259d50718697ee8c9f218ea012c6892c
 for name in rds2-minirds-192k mpx-testfile-yksi; do
   curl -fL "https://media.githubusercontent.com/media/windytan/redsea/$REV/test/resources/$name.flac" -o "$S/$name.flac"
@@ -24,7 +24,7 @@ python3 native/tests/rds_parity.py "$S/rds-validate-build/sdrcore_rds_mpx_oracle
 ctest --test-dir "$S/rds-validate-build" --output-on-failure
 "$S/rds-validate-build/sdrcore_rds_wfm_bench" off
 "$S/rds-validate-build/sdrcore_rds_wfm_bench" on
-source ~/prj/env.sh && flutter analyze && flutter test --concurrency=1 --reporter compact
+flutter analyze && flutter test --concurrency=1 --reporter compact
 flutter build linux --debug && flutter build apk --debug
 ```
 
@@ -45,7 +45,7 @@ The repeatable benchmark feeds **identical** synthetic 2.4 MS/s CU8 stereo-FM IQ
 
 ## Boundaries, gates and remaining acceptance
 
-`sdrcore_rds_mpx_receiver` asserts that retune immediately drops queued groups/sync and that switching to AM never emits RDS groups; the ABI RDS test asserts generation, RBDS, retune and mode reset events. Flutter RDS station/UI regression tests cover stale station clearing on PI, frequency, mode, generation and stop; the full suite ran. `lsusb` during validation showed only QEMU/root hubs: **no RTL-SDR Blog V4 (`0bda:2838`)**. Therefore no real local station PI/PS/RT, USB drop count, audio-sink underrun measurement, or Linux screenshot/WAV was obtained; Android phone checks belong to the separate phone card. Live reception, subjective stereo quality and bandwidth behavior on the actual Blog V4 remain unverified, not passed.
+`sdrcore_rds_mpx_receiver` asserts that retune immediately drops queued groups/sync and that switching to AM never emits RDS groups; the ABI RDS test asserts generation, RBDS, retune and mode reset events. Flutter RDS station/UI regression tests cover stale station clearing on PI, frequency, mode, generation and stop; the full suite ran. `lsusb` during validation showed only QEMU/root hubs: **no RTL-SDR Blog V4 (`0bda:2838`)**. Therefore no real local station PI/PS/RT, USB drop count, audio-sink underrun measurement, or Linux screenshot/WAV was obtained; Android behaviour on real hardware is unverified. Live reception, subjective stereo quality and bandwidth behavior on the actual Blog V4 remain unverified, not passed.
 
 Host native Release build and CTest: **23/23 passed**. `flutter analyze`: no issues. `flutter test --concurrency=1 --reporter compact`: **430 passed, 14 skipped**. Linux debug and Android debug APK builds passed. The APK was built only after checking that no other Gradle build was active; an attempted `flock` command was rejected by this headless terminal's nested-executable security check. No arm64 release build was run in this validation card (upstream native integration already passed Android debug). No app production code or native ABI changed here; only host-only parity/benchmark harnesses and this documentation were added.
 

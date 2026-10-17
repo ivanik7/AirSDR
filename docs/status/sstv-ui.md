@@ -72,7 +72,7 @@ upstream audit: `docs/status/sstv-audit.md`.
     `underlying` follows it. A preset's own mode therefore wins over a
     stale stored choice.
 
-## Verification (debian-ai, 2026-10-11)
+## Verification (the Linux host, 2026-10-11)
 
 | Check | Result |
 |---|---|
@@ -106,7 +106,7 @@ this proves no live-air decode.
   tool (`xwd`, `import`, `scrot` and `ffmpeg` are absent), and the
   `flutter screenshot --type=skia` route was not completed. The panel
   layout is covered by widget tests at 344 dp.
-- Android MediaStore save on a phone: unverified. The plugin is built into
-  the debug APK and the Dart channel contract is unit-tested; the
-  separate phone QA card owns the on-device check.
+- Android MediaStore save on real hardware: unverified. The plugin is built
+  into the debug APK and the Dart channel contract is unit-tested; check the
+  save flow on the Android emulator.
 - No forced picture mode (upstream has none). No sharing.

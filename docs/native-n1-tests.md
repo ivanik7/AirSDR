@@ -52,9 +52,8 @@ not a raw socket).
 
 ## Commands
 
-All commands assume `source ~/prj/env.sh` has been run (for `flutter`/`dart`
-on `PATH`; the native build itself does not need it, but it provides a
-`cmake` fallback path is still needed — see below).
+All commands assume `flutter`/`dart` are on `PATH`; the native build itself
+only needs `cmake` (see below).
 
 ### One-shot runner (recommended)
 
@@ -100,7 +99,6 @@ All checksum oracle comparisons matched.
 ### Dart FFI tests
 
 ```sh
-source ~/prj/env.sh
 export SDRCORE_HOST_LIBRARY=<build_dir>/libsdrcore.so   # printed by run_host_tests.sh
 flutter test test/native
 ```
@@ -120,9 +118,9 @@ flutter analyze                            # repo-wide, 0 issues (checked during
 
 - **No real USB hardware or Blog V4 run.** Real driver source and JNI were
   integrated, but 2.4 MSPS ≥10 min, tuning/gain, detach/replug, and fd
-  teardown on a phone remain unverified.
+  teardown on Android hardware remain unverified.
 - **Kotlin fd-handoff lifecycle** has JVM fake-bridge tests and a real JNI
-  bridge, but neither the fake nor a host descriptor proves phone USB behavior.
+  bridge, but neither the fake nor a host descriptor proves Android USB behavior.
 - **CMake integration:** the fd/checksum and pinned RTL initialization-failure
   tests are registered as CTest targets; `run_host_tests.sh` also runs them
   directly for detailed output.

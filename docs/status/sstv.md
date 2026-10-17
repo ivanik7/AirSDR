@@ -52,7 +52,7 @@ The pysstv/OpenWebRX+ oracle comparison and the live-air check belong to
   - Selection never changes the tuner or the mode.
   - Audio-tap decoders do not mute voice audio, matching OpenWebRX+.
 
-## Verification on debian-ai (2026-10-11)
+## Verification on the Linux host (2026-10-11)
 
 | Command | Result |
 |---|---|
@@ -154,7 +154,7 @@ then per-line sync/porch/pixel tones on an ideal time line. It checks:
 
 ## Not done here
 
-- Live-air SSTV reception. An RTL-SDR Blog V4 is attached to debian-ai
+- Live-air SSTV reception. An RTL-SDR Blog V4 is attached to the Linux host
   (`0bda:2838`), but no on-air SSTV decode was attempted on this card; it
   belongs to `t_9165cc6e`.
 - Android build/run of the new native code. No Gradle build was run on this

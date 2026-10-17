@@ -1,7 +1,7 @@
 # DMR framing upstream provenance
 
 Source: luarvique/digiham, `beec78229edb8e049f8b82729498def952b79cc1`
-(`~/prj/ref/openwebrx/digiham-plus`). License: GPL-3.0, see `LICENSE`.
+(`<refs>/openwebrx/digiham-plus`). License: GPL-3.0, see `LICENSE`.
 Copied `src/dmr_decoder` framing, metadata, LC, GPS, talker alias, CACH,
 slot type, embedded signalling, BPTC/Hamming/Golay/QR FEC sources and
 `src/lib/{hamming_distance,coordinate}`. The CLI, codecserver, csdr pipelines,

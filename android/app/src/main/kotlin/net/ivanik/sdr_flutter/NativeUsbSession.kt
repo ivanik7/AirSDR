@@ -4,7 +4,7 @@
 // serialized by one owner (here: `synchronized(lock)`), sdr_v2_start/stop toggle OPEN<->RUNNING,
 // and closing is synchronous — sdr_v2_stop/sdr_v2_close/sdr_destroy must all return before the
 // caller may close the Java UsbDeviceConnection that the fd came from (see
-// docs/native-n1-status.md and UsbSdrPlugin.kt's fd lifecycle comment). This class never
+// docs/native-n1-android-lifecycle.md and UsbSdrPlugin.kt's fd lifecycle comment). This class never
 // duplicates the fd itself: it hands the live UsbDeviceConnection fd straight to
 // sdr_v2_open_usb(), which the header says duplicates it internally and closes only its own
 // duplicate.

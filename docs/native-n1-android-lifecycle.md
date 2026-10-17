@@ -55,5 +55,5 @@ after the native close on that executor.
   failed-open cleanup, foreground Stop, shutdown, and unchanged Dart open/close.
   Existing `NativeUsbSession*`, `UsbSessionOwnership` and stats tests remain.
 * Not verified here: real `UsbManager` permission flow, real detach timing,
-  and native stream behaviour on the phone. Those belong to the N1 hardware
-  gate (`docs/native-n1-adr.md`, "Verification and acceptance boundary").
+  and native stream behaviour on Android hardware remain unverified
+  (`docs/native-n1-adr.md`, "Verification and acceptance boundary").
