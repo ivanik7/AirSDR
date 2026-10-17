@@ -17,3 +17,9 @@ set_target_properties(sdrcore_dmr_framing PROPERTIES POSITION_INDEPENDENT_CODE O
 target_include_directories(sdrcore_dmr_framing PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_include_directories(sdrcore_dmr_framing PRIVATE
     ${DMR_UPSTREAM} ${CMAKE_CURRENT_LIST_DIR}/digiham_dmr/compat)
+
+# macOS has no <malloc.h> (digiham lc.cpp includes it for malloc/free);
+# compat/macos/malloc.h forwards to <stdlib.h> without patching the source.
+if(APPLE)
+    target_include_directories(sdrcore_dmr_framing PRIVATE ${CMAKE_CURRENT_LIST_DIR}/compat/macos)
+endif()
