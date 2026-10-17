@@ -104,7 +104,7 @@ for Fedora and openSUSE, tar.gz for any other distribution. The latest build
 (`nightly` pre-release) is rebuilt from master on every push and is not a
 stable release. The release and build pages show the exact versions.
 macOS and Windows builds have not been tested on real hardware yet. The
-macOS app is not notarized (right-click > Open on the first launch), and on
+macOS app is not notarized (System Settings > Privacy & Security > Open Anyway on the first launch), and on
 Windows the dongle needs the WinUSB driver (Zadig). Linux packages install
 udev rules for the dongles and play audio through ALSA.
 

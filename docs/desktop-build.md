@@ -105,3 +105,22 @@ Only the `sdr_*` C API is exported, on every target:
   hackrf.h's `dllexport`/`dllimport`.
 - `ext/iconvpp/iconv.hpp` (redsea): built-in converter on Windows/macOS
   (RDS-PROVENANCE.md).
+
+## Desktop icons and macOS installation
+
+`python3 tool/branding/generate_icons.py` generates Android launcher PNGs,
+the macOS AppIcon catalog and the Windows multi-size ICO from the same
+original AirSDR geometry. No external image packages are required.
+
+The macOS job stages the signed app with `packaging/macos/stage-dmg.sh`
+before creating the DMG. Its root contains AirSDR.app, an Applications
+shortcut and README.txt with first-launch instructions.
+
+The app is ad-hoc signed, without Developer ID or Apple notarization.
+Gatekeeper can therefore block a downloaded copy even when its signature
+passes `codesign --verify --deep --strict`. Drag AirSDR into Applications,
+attempt to open it, then use System Settings > Privacy & Security > Open
+Anyway and confirm. No global Gatekeeper change is required.
+See [Apple's first-launch instructions](https://support.apple.com/102445).
+Removing this requirement for downloaded releases requires a Developer ID
+Application certificate and notarization; neither is configured.

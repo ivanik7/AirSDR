@@ -59,7 +59,7 @@ jobs:
       - run: flutter analyze
 
       - name: Release workflow regressions
-        run: python3 test/ci/release_workflow_test.py
+        run: python3 -m unittest discover -s test/ci -p '*_test.py'
 
       # Host libsdrcore.so from source + the CMake-wired native suite and
       # standalone native regressions. Tests that need a real RTL-SDR print
@@ -374,7 +374,10 @@ jobs:
 
       # Dart loads Contents/Frameworks/libsdrcore.dylib. The app is only
       # ad-hoc signed and not notarized: Gatekeeper asks the user to confirm
-      # the first launch (right click > Open).
+      # the first launch (System Settings > Privacy & Security > Open Anyway).
+      - name: Desktop icon and DMG staging regressions
+        run: python3 test/ci/desktop_assets_test.py
+
       - name: Bundle libsdrcore and package a disk image
         id: dmg
         run: |
@@ -386,7 +389,9 @@ jobs:
             --preserve-metadata=entitlements,requirements,flags,runtime "$app"
           codesign --verify --deep --strict "$app"
           dmg="AirSDR-${{ steps.ver.outputs.FULL_VERSION }}-macos.dmg"
-          hdiutil create -volname AirSDR -srcfolder "$app" -ov -format UDZO "$dmg"
+          stage="$(mktemp -d "$RUNNER_TEMP/airsdr-dmg.XXXXXX")"
+          packaging/macos/stage-dmg.sh "$app" "$stage"
+          hdiutil create -volname AirSDR -srcfolder "$stage" -ov -format UDZO "$dmg"
           echo "path=$dmg" >> "$GITHUB_OUTPUT"
 
       - name: Upload disk image

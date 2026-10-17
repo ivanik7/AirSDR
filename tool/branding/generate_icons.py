@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate original AirSDR legacy launcher PNGs from the adaptive icon geometry.
+"""Generate Android, macOS and Windows icons from the same AirSDR geometry.
 
 Pure stdlib; run from repository root: python3 tool/branding/generate_icons.py
 The Android 26+ icon uses the equivalent vector drawables directly.
@@ -10,7 +10,8 @@ import pathlib
 import struct
 import zlib
 
-ROOT = pathlib.Path(__file__).resolve().parents[2] / "android/app/src/main/res"
+PROJECT = pathlib.Path(__file__).resolve().parents[2]
+ROOT = PROJECT / "android/app/src/main/res"
 BACKGROUND = (11, 13, 15)
 GREEN = (168, 207, 106)
 WHITE = (231, 228, 222)
@@ -77,7 +78,36 @@ def draw_icon(size):
     )
 
 
-for density, size in DENSITIES.items():
-    target = ROOT / f"mipmap-{density}/ic_launcher.png"
-    target.write_bytes(draw_icon(size))
-    print(f"{target}: {size}x{size}")
+MAC_SIZES = (16, 32, 64, 128, 256, 512, 1024)
+WINDOWS_SIZES = (16, 24, 32, 48, 64, 128, 256)
+
+
+def windows_ico(images):
+    """Package PNG representations in a Windows Vista+ multi-size ICO."""
+    offset = 6 + 16 * len(images)
+    directory = bytearray(struct.pack("<HHH", 0, 1, len(images)))
+    payload = bytearray()
+    for size, png in images:
+        dimension = size if size < 256 else 0
+        directory.extend(struct.pack("<BBBBHHII", dimension, dimension, 0, 0,
+                                     1, 24, len(png), offset))
+        payload.extend(png)
+        offset += len(png)
+    return bytes(directory + payload)
+
+
+def main():
+    sizes = set(DENSITIES.values()) | set(MAC_SIZES) | set(WINDOWS_SIZES)
+    images = {size: draw_icon(size) for size in sizes}
+    for density, size in DENSITIES.items():
+        (ROOT / f"mipmap-{density}/ic_launcher.png").write_bytes(images[size])
+    mac = PROJECT / "macos/Runner/Assets.xcassets/AppIcon.appiconset"
+    for size in MAC_SIZES:
+        (mac / f"app_icon_{size}.png").write_bytes(images[size])
+    (PROJECT / "windows/runner/resources/app_icon.ico").write_bytes(
+        windows_ico([(size, images[size]) for size in WINDOWS_SIZES]))
+    print("Generated Android, macOS and Windows icons from shared geometry.")
+
+
+if __name__ == "__main__":
+    main()
