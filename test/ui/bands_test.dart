@@ -351,7 +351,7 @@ void main() {
         );
         expect(err.issue, BandIssue.overlap, reason: '$s-$e');
         expect(err.conflict!.name, 'A');
-        expect(err.message, contains('«A»'));
+        expect(err.message, contains('"A"'));
       }
       // 1 Hz apart is not an overlap.
       repo.add(

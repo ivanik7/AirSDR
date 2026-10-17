@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
 // Settings → Bands (task t_7b20878c): list sorted by start frequency,
-// create («+»), edit (tap on a row), delete (with confirmation).
+// create ("+"), edit (tap on a row), delete (with confirmation).
 import 'package:flutter/material.dart';
 
 import '../bands/bands.dart';

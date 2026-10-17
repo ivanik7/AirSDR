@@ -176,7 +176,7 @@ void main() {
             _ => _entry(e.$1, e.$2, e.$3, e.$4, e.$5, e.$6),
           },
         _entry('user-0', 145000000, 'Repeater', 'NFM', 'VHF', false),
-        // Same frequency as the new «ISM Band» default.
+        // Same frequency as the new "ISM Band" default.
         _entry('user-1', 433000000, 'My key fob', 'NFM', 'UHF', true),
       ];
       final repo = await loadLegacy(saved, nextId: 4);
