@@ -1,0 +1,52 @@
+tool/oracle/rtlsdr/fake_libusb.c
+  s_869592f4bed1b5::t_398194893a0a64 252-255
+tool/oracle/rtlsdr/include/libusb.h
+  s_869592f4bed1b5::t_398194893a0a64 103-104
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "0.0.62",
+  "base_commit_sha": "1b5155f223b82ee5be283cbe630d8556347f95bd",
+  "prompts": {},
+  "sessions": {
+    "s_869592f4bed1b5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b809de21-5f70-4065-8879-406547bd3aaf",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "ivanik <ivan170102@gmail.com>",
+      "usage": [
+        {
+          "model": "claude-opus-5-5",
+          "input_tokens": 32,
+          "output_tokens": 6934,
+          "cache_read_tokens": 1957713,
+          "cache_write_5m_tokens": 0,
+          "cache_write_1h_tokens": 226349,
+          "assistant_messages": 16,
+          "turns": 2,
+          "ai_wall_ms": 32489,
+          "first_ts": "2026-10-17T17:31:09.531Z",
+          "last_ts": "2026-10-17T17:31:51.848Z",
+          "session_total_output_tokens": 6934
+        }
+      ],
+      "tools": [
+        {
+          "tool": "Bash",
+          "model": "claude-opus-5-5",
+          "calls": 8,
+          "result_chars": 6068,
+          "result_input_tokens": 14,
+          "result_cache_write_5m_tokens": 0,
+          "result_cache_write_1h_tokens": 6328,
+          "call_output_tokens": 2980
+        }
+      ],
+      "context_at_start_tokens": 132989,
+      "accepted_lines": 6,
+      "overridden_lines": 0
+    }
+  }
+}
