@@ -50,8 +50,19 @@ void bandpass_at_actual_rate(uint32_t rate) {
   // Positive and negative frequencies must see the same 12.5-kHz channel.
   assert(tone_amplitude(rate, 3000) > 0.8);
   assert(tone_amplitude(rate, -3000) > 0.8);
+  assert(tone_amplitude(rate, 5000) > 0.8);
+  assert(tone_amplitude(rate, -5000) > 0.8);
+  assert(tone_amplitude(rate, 9000) < 0.08);
+  assert(tone_amplitude(rate, -9000) < 0.08);
   assert(tone_amplitude(rate, 13000) < 0.08);
   assert(tone_amplitude(rate, -13000) < 0.08);
+  // When input is decimated, reject a tone that would fold into the
+  // ±6250 Hz channel at the post-integer-decimation rate.
+  if (rate == 240000 || rate == 250000 || rate == 288000 || rate == 300000) {
+    const double stage_rate = static_cast<double>(rate) /
+        static_cast<unsigned>(std::lround(rate / 48000.0));
+    assert(tone_amplitude(rate, stage_rate - 3000) < 0.08);
+  }
 }
 
 void upstream_rrc_presets() {

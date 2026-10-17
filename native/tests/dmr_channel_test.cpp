@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "dmr/channel.hpp"
+#include <csdr/dcblock.hpp>
+#include <digiham/gfsk_demodulator.hpp>
+#include <digiham/rrc_filter.hpp>
 
 #include <algorithm>
 #include <cassert>
@@ -16,6 +19,66 @@ struct Symbols : sdrcore::dmr::SymbolSink {
     dibits.insert(dibits.end(), data, data + n);
   }
 };
+
+// Drive the pinned digiham/csdr modules without Channel's reader/writer and
+// RRC adapter. This checks adapter parity, not an independent RF oracle.
+struct ReferenceReader final : Csdr::Reader<float> {
+  std::vector<float> samples;
+  size_t position = 0;
+  size_t available() override { return samples.size() - position; }
+  float* getReadPointer() override { return samples.data() + position; }
+  void advance(size_t n) override { position += n; }
+  void wait() override {}
+  void unblock() override {}
+};
+struct ReferenceWriter final : Csdr::Writer<unsigned char> {
+  std::vector<uint8_t> symbols;
+  unsigned char next = 0;
+  size_t writeable() override { return 1; }
+  unsigned char* getWritePointer() override { return &next; }
+  void advance(size_t n) override { if (n) symbols.push_back(next); }
+};
+
+std::vector<uint8_t> upstream_symbols(const std::vector<float>& discriminator) {
+  Csdr::DcBlock dc;
+  Digiham::RrcFilter::WideRrcFilter rrc;
+  ReferenceReader reader;
+  ReferenceWriter writer;
+  for (float sample : discriminator) {
+    float dc_out = 0, shaped = 0;
+    dc.process(&sample, &dc_out, 1);
+    rrc.process(&dc_out, &shaped, 1);
+    reader.samples.push_back(shaped);
+  }
+  Digiham::Fsk::GfskDemodulator gfsk(10);
+  gfsk.setReader(&reader);
+  gfsk.setWriter(&writer);
+  while (gfsk.canProcess()) gfsk.process();
+  return writer.symbols;
+}
+
+void upstream_adapter_parity() {
+  std::vector<float> samples;
+  // Exercise DC state, RRC startup, level calibration and clock recovery.
+  const float levels[] = {-0.75f, -0.25f, 0.25f, 0.75f};
+  for (int symbol = 0; symbol < 620; ++symbol) {
+    const float value = levels[(symbol * 7 + symbol / 11) % 4] +
+                        (symbol < 310 ? 0.12f : -0.09f);
+    for (int sample = 0; sample < 10; ++sample) samples.push_back(value);
+  }
+  const auto reference = upstream_symbols(samples);
+  assert(reference.size() > 600);
+  sdrcore::dmr::Channel channel;
+  Symbols actual;
+  for (size_t i = 0; i < samples.size(); i += 137)
+    channel.process_demodulated(samples.data() + i,
+        std::min<size_t>(137, samples.size() - i), actual);
+  assert(actual.dibits == reference);
+  channel.reset();
+  actual.dibits.clear();
+  channel.process_demodulated(samples.data(), samples.size(), actual);
+  assert(actual.dibits == reference);
+}
 
 void symbol_decisions() {
   sdrcore::dmr::Channel channel;
@@ -104,10 +167,14 @@ void iq_four_level_decisions(uint32_t rate) {
 }  // namespace
 
 int main() {
+  upstream_adapter_parity();
   symbol_decisions();
+  rate_and_boundary(48000);
   rate_and_boundary(250000);
   rate_and_boundary(240000);
   rate_and_boundary(288000);
+  rate_and_boundary(300000);
+  iq_four_level_decisions(240000);
   iq_four_level_decisions(250000);
   iq_four_level_decisions(288000);
   sdrcore::dmr::Channel channel;
