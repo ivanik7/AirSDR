@@ -19,6 +19,10 @@ extern "C" {
 // Additional result values used only by v3 pollers (v2 values remain stable).
 #define SDR_V3_NO_DATA 1       // No newer FFT row; no output buffer modified.
 #define SDR_V3_BUFFER_SMALL -7 // Metadata.width gives required bin capacity.
+// Network-only failures in the asynchronous snapshot (never USB errors).
+#define SDR_V3_TCP_TIMEOUT -8
+#define SDR_V3_TCP_REFUSED -9
+#define SDR_V3_TCP_PROTOCOL -10
 
 enum SdrV3Mode {
   SDR_V3_NFM = 0, SDR_V3_WFM = 1, SDR_V3_AM = 2, SDR_V3_DSB = 3,
@@ -115,6 +119,20 @@ typedef struct SdrV3Fft {
 // Reuse sdr_create, v2 open_file/open_synthetic/open_usb or sdr_host_open_usb.
 // The v2 open functions still duplicate borrowed fds. Exactly one handle may
 // claim a physical USB device.
+// Network endpoint: IDLE -> OPEN without DNS, connection or USB claim. Copies
+// 1..255 UTF-8 host bytes (no NUL) and port 1..65535. The v3 producer resolves,
+// connects and validates the RTL0 handshake asynchronously after v3_start;
+// a finite connect/handshake deadline and v3_stop cancel it. No silent fallback.
+// On restart, the endpoint and last accepted controls are reapplied. The
+// rtl_tcp source supports RTL rates 225001..300000 or 900001..3200000 S/s,
+// 32-bit RF Hz, manual gain; AGC and extended server controls are unsupported.
+SDRCORE_API int32_t sdr_v3_open_rtl_tcp(SdrHandle* handle,
+                                         const char* host, uint32_t host_bytes,
+                                         uint16_t port);
+// Only for an OPEN/RUNNING RTL_TCP handle: 0=connecting/not started,
+// 1=header validated and IQ stream active. Negative SdrResult on wrong
+// handle/state; connection failures are in snapshot.last_error/state=ERROR.
+SDRCORE_API int32_t sdr_v3_rtl_tcp_link(SdrHandle* handle);
 // set_controls: OPEN or RUNNING; validates all fields before committing. With
 // unchanged LO/rate/gain, a RUNNING VFO/mode/bandwidth/squelch/audio change
 // reconfigures DSP without USB retune. On a RUNNING session whose USB driver

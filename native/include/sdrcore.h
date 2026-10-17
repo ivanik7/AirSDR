@@ -41,7 +41,7 @@ enum SdrResult {
 };
 enum SdrState { SDR_IDLE = 0, SDR_OPEN = 1, SDR_RUNNING = 2, SDR_ERROR = 3 };
 enum SdrSource { SDR_NONE = 0, SDR_FILE = 1, SDR_SYNTHETIC = 2,
-                 SDR_RTLSDR = 3, SDR_HACKRF = 4 };
+                 SDR_RTLSDR = 3, SDR_HACKRF = 4, SDR_RTL_TCP = 5 };
 
 // Caller initializes size=sizeof(SdrStats), revision=2. Mismatches return
 // SDR_INVALID_ARGUMENT without writing the struct. Other fields are output;
