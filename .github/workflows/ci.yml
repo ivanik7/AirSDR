@@ -31,6 +31,8 @@ env:
   # android/app/build.gradle.kts externalNativeBuild.cmake.version.
   ANDROID_CMAKE_VERSION: "3.22.1"
   NFPM_VERSION: "2.48.0"
+  # llvm-mingw release used to cross-build sdrcore.dll (MSVC cannot build it).
+  LLVM_MINGW_VERSION: "20261006"
 
 jobs:
   test:
@@ -278,11 +280,171 @@ jobs:
           ldd /opt/airsdr/sdr_flutter /opt/airsdr/lib/*.so | tee /tmp/ldd.txt
           ! grep -q "not found" /tmp/ldd.txt
 
+  macos:
+    name: macOS app
+    runs-on: macos-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Version
+        id: ver
+        run: tool/version.sh | tee -a "$GITHUB_OUTPUT"
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+          pub-cache: true
+
+      # Universal libsdrcore.dylib from source (docs/desktop-build.md); the
+      # deployment target matches macos/Runner.xcodeproj.
+      - name: Build libsdrcore.dylib
+        run: |
+          cmake -S native -B build/native-macos -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=12.0
+          cmake --build build/native-macos --target sdrcore -j "$(sysctl -n hw.ncpu)"
+          lipo -info build/native-macos/libsdrcore.dylib
+
+      - run: flutter pub get
+
+      - name: Build app
+        run: >-
+          flutter build macos --release
+          --build-name "${{ steps.ver.outputs.VERSION }}"
+          --build-number "${{ steps.ver.outputs.BUILD_NUMBER }}"
+
+      # Dart loads Contents/Frameworks/libsdrcore.dylib. The app is only
+      # ad-hoc signed and not notarized: Gatekeeper asks the user to confirm
+      # the first launch (right click > Open).
+      - name: Bundle libsdrcore and package a disk image
+        id: dmg
+        run: |
+          app=build/macos/Build/Products/Release/AirSDR.app
+          mkdir -p "$app/Contents/Frameworks"
+          cp build/native-macos/libsdrcore.dylib "$app/Contents/Frameworks/"
+          codesign --force --sign - "$app/Contents/Frameworks/libsdrcore.dylib"
+          codesign --force --sign - \
+            --preserve-metadata=entitlements,requirements,flags,runtime "$app"
+          codesign --verify --deep --strict "$app"
+          dmg="AirSDR-${{ steps.ver.outputs.FULL_VERSION }}-macos.dmg"
+          hdiutil create -volname AirSDR -srcfolder "$app" -ov -format UDZO "$dmg"
+          echo "path=$dmg" >> "$GITHUB_OUTPUT"
+
+      - name: Upload disk image
+        uses: actions/upload-artifact@v7
+        with:
+          path: ${{ steps.dmg.outputs.path }}
+          archive: false
+          if-no-files-found: error
+          retention-days: 30
+
+  # sdrcore.dll needs llvm-mingw (liquid-dsp uses C99 _Complex, which MSVC
+  # lacks), so it is cross-built here, as in docs/desktop-build.md, and the
+  # MSVC Flutter runner in the windows job picks it up.
+  windows-native:
+    name: Windows sdrcore.dll
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install llvm-mingw
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ninja-build
+          name="llvm-mingw-${LLVM_MINGW_VERSION}-ucrt-ubuntu-22.04-x86_64"
+          curl -fsSL "https://github.com/mstorsjo/llvm-mingw/releases/download/${LLVM_MINGW_VERSION}/${name}.tar.xz" \
+            | tar -xJ -C "$RUNNER_TEMP"
+          echo "LLVM_MINGW_ROOT=$RUNNER_TEMP/$name" >> "$GITHUB_ENV"
+
+      - name: Build sdrcore.dll
+        run: |
+          cmake -S native -B build/native-windows -G Ninja \
+            -DCMAKE_TOOLCHAIN_FILE=native/cmake/llvm-mingw-x86_64.cmake \
+            -DCMAKE_BUILD_TYPE=Release
+          cmake --build build/native-windows --target sdrcore
+          dll="$(find build/native-windows -name sdrcore.dll -print -quit)"
+          test -n "$dll"
+          mkdir -p dist && cp "$dll" dist/
+          "$LLVM_MINGW_ROOT/bin/llvm-objdump" -p dist/sdrcore.dll | grep "DLL Name" || true
+
+      - name: Upload sdrcore.dll
+        uses: actions/upload-artifact@v7
+        with:
+          name: sdrcore-windows-x86_64
+          path: dist/sdrcore.dll
+          if-no-files-found: error
+          retention-days: 7
+
+  windows:
+    name: Windows app
+    needs: windows-native
+    runs-on: windows-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Version
+        id: ver
+        run: tool/version.sh | tee -a "$GITHUB_OUTPUT"
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: sdrcore-windows-x86_64
+          path: build/sdrcore
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+          pub-cache: true
+
+      - run: flutter pub get
+
+      # windows/CMakeLists.txt installs $SDRCORE_DLL beside the runner.
+      - name: Build app
+        env:
+          SDRCORE_DLL: ${{ github.workspace }}\build\sdrcore\sdrcore.dll
+        run: >-
+          flutter build windows --release
+          --build-name "${{ steps.ver.outputs.VERSION }}"
+          --build-number "${{ steps.ver.outputs.BUILD_NUMBER }}"
+
+      # Unsigned: SmartScreen warns on first launch. RTL-SDR/HackRF need the
+      # WinUSB driver (Zadig), see docs/desktop-build.md.
+      - name: Package zip
+        id: zip
+        run: |
+          out=build/windows/x64/runner/Release
+          test -f "$out/sdrcore.dll"
+          zip="AirSDR-${{ steps.ver.outputs.FULL_VERSION }}-windows-x86_64.zip"
+          pwsh -NoProfile -Command "Compress-Archive -Path '$out/*' -DestinationPath '$zip'"
+          echo "path=$zip" >> "$GITHUB_OUTPUT"
+
+      - name: Upload zip
+        uses: actions/upload-artifact@v7
+        with:
+          path: ${{ steps.zip.outputs.path }}
+          archive: false
+          if-no-files-found: error
+          retention-days: 30
+
   # Tag pushes (v*) publish every artifact as a GitHub release.
   release:
     name: GitHub release
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [test, android, linux, linux-install]
+    needs: [test, android, linux, linux-install, macos, windows]
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -295,8 +457,10 @@ jobs:
       - name: Check tag against pubspec.yaml
         run: tool/version.sh | grep -x RELEASE=true
 
+      # AirSDR-* skips the intermediate sdrcore.dll artifact.
       - uses: actions/download-artifact@v8
         with:
+          pattern: AirSDR-*
           path: dist
           merge-multiple: true
 

@@ -28,7 +28,8 @@ All jobs run on `ubuntu-24.04`.
 
 ## Jobs
 
-`test`, `android` and `linux` run in parallel.
+`test`, `android`, `linux`, `macos` and `windows-native` run in parallel;
+`windows` waits for `windows-native`.
 
 ### `test`
 
@@ -60,6 +61,25 @@ AGP/CMake (`native/CMakeLists.txt`); no prebuilt SDR libraries are downloaded.
 clean `debian:13`, `ubuntu:24.04`, `fedora:latest`, `opensuse/tumbleweed` and
 `archlinux:latest` containers and checks that every bundled library resolves.
 
+### `macos` (macos-latest)
+
+Builds a universal `libsdrcore.dylib` (arm64 + x86_64, macOS 12+) with CMake,
+runs `flutter build macos --release`, copies the dylib into
+`AirSDR.app/Contents/Frameworks`, signs ad hoc and packages
+`AirSDR-<version>-macos.dmg`. The app is not signed with a Developer ID and
+not notarized, so Gatekeeper asks for confirmation on first launch. The
+sandbox has the `com.apple.security.device.usb` entitlement.
+
+### `windows-native` and `windows`
+
+MSVC cannot build the native core (liquid-dsp needs C99 `_Complex`), so
+`windows-native` cross-builds `sdrcore.dll` on Ubuntu with llvm-mingw
+(`LLVM_MINGW_VERSION`, `native/cmake/llvm-mingw-x86_64.cmake`). `windows`
+(windows-latest) runs `flutter build windows --release` with `SDRCORE_DLL`
+set; `windows/CMakeLists.txt` installs the DLL beside `sdr_flutter.exe`. The
+result is `AirSDR-<version>-windows-x86_64.zip`, unsigned. RTL-SDR and
+HackRF need the WinUSB driver (Zadig).
+
 ### `release` (tags `v*` only)
 
 After all jobs pass, checks the tag against `version:` in `pubspec.yaml` and
@@ -82,7 +102,9 @@ Each run uploads, where `<version>` is `FULL_VERSION` from `tool/version.sh`:
 - `AirSDR-<version>-arm64-release.apk` and `AirSDR-<version>-debug.apk`
   (uploaded unzipped);
 - `AirSDR-<version>-linux-x86_64` (a zip with the `.deb`, `.rpm`,
-  `.pkg.tar.zst` and `.tar.gz`).
+  `.pkg.tar.zst` and `.tar.gz`);
+- `AirSDR-<version>-macos.dmg` and `AirSDR-<version>-windows-x86_64.zip`
+  (uploaded as is).
 
 Retention is 30 days. Download them from the run page in the Actions tab
 (requires a GitHub login).

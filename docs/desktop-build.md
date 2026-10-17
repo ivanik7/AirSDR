@@ -10,6 +10,13 @@ No prebuilt SDR libraries are used.
 | macOS   | Apple Clang                        | `libsdrcore.dylib`  | darwin_usb (IOKit)            |
 | Windows | llvm-mingw Clang, x86_64 UCRT      | `sdrcore.dll`       | WinUSB / UsbDk                |
 
+The Flutter runners for all desktops are in `linux/`, `macos/` and
+`windows/`. CI builds and packages each of them (docs/ci.md). Linux builds
+`libsdrcore.so` as part of the runner's CMake project. macOS and Windows
+build the core separately and copy it into the app (`Contents/Frameworks`,
+and beside the runner via `SDRCORE_DLL`). The macOS and Windows apps have
+not been run on real hardware.
+
 ## Commands
 
 Linux (tests included when `native/` is the top-level project):
