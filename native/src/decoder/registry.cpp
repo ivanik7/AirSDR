@@ -1,10 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Static data-decoder registry. rtl_433 is embedded in-process; SSTV and
-// ADS-B remain unavailable. Voice demodulators belong to v3, not this list.
+// Static data-decoder registry. rtl_433 and SSTV (csdr-plus SstvDecoder) are
+// embedded in-process, alongside dump1090 ADS-B. Voice demodulators belong
+// to v3, not this list.
 #include "decoder.hpp"
 
 namespace sdrcore::decoder {
 std::unique_ptr<Decoder> create_rtl433();
+std::unique_ptr<Decoder> create_sstv();
+std::unique_ptr<Decoder> create_adsb();
 
 const std::vector<Registration>& registry() {
   // Metadata mirrors the Dart decoder catalog.
@@ -14,11 +17,13 @@ const std::vector<Registration>& registry() {
               /*id=*/"sstv",
               /*input=*/Input::audio,
               /*exclusive_receiver=*/false,
-              /*required_mode=*/4,  // SDR_V3_USB, matches the Dart catalog.
+              // USB, LSB or NFM: enforced by Decoder::accepts_mode() at
+              // selection and by the receiver tap, not by one fixed mode.
+              /*required_mode=*/0xFFFFFFFFu,
               /*required_rate_hz=*/24000,
               /*result=*/Result::image_complete,
           },
-          /*create=*/nullptr,
+          /*create=*/create_sstv,
       },
       Registration{
           Descriptor{
@@ -35,12 +40,12 @@ const std::vector<Registration>& registry() {
           Descriptor{
               /*id=*/"adsb",
               /*input=*/Input::raw_iq,
-              /*exclusive_receiver=*/true,  // Wideband capture displaces listening.
+              /*exclusive_receiver=*/false,  // Tuned IQ tap; no tuner handoff.
               /*required_mode=*/0xFFFFFFFFu,  // Independent of demod mode.
               /*required_rate_hz=*/2400000,
               /*result=*/Result::aircraft,
           },
-          /*create=*/nullptr,
+          /*create=*/create_adsb,
       },
   };
   return kRegistry;

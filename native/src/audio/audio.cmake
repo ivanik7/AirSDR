@@ -34,6 +34,35 @@ if(NOT ANDROID)
     endif()
 endif()
 
+# miniaudio playback backend (vendored third_party/miniaudio, playback only):
+# every desktop host. It is the production sink on macOS (CoreAudio) and
+# Windows (WASAPI); on Linux it is available as "miniaudio" next to the ALSA
+# sink, which stays the Linux default. Never built for Android (AAudio).
+if(NOT ANDROID)
+    target_sources(sdrcore_audio PRIVATE
+        ${CMAKE_CURRENT_LIST_DIR}/miniaudio_sink.cpp
+        ${CMAKE_CURRENT_LIST_DIR}/miniaudio_impl.c)
+    target_include_directories(sdrcore_audio PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/third_party/miniaudio)
+    target_compile_definitions(sdrcore_audio PRIVATE SDRCORE_HAVE_MINIAUDIO)
+    # Vendored code: keep upstream warnings out of the build log.
+    set_source_files_properties(${CMAKE_CURRENT_LIST_DIR}/miniaudio_impl.c
+        PROPERTIES COMPILE_OPTIONS "-w")
+    if(APPLE)
+        # MA_NO_RUNTIME_LINKING on Apple (miniaudio_config.h).
+        target_link_libraries(sdrcore_audio PRIVATE
+            "-framework CoreFoundation" "-framework CoreAudio"
+            "-framework AudioToolbox")
+    elseif(WIN32)
+        # WASAPI is loaded at run time by miniaudio; ole32 provides COM init.
+        target_link_libraries(sdrcore_audio PRIVATE ole32)
+    else()
+        # PulseAudio/ALSA/JACK are dlopen()ed at run time: no new DT_NEEDED
+        # beyond libdl (part of libc on glibc >= 2.34) and libm.
+        target_link_libraries(sdrcore_audio PRIVATE ${CMAKE_DL_LIBS} m)
+    endif()
+endif()
+
 # Host CTest for this target only, for a standalone host configure (native/
 # as the top-level project). Mirrors the guard used by native/CMakeLists.txt
 # for its own test suite.
@@ -54,5 +83,10 @@ if(NOT ANDROID AND PROJECT_IS_TOP_LEVEL)
         # whether to exercise the ALSA-specific assertions.
         target_compile_definitions(sdrcore_audio_sink_test PRIVATE SDRCORE_HAVE_ALSA)
     endif()
+    target_compile_definitions(sdrcore_audio_sink_test PRIVATE SDRCORE_HAVE_MINIAUDIO)
     add_test(NAME sdrcore_audio_sink COMMAND sdrcore_audio_sink_test)
+    add_executable(sdrcore_miniaudio_sink_test ${CMAKE_CURRENT_SOURCE_DIR}/tests/miniaudio_sink_test.cpp)
+    target_include_directories(sdrcore_miniaudio_sink_test PRIVATE ${CMAKE_CURRENT_LIST_DIR})
+    target_link_libraries(sdrcore_miniaudio_sink_test PRIVATE sdrcore_audio Threads::Threads)
+    add_test(NAME sdrcore_miniaudio_sink COMMAND sdrcore_miniaudio_sink_test)
 endif()

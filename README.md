@@ -1,6 +1,6 @@
 # AirSDR
 
-Flutter receiver for RTL-SDR and HackRF on Android (API 26+, arm64-v8a) and Linux desktop. GPL-3.0-or-later. The C++ `libsdrcore` ABI v3 is the **only production receiver**: USB drivers, IQ ingestion, FFT, demodulation and audio stay native. Dart/Flutter owns the UI and low-rate control/FFT snapshots. There is one receiver, one VFO and one audio stream. `SDR_ENGINE=dart` and the Dart engine fallback were removed in N5; an incompatible or missing native library is reported as an error, never replaced with a mock receiver. Older Android API 24/25 devices cannot install this version because native AAudio needs API 26.
+Flutter receiver for RTL-SDR and HackRF on Android (API 26+, arm64-v8a) and Linux desktop; shared native core and Dart desktop glue also target macOS and Windows (runner packaging is pending in the per-OS cards). GPL-3.0-or-later. The C++ `libsdrcore` ABI v3 is the **only production receiver**: USB drivers, IQ ingestion, FFT, demodulation and audio stay native. Dart/Flutter owns the UI and low-rate control/FFT snapshots. There is one receiver, one VFO and one audio stream. `SDR_ENGINE=dart` and the Dart engine fallback were removed in N5; an incompatible or missing native library is reported as an error, never replaced with a mock receiver. Older Android API 24/25 devices cannot install this version because native AAudio needs API 26.
 
 ## Layout
 
@@ -35,4 +35,4 @@ For FFI tests, set `SDRCORE_HOST_LIBRARY` or `SDRCORE_V3_PROBE_LIBRARY` to the a
 
 Host acceptance uses the attached RTL-SDR Blog V4 (see `STATUS-n2-integration.md` for prior 600-second soak, drop comparison, spectrum/waterfall screenshots and WAV). The optional phone-only Android QA card covers USB OTG, AAudio audibility, detach/replug, background/notification Stop and Activity recreation. A build or host WAV does not establish phone audibility.
 
-Supported native sources: RTL2832U devices from the librtlsdr registry (including Blog V4) and HackRF receive. Airspy and FC2580 remain unsupported. Decoder backends are not implemented; do not infer otherwise from UI placeholders.
+Supported native sources: RTL2832U devices from the librtlsdr registry (including Blog V4) and HackRF receive. Airspy and FC2580 remain unsupported. Embedded data decoders include rtl_433, SSTV and ADS-B; other decoder previews are not implementations. ADS-B has an aircraft list from native snapshots (see `STATUS-adsb.md`); generated-IQ parity against dump1090 is documented in `STATUS-adsb-oracle.md` (live aircraft reception and OpenWebRX+ service-process replay remain unverified).

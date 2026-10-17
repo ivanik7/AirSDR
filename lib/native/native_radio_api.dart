@@ -3,6 +3,7 @@
 // neither IQ nor PCM crosses this interface.
 import 'dart:convert';
 import 'dart:ffi';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
@@ -277,7 +278,10 @@ final class FfiNativeRadioApi implements NativeRadioApi {
     sizeOf<_HostDevice>(),
   ];
 
-  FfiNativeRadioApi(DynamicLibrary library) : _lib = library {
+  FfiNativeRadioApi(DynamicLibrary library, {bool? directHostUsb})
+    : _lib = library,
+      _directHostUsb =
+          directHostUsb ?? (Platform.isMacOS || Platform.isWindows) {
     final version = library.lookupFunction<Uint32 Function(), int Function()>(
       'sdr_version',
     )();
@@ -297,6 +301,10 @@ final class FfiNativeRadioApi implements NativeRadioApi {
       'sdr_v3_snapshot',
       'sdr_v3_read_fft',
       'sdr_v3_rtl_tuner_gains',
+      if (!Platform.isAndroid) ...[
+        'sdr_host_usb_list',
+        if (_directHostUsb) 'sdr_host_open_usb_direct' else 'sdr_host_open_usb',
+      ],
     ]) {
       if (!library.providesSymbol(symbol)) {
         throw UnsupportedError('Incomplete native radio ABI: $symbol');
@@ -304,10 +312,14 @@ final class FfiNativeRadioApi implements NativeRadioApi {
     }
   }
 
-  factory FfiNativeRadioApi.open({String? libraryPath}) =>
-      FfiNativeRadioApi(openSdrCoreLibrary(libraryPath));
+  factory FfiNativeRadioApi.open({String? libraryPath, bool? directHostUsb}) =>
+      FfiNativeRadioApi(
+        openSdrCoreLibrary(libraryPath),
+        directHostUsb: directHostUsb,
+      );
 
   final DynamicLibrary _lib;
+  final bool _directHostUsb;
   static void _check(int code) {
     if (code != 0) throw SdrCoreError(code);
   }
@@ -341,7 +353,7 @@ final class FfiNativeRadioApi implements NativeRadioApi {
       .lookupFunction<
         Int32 Function(Pointer<SdrHandle>, Uint8, Uint8, Uint32),
         int Function(Pointer<SdrHandle>, int, int, int)
-      >('sdr_host_open_usb');
+      >(_directHostUsb ? 'sdr_host_open_usb_direct' : 'sdr_host_open_usb');
   late final _hostList = _lib
       .lookupFunction<
         Int32 Function(Pointer<_HostDevice>, Uint32, Pointer<Uint32>),

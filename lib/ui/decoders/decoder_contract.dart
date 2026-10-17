@@ -28,6 +28,7 @@ class DecoderDescriptor {
     this.settings = const [],
     this.voice = false,
     this.demodMode,
+    this.underlyingModes,
   });
   final String id, label;
   final DecoderInput input;
@@ -38,6 +39,12 @@ class DecoderDescriptor {
 
   /// Native v3 demod mode ID, or null if independent of demodulation.
   final int? requiredMode;
+
+  /// Audio-tap decoders that run on one of several ordinary demodulators
+  /// (OpenWebRX+ "underlying" modes). The choice is stored in the
+  /// `underlying` setting and applied through the normal mode control;
+  /// the decoder is only attached while the radio runs in that mode.
+  final List<DemodMode>? underlyingModes;
 
   /// Native input sample rate; null until a real backend negotiates it.
   final int? requiredRateHz;
@@ -79,7 +86,16 @@ final decoderCatalog = <DecoderDescriptor>[
       result: DecoderResult.none,
       voice: true,
       demodMode: mode,
+      settings: mode == DemodMode.wfm
+          ? const [
+              DecoderSetting('rbds', false, allowed: [false, true]),
+            ]
+          : const [],
     ),
+  // OpenWebRX+ `dmr` (STATUS-dmr.md §7): a voice mode decoded natively from
+  // the VFO-centred baseband tap; AMBE voice replaces demod audio natively.
+  // `slot_filter` is the upstream bitmask (1=TS1, 2=TS2, 3=both);
+  // `color_code` -1 = off is a documented native addition.
   DecoderDescriptor(
     id: 'dmr',
     label: 'DMR',
@@ -89,7 +105,7 @@ final decoderCatalog = <DecoderDescriptor>[
     requiredRateHz: null,
     result: DecoderResult.message,
     voice: true,
-    settings: [
+    settings: const [
       DecoderSetting('slot_filter', 3, allowed: [1, 2, 3]),
       DecoderSetting(
         'color_code',
@@ -99,20 +115,21 @@ final decoderCatalog = <DecoderDescriptor>[
       DecoderSetting('voice', true, allowed: [true, false]),
     ],
   ),
+  // OpenWebRX+ `sstv`: underlying usb/lsb/nfm, 24 kHz audio, VIS auto-detect.
+  // Upstream has no forced picture mode (STATUS-sstv-audit.md), so `mode`
+  // only allows `auto`; stale `martin_m1`/`scottie_s1` values normalize to it.
   DecoderDescriptor(
     id: 'sstv',
     label: 'SSTV',
     input: DecoderInput.audio,
     exclusiveReceiver: false,
-    requiredMode: 4,
+    requiredMode: null,
     requiredRateHz: 24000,
     result: DecoderResult.imageComplete,
-    settings: [
-      DecoderSetting(
-        'mode',
-        'auto',
-        allowed: ['auto', 'martin_m1', 'scottie_s1'],
-      ),
+    underlyingModes: const [DemodMode.usb, DemodMode.lsb, DemodMode.nfm],
+    settings: const [
+      DecoderSetting('mode', 'auto', allowed: ['auto']),
+      DecoderSetting('underlying', 'usb', allowed: ['usb', 'lsb', 'nfm']),
     ],
   ),
   DecoderDescriptor(
@@ -129,7 +146,7 @@ final decoderCatalog = <DecoderDescriptor>[
     id: 'adsb',
     label: 'ADS-B',
     input: DecoderInput.rawIq,
-    exclusiveReceiver: true,
+    exclusiveReceiver: false,
     requiredMode: null,
     requiredRateHz: 2400000,
     result: DecoderResult.aircraft,
@@ -169,4 +186,10 @@ abstract interface class DecoderBackend {
   /// Only implemented engines may be selected; failure must leave RX unchanged.
   bool select(String? id, Map<String, Object> versionedConfig);
   DecoderEvent? poll(int afterSequence);
+}
+
+/// Optional WFM metadata control; not a selectable data decoder.
+abstract interface class RbdsDecoderBackend {
+  bool get rbdsAvailable;
+  bool setRbds(bool enabled);
 }

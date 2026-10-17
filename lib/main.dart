@@ -32,12 +32,12 @@ Future<void> main() async {
   } catch (_) {
     configDir = null; // in-memory config
   }
-  final RadioController controller = Platform.isLinux
-      ? createLinuxRadioController(configDir: configDir)
+  final RadioController controller = isDesktopPlatform(Platform.operatingSystem)
+      ? createDesktopRadioController(configDir: configDir)
       : Platform.isAndroid
       ? await createAndroidRadioController(configDir: configDir)
       : NativeRequiredRadioController(
-          reason: 'Native receiver requires Linux or Android',
+          reason: 'Native receiver requires Android or a supported desktop',
         );
   runApp(SdrApp(controller: controller));
 }
@@ -83,8 +83,20 @@ Future<RadioController> createAndroidRadioController({
   }
 }
 
-/// Linux desktop: native host engine, or an honest "native required" state.
-RadioController createLinuxRadioController({String? configDir}) {
+bool isDesktopPlatform(String operatingSystem) =>
+    operatingSystem == 'linux' ||
+    operatingSystem == 'macos' ||
+    operatingSystem == 'windows';
+
+String defaultDesktopAudioSink(String operatingSystem, {String? override}) =>
+    override != null && override.isNotEmpty
+    ? override
+    : operatingSystem == 'linux'
+    ? 'null'
+    : 'miniaudio';
+
+/// Desktop: native host engine, or an honest "native required" state.
+RadioController createDesktopRadioController({String? configDir}) {
   try {
     final library = openSdrCoreLibrary();
     final version = library.lookupFunction<Uint32 Function(), int Function()>(
@@ -98,14 +110,17 @@ RadioController createLinuxRadioController({String? configDir}) {
       );
     }
     final api = FfiNativeRadioApi(library);
-    // ADR default on Linux is the headless "null" sink; desktop users pick
-    // "alsa" or "alsa:<pcm>" (or "wav:<path>" for QA) via SDR_AUDIO_SINK.
+    // Keep Linux's null default; CoreAudio/WASAPI use miniaudio. All desktops
+    // allow SDR_AUDIO_SINK overrides (including WAV for offline QA).
     final sink = Platform.environment['SDR_AUDIO_SINK'];
     return NativeRadioController(
       api: api,
       decoderApi: FfiNativeDecoderApi.tryOpen(library),
       source: HostNativeDeviceSource(api),
-      audioSink: sink == null || sink.isEmpty ? 'null' : sink,
+      audioSink: defaultDesktopAudioSink(
+        Platform.operatingSystem,
+        override: sink,
+      ),
       configDir: configDir,
     );
   } catch (e) {
@@ -132,6 +147,8 @@ class _SdrAppState extends State<SdrApp> with WidgetsBindingObserver {
     systemNavigationBarContrastEnforced: false,
   );
   final ValueNotifier<int> _openReceive = ValueNotifier<int>(0);
+  // Label of the one selected decoder, published by the shell.
+  final ValueNotifier<String?> _decoderLabel = ValueNotifier<String?>(null);
   late BackgroundReception _background;
 
   @override
@@ -143,6 +160,7 @@ class _SdrAppState extends State<SdrApp> with WidgetsBindingObserver {
     _background = BackgroundReception(
       widget.controller,
       onOpenReceive: () => _openReceive.value++,
+      decoderLabel: _decoderLabel,
     );
   }
 
@@ -154,6 +172,7 @@ class _SdrAppState extends State<SdrApp> with WidgetsBindingObserver {
       _background = BackgroundReception(
         widget.controller,
         onOpenReceive: () => _openReceive.value++,
+        decoderLabel: _decoderLabel,
       );
     }
   }
@@ -170,6 +189,7 @@ class _SdrAppState extends State<SdrApp> with WidgetsBindingObserver {
     WidgetsBinding.instance.removeObserver(this);
     _background.dispose();
     _openReceive.dispose();
+    _decoderLabel.dispose();
     super.dispose();
   }
 
@@ -189,6 +209,7 @@ class _SdrAppState extends State<SdrApp> with WidgetsBindingObserver {
       home: LegacyAppShell(
         controller: widget.controller,
         openReceive: _openReceive,
+        decoderLabel: _decoderLabel,
       ),
     );
   }

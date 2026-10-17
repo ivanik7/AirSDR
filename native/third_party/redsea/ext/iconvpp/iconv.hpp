@@ -28,13 +28,14 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #pragma once
 
-#ifdef __ANDROID__
+#if defined(__ANDROID__) || defined(_WIN32) || defined(__APPLE__)
 #include <cstdint>
 #include <stdexcept>
 #include <string>
 
-// Android Bionic has no iconv. Keep UCS-2 enhanced-RDS conversion; external
-// TMC location tables (with arbitrary encodings) are not loaded in this app.
+// Android Bionic and the Windows CRT have no iconv, and macOS would need an
+// extra -liconv. Keep UCS-2 enhanced-RDS conversion; external TMC location
+// tables (with arbitrary encodings) are not loaded in this app.
 namespace iconvpp {
 class converter {
  public:
@@ -63,7 +64,7 @@ class converter {
     }
     if (input.size() & 1) throw std::runtime_error("invalid UCS-2 length");
     for (size_t i = 0; i < input.size(); i += 2) {
-      // iconv's UCS-2 uses host byte order; Android arm64-v8a is little-endian.
+      // iconv's UCS-2 uses host byte order; every target here is little-endian.
       const uint32_t code = static_cast<uint8_t>(input[i]) |
                             (static_cast<uint32_t>(static_cast<uint8_t>(input[i + 1])) << 8);
       if (code >= 0xd800 && code <= 0xdfff)

@@ -16,6 +16,7 @@ class SdrApplication : Application() {
         val engine = FlutterEngine(this) // auto-registers pub plugins
         engine.plugins.add(UsbSdrPlugin())
         engine.plugins.add(ReceptionPlugin())
+        engine.plugins.add(MediaStorePlugin())
         radioEngine = engine
         engine.dartExecutor.executeDartEntrypoint(DartExecutor.DartEntrypoint.createDefault())
         return engine

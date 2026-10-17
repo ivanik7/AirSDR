@@ -5,17 +5,26 @@
 
 #include "sdrcore.h"
 #include "sdrcore_v3.h"
+#include "usb_host_errors.h"
 
 #include <algorithm>
 #include <chrono>
 #include <thread>
-#include <unistd.h>
 #include <vector>
+#ifndef _WIN32
+#include <unistd.h>
+#endif
 
 RtlSdrAdapter::~RtlSdrAdapter() { close(); }
 
 int RtlSdrAdapter::open(int fd) {
   if (dev_) return SDR_INVALID_STATE;
+#ifdef _WIN32
+  // Windows has no USB file descriptors; the host layer uses
+  // open_bus_address() there.
+  (void)fd;
+  return SDR_UNSUPPORTED;
+#else
   // libusb_wrap_sys_device() stores the fd it is given verbatim and does not
   // dup() or close() it; dup() here so librtlsdr/libusb own an independent
   // descriptor and the caller's original fd is left untouched.
@@ -30,6 +39,23 @@ int RtlSdrAdapter::open(int fd) {
   dev_ = dev;
   owned_fd_ = dup_fd;
   return SDR_OK;
+#endif
+}
+
+int RtlSdrAdapter::open_bus_address(uint8_t bus, uint8_t address) {
+  if (dev_) return SDR_INVALID_STATE;
+#ifdef __ANDROID__
+  // Unrooted Android cannot enumerate USB; only the UsbManager fd works.
+  (void)bus;
+  (void)address;
+  return SDR_UNSUPPORTED;
+#else
+  rtlsdr_dev_t* dev = nullptr;
+  const int rc = rtlsdr_open_bus_address(&dev, bus, address);
+  if (rc != 0 || !dev) return sdrcore::map_libusb_open_error(rc);
+  dev_ = dev;
+  return SDR_OK;
+#endif
 }
 
 int RtlSdrAdapter::configure(uint64_t frequency_hz, uint32_t sample_rate,
@@ -156,8 +182,10 @@ void RtlSdrAdapter::close() {
     rtlsdr_close(dev_);
     dev_ = nullptr;
   }
+#ifndef _WIN32
   if (owned_fd_ >= 0) {
     ::close(owned_fd_);
     owned_fd_ = -1;
   }
+#endif
 }

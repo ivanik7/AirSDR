@@ -26,7 +26,7 @@ ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSI
 #include <stdint.h>
 #include <sys/types.h>
 #include <stdbool.h> // for bool
-#ifdef _WIN32
+#if defined(_WIN32) && !defined(HACKRF_STATIC)
 	#define ADD_EXPORTS
 
 	/* You should define ADD_EXPORTS *only* when building the DLL. */
@@ -39,7 +39,7 @@ ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSI
 	/* Define calling convention in one place, for convenience. */
 	#define ADDCALL __cdecl
 
-#else /* _WIN32 not defined. */
+#else /* _WIN32 not defined, or linked statically (HACKRF_STATIC). */
 
 	#define ADDAPI
 	#define ADDCALL

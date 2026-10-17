@@ -32,11 +32,23 @@ final class NoDecoderBackend implements DecoderBackend {
 /// against a null handle fails/returns nothing without throwing, matching
 /// "optional additive extension, 0 native availability" and "a failed
 /// select leaves receiver, audio, prior decoder and tuning unchanged".
-final class NativeDecoderBackend implements DecoderBackend {
+final class NativeDecoderBackend implements DecoderBackend, RbdsDecoderBackend {
   NativeDecoderBackend(this._api, this._handle);
 
   final NativeDecoderApi _api;
   final Pointer<SdrHandle>? Function() _handle;
+  @override
+  bool get rbdsAvailable =>
+      _api is NativeRbdsControl && (_api as NativeRbdsControl).rbdsAvailable;
+
+  @override
+  bool setRbds(bool enabled) {
+    final h = _handle();
+    return h != null &&
+        rbdsAvailable &&
+        (_api as NativeRbdsControl).setRbds(h, enabled);
+  }
+
   Set<String>? _availableIds;
 
   /// Native backends are compiled into the registry; availability cannot

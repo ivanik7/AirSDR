@@ -19,6 +19,21 @@
 //                  stores the supplied descriptor without duplicating it;
 //                  each adapter owns its explicit dup while the caller keeps
 //                  the original UsbDeviceConnection alive until close().
+//                  POSIX only (Linux, Android, and macOS for tests); Windows
+//                  has no USB file descriptors and returns SDR_UNSUPPORTED.
+//   open_bus_address(bus, address)
+//                  desktop direct path (sdr_host_open_usb_direct): the vendor
+//                  driver enumerates USB devices in its own libusb context,
+//                  picks the one at bus/address and opens it with
+//                  libusb_open(); no fd is involved. Returns SDR_OK or a
+//                  negative SdrResult / SdrHostResult (sdrcore_host.h) code:
+//                  SDR_HOST_NOT_FOUND (no such device, LIBUSB_ERROR_NO_DEVICE
+//                  or NOT_FOUND), SDR_HOST_ACCESS_DENIED (ERROR_ACCESS),
+//                  SDR_HOST_DRIVER_UNSUPPORTED (ERROR_NOT_SUPPORTED, e.g. no
+//                  WinUSB on Windows), SDR_HOST_BUSY (ERROR_BUSY), otherwise
+//                  SDR_DEVICE_GONE / SDR_IO_ERROR. Not available on Android
+//                  (default implementation returns SDR_UNSUPPORTED). Exactly
+//                  one of open()/open_bus_address() succeeds per session.
 //   configure(..) sets center frequency (RF Hz), sample rate (complex S/s) and
 //                  a single combined gain in tenths of a dB, matching ABI 2's
 //                  sdr_v2_configure() units exactly.
@@ -59,6 +74,9 @@ class UsbRxAdapter {
 
   virtual ~UsbRxAdapter() = default;
   virtual int open(int fd) = 0;
+  virtual int open_bus_address(uint8_t /*bus*/, uint8_t /*address*/) {
+    return SDR_UNSUPPORTED;
+  }
   virtual int configure(uint64_t frequency_hz, uint32_t sample_rate,
                          int32_t gain_tenths_db) = 0;
   virtual int start(PushFn push, void* ctx) = 0;

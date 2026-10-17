@@ -58,7 +58,7 @@ void main() {
         ),
         findsNothing,
       );
-      await tester.tap(find.byKey(const ValueKey('tab-3')));
+      await tester.tap(find.byKey(const ValueKey('tab-1')));
       await tester.pump();
       await tester.scrollUntilVisible(
         find.byKey(const ValueKey('squelchStatus')),
@@ -86,7 +86,7 @@ void main() {
           home: LegacyAppShell(controller: radio, favorites: favorites),
         ),
       );
-      await tester.tap(find.byKey(const ValueKey('tab-1')));
+      await tester.tap(find.byKey(const ValueKey('tab-2')));
       await tester.pump();
       await tester.tap(find.byKey(const ValueKey('addFavorite')));
       await tester.pumpAndSettle();
@@ -152,7 +152,7 @@ void main() {
           home: LegacyAppShell(controller: radio, favorites: favorites),
         ),
       );
-      await tester.tap(find.byKey(const ValueKey('tab-1')));
+      await tester.tap(find.byKey(const ValueKey('tab-2')));
       await tester.pump();
       final fm = favorites.entries.firstWhere((f) => f.name == 'FM Radio');
       expect(fm.builtIn, isTrue);
@@ -199,7 +199,7 @@ void main() {
         home: LegacyAppShell(controller: radio, favorites: favorites),
       ),
     );
-    await tester.tap(find.byKey(const ValueKey('tab-3')));
+    await tester.tap(find.byKey(const ValueKey('tab-1')));
     await tester.pump();
     await tester.tap(find.byKey(const ValueKey('decoderSelector')));
     await tester.pumpAndSettle();
@@ -275,7 +275,7 @@ void main() {
       await tester.pump();
       expect(radio.centerFrequency, 121500000);
       expect(radio.vfoOffset, 0);
-      await tester.tap(find.byKey(const ValueKey('tab-1')));
+      await tester.tap(find.byKey(const ValueKey('tab-2')));
       await tester.pump();
       expect(find.text('Air Traffic'), findsOneWidget);
       final air = favorites.entries.firstWhere((f) => f.name == 'Air Traffic');
@@ -283,7 +283,7 @@ void main() {
       await tester.pump();
       expect(radio.tunedFrequency, 125000000);
       expect(radio.vfoOffset, 0);
-      await tester.tap(find.byKey(const ValueKey('tab-2')));
+      await tester.tap(find.byKey(const ValueKey('tab-3')));
       await tester.pump();
       expect(find.text('Настройки приёмника'), findsOneWidget);
       await tester.pumpWidget(const SizedBox());

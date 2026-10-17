@@ -3,10 +3,12 @@
 #include "sdrcore_decoder_v1.h"
 
 #include <cassert>
+#include <chrono>
 #include <cstdint>
 #include <cstring>
 #include <set>
 #include <string>
+#include <thread>
 
 namespace {
 
@@ -106,8 +108,21 @@ int main() {
   for (const char* id : {"sstv", "rtl_433", "adsb"}) {
     assert(contains(id));
     SdrDecoderDescriptor d = find(id);
-    if (std::strcmp(id, "rtl_433") == 0) assert(d.available == 1);
-    else assert(d.available == 0);
+    assert(d.available == 1);
+  }
+  const auto adsb = find("adsb");
+  assert(adsb.input == SDR_DECODER_RAW_IQ);
+  assert(adsb.exclusive_receiver == 0);
+  assert(adsb.required_rate_hz == 2400000);
+  assert(adsb.result == SDR_DECODER_AIRCRAFT);
+  // SSTV is an audio-tap decoder valid for USB, LSB or NFM: no single
+  // required mode in the descriptor; accepts_mode() gates selection.
+  {
+    SdrDecoderDescriptor d = find("sstv");
+    assert(d.input == SDR_DECODER_AUDIO);
+    assert(d.required_mode == UINT32_MAX);
+    assert(d.required_rate_hz == 24000);
+    assert(d.exclusive_receiver == 0);
   }
 
   // --- Selection cannot mutate an unopened handle; NULL/empty deselects.
@@ -150,11 +165,36 @@ int main() {
                             std::strlen(valid_json)) == SDR_OK);
   assert(sdr_decoder_select(h, "rtl_433", 7, "{", 1) == SDR_INVALID_ARGUMENT);
   assert(sdr_decoder_select(h, nullptr, 0, nullptr, 0) == SDR_OK);
-  // Factory-null SSTV remains unavailable and must not replace an engine.
+  // SSTV cannot attach while the receiver runs WFM (audio tap is USB/LSB/
+  // NFM only) and the rejection must not touch v3 state.
   before = snap_before();
-  assert(sdr_decoder_select(h, "sstv", 4, nullptr, 0) == SDR_UNSUPPORTED);
+  assert(sdr_decoder_select(h, "sstv", 4, valid_json, std::strlen(valid_json)) == SDR_UNSUPPORTED);
+  // A missing config is malformed for SSTV (versioned settings required).
+  assert(sdr_decoder_select(h, "sstv", 4, nullptr, 0) == SDR_INVALID_ARGUMENT);
   after = snap_before();
   assert(after.control_sequence == before.control_sequence);
+  {
+    const char* usb = "{\"version\":1,\"settings\":{\"underlying\":\"usb\",\"mode\":\"auto\"}}";
+    const char* lsb = "{\"version\":1,\"settings\":{\"underlying\":\"lsb\",\"mode\":\"auto\"}}";
+    const char* forced = "{\"version\":1,\"settings\":{\"underlying\":\"usb\",\"mode\":\"martin_m1\"}}";
+    SdrV3Controls usb_controls = c;
+    usb_controls.mode = SDR_V3_USB;
+    usb_controls.bandwidth_hz = 2800;
+    assert(sdr_v3_set_controls(h, &usb_controls) == SDR_OK);
+    // Unknown/forced picture modes are not implemented: rejected, not ignored.
+    assert(sdr_decoder_select(h, "sstv", 4, forced, std::strlen(forced)) == SDR_INVALID_ARGUMENT);
+    assert(sdr_decoder_select(h, "sstv", 4, "{", 1) == SDR_INVALID_ARGUMENT);
+    // An underlying demod other than the applied mode is "not ready".
+    assert(sdr_decoder_select(h, "sstv", 4, lsb, std::strlen(lsb)) == SDR_UNSUPPORTED);
+    before = snap_before();
+    assert(sdr_decoder_select(h, "sstv", 4, usb, std::strlen(usb)) == SDR_OK);
+    after = snap_before();
+    // Selecting SSTV never changes tuning or mode.
+    assert(after.control_sequence == before.control_sequence);
+    assert(after.mode == SDR_V3_USB);
+    assert(sdr_decoder_select(h, nullptr, 0, nullptr, 0) == SDR_OK);
+    assert(sdr_v3_set_controls(h, &c) == SDR_OK);
+  }
   // NULL/empty ID always deselects successfully (no-op when nothing was
   // selected), and never touches v3 state either.
   before = snap_before();
@@ -183,10 +223,30 @@ int main() {
   assert(sdr_decoder_poll(h, 0, &bad_event_size, payload, sizeof payload) == SDR_INVALID_ARGUMENT);
 
   assert(sdr_v3_stop(h) == SDR_INVALID_STATE);
+  // ADS-B uses the normal single receiver and sends only zeroed voice frames
+  // to the audio sink while selected, even though NFM remains the demod mode.
+  c.sample_rate = 2400000;
+  c.center_frequency_hz = 1090000000;
+  c.bandwidth_hz = 12000;
+  c.mode = SDR_V3_NFM;
+  assert(sdr_v3_set_controls(h, &c) == SDR_OK);
+  assert(sdr_decoder_select(h, "adsb", 4, valid_json, std::strlen(valid_json)) == SDR_OK);
+  const auto audio_before = snap_before();
+  assert(sdr_v3_start(h) == SDR_OK);
+  std::this_thread::sleep_for(std::chrono::milliseconds(300));
+  const auto silent = snap_before();
+  assert(silent.audio_frames > audio_before.audio_frames);
+  assert(silent.audio_nonsilent_frames == audio_before.audio_nonsilent_frames);
+  assert(sdr_v3_stop(h) == SDR_OK);
+  assert(sdr_decoder_select(h, nullptr, 0, nullptr, 0) == SDR_OK);
   assert(sdr_v2_close(h) == SDR_OK);
   sdr_destroy(h);
 
   // --- Each handle has an independent selected backend and queue.
+  c.sample_rate = 300000;
+  c.center_frequency_hz = 100000000;
+  c.bandwidth_hz = 150000;
+  c.mode = SDR_V3_WFM;
   SdrHandle* a = sdr_create();
   SdrHandle* b = sdr_create();
   assert(a && b && a != b);
@@ -194,8 +254,9 @@ int main() {
   assert(sdr_v2_open_synthetic(b, 300000) == SDR_OK);
   assert(sdr_v3_set_controls(a, &c) == SDR_OK);
   assert(sdr_v3_set_controls(b, &c) == SDR_OK);
-  assert(sdr_decoder_select(a, "sstv", 4, nullptr, 0) == SDR_UNSUPPORTED);
-  assert(sdr_decoder_select(b, "sstv", 4, nullptr, 0) == SDR_UNSUPPORTED);
+  // Both run WFM: SSTV's audio tap is not ready on either handle.
+  assert(sdr_decoder_select(a, "sstv", 4, valid_json, std::strlen(valid_json)) == SDR_UNSUPPORTED);
+  assert(sdr_decoder_select(b, "sstv", 4, valid_json, std::strlen(valid_json)) == SDR_UNSUPPORTED);
   assert(sdr_decoder_select(a, "rtl_433", 7, valid_json, std::strlen(valid_json)) == SDR_OK);
   assert(sdr_decoder_select(b, "rtl_433", 7, valid_json, std::strlen(valid_json)) == SDR_OK);
   assert(sdr_v2_close(a) == SDR_OK);

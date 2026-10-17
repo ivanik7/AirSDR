@@ -1,4 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
+// DMR panel modelled on OpenWebRX+ MetaPanel `DmrMetaSlot`: two timeslot
+// cards (tap = mute/unmute that slot via the upstream slot-filter bitmask),
+// plus a bounded call history and the optional colour-code filter. Volume
+// stays on the normal audio controls; no PCM enters Dart.
 import 'package:flutter/material.dart';
 
 import '../legacy/theme.dart';
@@ -9,11 +13,19 @@ class DmrDecoderPanel extends StatelessWidget {
   const DmrDecoderPanel({super.key, required this.session});
   final DecoderSession session;
 
+  /// Slot-filter bitmask after toggling [slot] (0=TS1, 1=TS2), or null if
+  /// that would mute both slots (the native filter needs at least one).
+  static int? toggledSlotMask(int mask, int slot) {
+    final next = mask ^ (1 << slot);
+    return next == 0 ? null : next;
+  }
+
   @override
   Widget build(BuildContext context) {
     final available = session.isAvailable('dmr');
     final running = session.radio.running;
     final settings = session.currentSettings;
+    final mask = settings['slot_filter'] as int;
     return Column(
       key: const ValueKey('decoderPanel-dmr'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -46,12 +58,18 @@ class DmrDecoderPanel extends StatelessWidget {
                 'потеряно событий: ${session.droppedEvents}',
                 style: plex(size: 11, color: LegacyColors.muted),
               ),
+              Text(
+                'Поиск позывных по DMR ID (radioid.net) не поддерживается: '
+                'показываются только данные из эфира.',
+                key: const ValueKey('dmrIdLookupNote'),
+                style: plex(size: 11, color: LegacyColors.muted),
+              ),
             ],
           ),
         ),
         const SizedBox(height: 8),
         for (var slot = 0; slot < 2; slot++) ...[
-          _slotCard(slot),
+          _slotCard(slot, mask),
           const SizedBox(height: 8),
         ],
         legacyCard(
@@ -71,14 +89,17 @@ class DmrDecoderPanel extends StatelessWidget {
                 settings['color_code'] as int,
                 {for (var i = -1; i < 16; i++) i: i < 0 ? 'Любой' : '$i'},
               ),
-              SwitchListTile(
-                key: const ValueKey('dmrVoice'),
-                contentPadding: EdgeInsets.zero,
-                title: Text('Голос', style: plex(size: 13)),
-                value: settings['voice'] as bool,
-                onChanged: session.canConfigure('dmr')
-                    ? (value) => session.setSetting('dmr', 'voice', value)
-                    : null,
+              Material(
+                type: MaterialType.transparency,
+                child: SwitchListTile(
+                  key: const ValueKey('dmrVoice'),
+                  contentPadding: EdgeInsets.zero,
+                  title: Text('Голос', style: plex(size: 13)),
+                  value: settings['voice'] as bool,
+                  onChanged: session.canConfigure('dmr')
+                      ? (value) => session.setSetting('dmr', 'voice', value)
+                      : null,
+                ),
               ),
             ],
           ),
@@ -137,41 +158,63 @@ class DmrDecoderPanel extends StatelessWidget {
     ],
   );
 
-  Widget _slotCard(int slot) {
+  Widget _slotCard(int slot, int mask) {
     final call = session.dmrSlots[slot];
     final sync = session.dmrSync[slot];
-    return legacyCard(
-      child: Column(
-        key: ValueKey('dmrSlot-${slot + 1}'),
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
+    final muted = mask & (1 << slot) == 0;
+    final next = toggledSlotMask(mask, slot);
+    final canToggle = session.canConfigure('dmr') && next != null;
+    return Material(
+      type: MaterialType.transparency,
+      child: InkWell(
+        key: ValueKey('dmrSlotToggle-${slot + 1}'),
+        onTap: canToggle
+            ? () => session.setSetting('dmr', 'slot_filter', next)
+            : null,
+        child: legacyCard(
+          child: Column(
+            key: ValueKey('dmrSlot-${slot + 1}'),
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(child: Text('TS${slot + 1}', style: plex(size: 14))),
-              Text(
-                sync == 'voice'
-                    ? 'Голос · синхр.'
-                    : sync == 'data'
-                    ? 'Данные · синхр.'
-                    : 'Нет синхронизации',
-                style: plex(
-                  size: 11,
-                  color: sync == null
-                      ? LegacyColors.muted
-                      : LegacyColors.accent,
-                ),
+              Row(
+                children: [
+                  Expanded(child: Text('TS${slot + 1}', style: plex(size: 14))),
+                  if (muted)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: Text(
+                        'Отключён',
+                        key: ValueKey('dmrSlotMuted-${slot + 1}'),
+                        style: plex(size: 11, color: LegacyColors.danger),
+                      ),
+                    ),
+                  Text(
+                    sync == 'voice'
+                        ? 'Голос · синхр.'
+                        : sync == 'data'
+                        ? 'Данные · синхр.'
+                        : 'Нет синхронизации',
+                    key: ValueKey('dmrSync-${slot + 1}'),
+                    style: plex(
+                      size: 11,
+                      color: sync == null
+                          ? LegacyColors.muted
+                          : LegacyColors.accent,
+                    ),
+                  ),
+                ],
               ),
+              const SizedBox(height: 4),
+              if (call == null)
+                Text(
+                  'Нет текущего вызова',
+                  style: plex(size: 12, color: LegacyColors.muted),
+                )
+              else
+                _callDetails(call),
             ],
           ),
-          const SizedBox(height: 4),
-          if (call == null)
-            Text(
-              'Нет текущего вызова',
-              style: plex(size: 12, color: LegacyColors.muted),
-            )
-          else
-            _callDetails(call),
-        ],
+        ),
       ),
     );
   }
@@ -183,27 +226,71 @@ class DmrDecoderPanel extends StatelessWidget {
         '${call.type == 'group' ? 'TG' : 'Адресат'} ${call.target}',
       if (call.source != null) 'Источник ${call.source}',
       if (call.colorCode != null) 'CC ${call.colorCode}',
-      if (call.privacy == true) 'Шифрование',
     ];
     final details = <String>[
       if (call.alias != null) 'Псевдоним: ${call.alias}',
       if (call.latitude != null && call.longitude != null)
-        'GPS: ${call.latitude}, ${call.longitude}',
+        'GPS: ${call.latitude!.toStringAsFixed(5)}, '
+            '${call.longitude!.toStringAsFixed(5)}',
       if (call.voice == 'unavailable') 'Аудио недоступно',
       if (call.voice == 'muted') 'Аудио выключено',
-      if (history)
-        'Длительность (по событиям): ${call.elapsed(call.endedAt!).inSeconds} с',
+      if (call.durationMs != null)
+        'Длительность (голосовые кадры): '
+            '${(call.durationMs! / 1000).toStringAsFixed(1)} с'
+      else if (history)
+        'Длительность (по событиям): '
+            '${call.elapsed(call.endedAt!).inSeconds} с',
+      if (history) 'TS${call.slot + 1} · ${_clock(call.startedAt)}',
     ];
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          parts.isEmpty ? 'Вызов · метаданные не получены' : parts.join(' · '),
-          style: plex(size: 12),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Text(
+                parts.isEmpty
+                    ? 'Вызов · метаданные не получены'
+                    : parts.join(' · '),
+                style: plex(size: 12),
+              ),
+            ),
+            if (call.privacy == true)
+              Container(
+                key: ValueKey(
+                  'dmrEncrypted-${history ? 'h' : 's'}${call.slot + 1}',
+                ),
+                margin: const EdgeInsets.only(left: 6),
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                decoration: BoxDecoration(
+                  border: Border.all(color: LegacyColors.danger),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(
+                      Icons.lock_outline,
+                      size: 12,
+                      color: LegacyColors.danger,
+                    ),
+                    const SizedBox(width: 3),
+                    Text(
+                      'Шифр.',
+                      style: plex(size: 11, color: LegacyColors.danger),
+                    ),
+                  ],
+                ),
+              ),
+          ],
         ),
         for (final detail in details)
           Text(detail, style: plex(size: 11, color: LegacyColors.muted)),
       ],
     );
   }
+
+  static String _clock(DateTime t) =>
+      t.toLocal().toIso8601String().substring(11, 19);
 }

@@ -1,0 +1,1671 @@
+{
+ "rate": 24000,
+ "encoder": "pySSTV",
+ "cases": [
+  {
+   "name": "Robot36_clean",
+   "mode": "Robot36",
+   "wav": "Robot36_clean.wav",
+   "source": "src_Robot36.png",
+   "source_size": [
+    320,
+    240
+   ],
+   "patches": [
+    [
+     12,
+     10,
+     75,
+     49
+    ],
+    [
+     88,
+     10,
+     151,
+     49
+    ],
+    [
+     164,
+     10,
+     227,
+     49
+    ],
+    [
+     240,
+     10,
+     303,
+     49
+    ],
+    [
+     12,
+     60,
+     75,
+     99
+    ],
+    [
+     88,
+     60,
+     151,
+     99
+    ],
+    [
+     164,
+     60,
+     227,
+     99
+    ],
+    [
+     240,
+     60,
+     303,
+     99
+    ]
+   ],
+   "lead_samples": 24000,
+   "samples": 981840,
+   "seconds": 40.91,
+   "clipped_samples": 0,
+   "wav_sha256": "e49547a229074131b3e775986bafe557cc63d67cb00b0678ac6da74790a52222",
+   "source_sha256": "625e29dd3c363c0944ec530fa844d838260d31768c8232ff4caa9793d8cfa38c",
+   "expect": {
+    "vis": 8,
+    "name": "Robot 36",
+    "width": 320,
+    "height": 240
+   }
+  },
+  {
+   "name": "MartinM1_clean",
+   "mode": "MartinM1",
+   "wav": "MartinM1_clean.wav",
+   "source": "src_MartinM1.png",
+   "source_size": [
+    320,
+    256
+   ],
+   "patches": [
+    [
+     12,
+     10,
+     75,
+     51
+    ],
+    [
+     88,
+     10,
+     151,
+     51
+    ],
+    [
+     164,
+     10,
+     227,
+     51
+    ],
+    [
+     240,
+     10,
+     303,
+     51
+    ],
+    [
+     12,
+     62,
+     75,
+     103
+    ],
+    [
+     88,
+     62,
+     151,
+     103
+    ],
+    [
+     164,
+     62,
+     227,
+     103
+    ],
+    [
+     240,
+     62,
+     303,
+     103
+    ]
+   ],
+   "lead_samples": 24000,
+   "samples": 2860804,
+   "seconds": 119.20016666666666,
+   "clipped_samples": 0,
+   "wav_sha256": "42b290b4c03ff132693bb939f688ff01d1d311b8d4317f823f9268c746cf2ea1",
+   "source_sha256": "1005701bacecb6974b0b309da4c4d1bb80db81d2d62328a2d640eac1a95e048f",
+   "expect": {
+    "vis": 44,
+    "name": "Martin 1",
+    "width": 320,
+    "height": 256
+   }
+  },
+  {
+   "name": "MartinM2_clean",
+   "mode": "MartinM2",
+   "wav": "MartinM2_clean.wav",
+   "source": "src_MartinM2.png",
+   "source_size": [
+    160,
+    256
+   ],
+   "patches": [
+    [
+     6,
+     10,
+     37,
+     51
+    ],
+    [
+     44,
+     10,
+     75,
+     51
+    ],
+    [
+     82,
+     10,
+     113,
+     51
+    ],
+    [
+     120,
+     10,
+     151,
+     51
+    ],
+    [
+     6,
+     62,
+     37,
+     103
+    ],
+    [
+     44,
+     62,
+     75,
+     103
+    ],
+    [
+     82,
+     62,
+     113,
+     103
+    ],
+    [
+     120,
+     62,
+     151,
+     103
+    ]
+   ],
+   "lead_samples": 24000,
+   "samples": 1511286,
+   "seconds": 62.97025,
+   "clipped_samples": 0,
+   "wav_sha256": "3d00a83b368ca856b5f9197bd25ff90beb33e21fb247305341f8f01452e2cad9",
+   "source_sha256": "045309bc841aa63c7a3f3648bc8c86b6d5c40509fbe115a19458439ada904f22",
+   "expect": {
+    "vis": 40,
+    "name": "Martin 2",
+    "width": 320,
+    "height": 256
+   }
+  },
+  {
+   "name": "ScottieS1_clean",
+   "mode": "ScottieS1",
+   "wav": "ScottieS1_clean.wav",
+   "source": "src_ScottieS1.png",
+   "source_size": [
+    320,
+    256
+   ],
+   "patches": [
+    [
+     12,
+     10,
+     75,
+     51
+    ],
+    [
+     88,
+     10,
+     151,
+     51
+    ],
+    [
+     164,
+     10,
+     227,
+     51
+    ],
+    [
+     240,
+     10,
+     303,
+     51
+    ],
+    [
+     12,
+     62,
+     75,
+     103
+    ],
+    [
+     88,
+     62,
+     151,
+     103
+    ],
+    [
+     164,
+     62,
+     227,
+     103
+    ],
+    [
+     240,
+     62,
+     303,
+     103
+    ]
+   ],
+   "lead_samples": 24000,
+   "samples": 2748823,
+   "seconds": 114.53429166666666,
+   "clipped_samples": 0,
+   "wav_sha256": "70c7ae2e14823486810acadccdb69d560432622e70f6333679ed3a627fc15d9f",
+   "source_sha256": "7cf07fe4b101fb832400a36da75a854da1f160ed82287f2d7242e836edfe2615",
+   "expect": {
+    "vis": 60,
+    "name": "Scottie 1",
+    "width": 320,
+    "height": 256
+   }
+  },
+  {
+   "name": "ScottieS2_clean",
+   "mode": "ScottieS2",
+   "wav": "ScottieS2_clean.wav",
+   "source": "src_ScottieS2.png",
+   "source_size": [
+    160,
+    256
+   ],
+   "patches": [
+    [
+     6,
+     10,
+     37,
+     51
+    ],
+    [
+     44,
+     10,
+     75,
+     51
+    ],
+    [
+     82,
+     10,
+     113,
+     51
+    ],
+    [
+     120,
+     10,
+     151,
+     51
+    ],
+    [
+     6,
+     62,
+     37,
+     103
+    ],
+    [
+     44,
+     62,
+     75,
+     103
+    ],
+    [
+     82,
+     62,
+     113,
+     103
+    ],
+    [
+     120,
+     62,
+     151,
+     103
+    ]
+   ],
+   "lead_samples": 24000,
+   "samples": 1823979,
+   "seconds": 75.999125,
+   "clipped_samples": 0,
+   "wav_sha256": "87867e174ac6cb93f9af8b6d389266fb3e27d27546e7a4e075f26184dc97fda6",
+   "source_sha256": "0ee588972957d6fb1d6dcd900cc83a7061bb794fc288ef7f42abf71583108f5e",
+   "expect": {
+    "vis": 56,
+    "name": "Scottie 2",
+    "width": 320,
+    "height": 256
+   }
+  },
+  {
+   "name": "PD90_clean",
+   "mode": "PD90",
+   "wav": "PD90_clean.wav",
+   "source": "src_PD90.png",
+   "source_size": [
+    320,
+    256
+   ],
+   "patches": [
+    [
+     12,
+     10,
+     75,
+     51
+    ],
+    [
+     88,
+     10,
+     151,
+     51
+    ],
+    [
+     164,
+     10,
+     227,
+     51
+    ],
+    [
+     240,
+     10,
+     303,
+     51
+    ],
+    [
+     12,
+     62,
+     75,
+     103
+    ],
+    [
+     88,
+     62,
+     151,
+     103
+    ],
+    [
+     164,
+     62,
+     227,
+     103
+    ],
+    [
+     240,
+     62,
+     303,
+     103
+    ]
+   ],
+   "lead_samples": 24000,
+   "samples": 2277578,
+   "seconds": 94.89908333333334,
+   "clipped_samples": 0,
+   "wav_sha256": "c853636a00706df300c0440855d099c777d3fe774aaa3e056879e786b6ab684f",
+   "source_sha256": "113acef5a7e850727e24a84e41275b31ff124c6818bc9a3d697b66913f4821d4",
+   "expect": {
+    "vis": 99,
+    "name": "PD-90",
+    "width": 320,
+    "height": 256
+   }
+  },
+  {
+   "name": "PD120_clean",
+   "mode": "PD120",
+   "wav": "PD120_clean.wav",
+   "source": "src_PD120.png",
+   "source_size": [
+    640,
+    496
+   ],
+   "patches": [
+    [
+     25,
+     20,
+     152,
+     101
+    ],
+    [
+     178,
+     20,
+     305,
+     101
+    ],
+    [
+     331,
+     20,
+     458,
+     101
+    ],
+    [
+     484,
+     20,
+     611,
+     101
+    ],
+    [
+     25,
+     122,
+     152,
+     203
+    ],
+    [
+     178,
+     122,
+     305,
+     203
+    ],
+    [
+     331,
+     122,
+     458,
+     203
+    ],
+    [
+     484,
+     122,
+     611,
+     203
+    ]
+   ],
+   "lead_samples": 24000,
+   "samples": 3144312,
+   "seconds": 131.013,
+   "clipped_samples": 0,
+   "wav_sha256": "37d97539e72e8d2ff1ff3853c68b79e2b6145d54626bcf269077b99bec7b973c",
+   "source_sha256": "bc6198fb975cec80545e91bea6425ddbf139851ef72342f7a283e4551ccb70fa",
+   "expect": {
+    "vis": 95,
+    "name": "PD-120",
+    "width": 640,
+    "height": 496
+   }
+  },
+  {
+   "name": "PD160_clean",
+   "mode": "PD160",
+   "wav": "PD160_clean.wav",
+   "source": "src_PD160.png",
+   "source_size": [
+    512,
+    400
+   ],
+   "patches": [
+    [
+     20,
+     16,
+     121,
+     81
+    ],
+    [
+     142,
+     16,
+     243,
+     81
+    ],
+    [
+     264,
+     16,
+     365,
+     81
+    ],
+    [
+     386,
+     16,
+     487,
+     81
+    ],
+    [
+     20,
+     98,
+     121,
+     163
+    ],
+    [
+     142,
+     98,
+     243,
+     163
+    ],
+    [
+     264,
+     98,
+     365,
+     163
+    ],
+    [
+     386,
+     98,
+     487,
+     163
+    ]
+   ],
+   "lead_samples": 24000,
+   "samples": 3979036,
+   "seconds": 165.79316666666668,
+   "clipped_samples": 0,
+   "wav_sha256": "ecb9638311da162e1d118c467e67c263c001cfbb45a1f15af45dfc8a3b7d03dd",
+   "source_sha256": "a3a32929077bbf781a7607b2c1dcd0af8f2bf3d44abc33760c5edcff0089190b",
+   "expect": {
+    "vis": 98,
+    "name": "PD-160",
+    "width": 512,
+    "height": 400
+   }
+  },
+  {
+   "name": "WraaseSC2180_clean",
+   "mode": "WraaseSC2180",
+   "wav": "WraaseSC2180_clean.wav",
+   "source": "src_WraaseSC2180.png",
+   "source_size": [
+    320,
+    256
+   ],
+   "patches": [
+    [
+     12,
+     10,
+     75,
+     51
+    ],
+    [
+     88,
+     10,
+     151,
+     51
+    ],
+    [
+     164,
+     10,
+     227,
+     51
+    ],
+    [
+     240,
+     10,
+     303,
+     51
+    ],
+    [
+     12,
+     62,
+     75,
+     103
+    ],
+    [
+     88,
+     62,
+     151,
+     103
+    ],
+    [
+     164,
+     62,
+     227,
+     103
+    ],
+    [
+     240,
+     62,
+     303,
+     103
+    ]
+   ],
+   "lead_samples": 24000,
+   "samples": 4486362,
+   "seconds": 186.93175,
+   "clipped_samples": 0,
+   "wav_sha256": "68c579e01bb54fc4b49d0b5009eef3c6fbee089601db17902c8809a51fbd184f",
+   "source_sha256": "9b29e8283b93f06c66ba0553a4ff19aa2237ba8d4579cfcb1baf956404e2369d",
+   "expect": {
+    "vis": 55,
+    "name": "Wraase SC2-180",
+    "width": 320,
+    "height": 256
+   }
+  },
+  {
+   "name": "Robot36_snr10",
+   "mode": "Robot36",
+   "snr_db": 10,
+   "wav": "Robot36_snr10.wav",
+   "source": "src_Robot36.png",
+   "source_size": [
+    320,
+    240
+   ],
+   "patches": [
+    [
+     12,
+     10,
+     75,
+     49
+    ],
+    [
+     88,
+     10,
+     151,
+     49
+    ],
+    [
+     164,
+     10,
+     227,
+     49
+    ],
+    [
+     240,
+     10,
+     303,
+     49
+    ],
+    [
+     12,
+     60,
+     75,
+     99
+    ],
+    [
+     88,
+     60,
+     151,
+     99
+    ],
+    [
+     164,
+     60,
+     227,
+     99
+    ],
+    [
+     240,
+     60,
+     303,
+     99
+    ]
+   ],
+   "lead_samples": 24000,
+   "samples": 981840,
+   "seconds": 40.91,
+   "clipped_samples": 0,
+   "wav_sha256": "2a683d02c22cb71b99a07bb01f9d9965f60d8e17c8971543bbb1676601be6d57",
+   "source_sha256": "625e29dd3c363c0944ec530fa844d838260d31768c8232ff4caa9793d8cfa38c",
+   "expect": {
+    "vis": 8,
+    "name": "Robot 36",
+    "width": 320,
+    "height": 240
+   }
+  },
+  {
+   "name": "Robot36_snr5",
+   "mode": "Robot36",
+   "snr_db": 5,
+   "wav": "Robot36_snr5.wav",
+   "source": "src_Robot36.png",
+   "source_size": [
+    320,
+    240
+   ],
+   "patches": [
+    [
+     12,
+     10,
+     75,
+     49
+    ],
+    [
+     88,
+     10,
+     151,
+     49
+    ],
+    [
+     164,
+     10,
+     227,
+     49
+    ],
+    [
+     240,
+     10,
+     303,
+     49
+    ],
+    [
+     12,
+     60,
+     75,
+     99
+    ],
+    [
+     88,
+     60,
+     151,
+     99
+    ],
+    [
+     164,
+     60,
+     227,
+     99
+    ],
+    [
+     240,
+     60,
+     303,
+     99
+    ]
+   ],
+   "lead_samples": 24000,
+   "samples": 981840,
+   "seconds": 40.91,
+   "clipped_samples": 0,
+   "wav_sha256": "6cc3eb75aac4e80f2a5b9d201fea071f9c5149f55d6875305420ffa4c62c1dc4",
+   "source_sha256": "625e29dd3c363c0944ec530fa844d838260d31768c8232ff4caa9793d8cfa38c",
+   "expect": {
+    "vis": 8,
+    "name": "Robot 36",
+    "width": 320,
+    "height": 240
+   }
+  },
+  {
+   "name": "Robot36_snr0",
+   "mode": "Robot36",
+   "snr_db": 0,
+   "wav": "Robot36_snr0.wav",
+   "source": "src_Robot36.png",
+   "source_size": [
+    320,
+    240
+   ],
+   "patches": [
+    [
+     12,
+     10,
+     75,
+     49
+    ],
+    [
+     88,
+     10,
+     151,
+     49
+    ],
+    [
+     164,
+     10,
+     227,
+     49
+    ],
+    [
+     240,
+     10,
+     303,
+     49
+    ],
+    [
+     12,
+     60,
+     75,
+     99
+    ],
+    [
+     88,
+     60,
+     151,
+     99
+    ],
+    [
+     164,
+     60,
+     227,
+     99
+    ],
+    [
+     240,
+     60,
+     303,
+     99
+    ]
+   ],
+   "lead_samples": 24000,
+   "samples": 981840,
+   "seconds": 40.91,
+   "clipped_samples": 1,
+   "wav_sha256": "2804b382344f4432e8534bdb49e711e181f8eaecfe240660e3a552f2f2c0b40d",
+   "source_sha256": "625e29dd3c363c0944ec530fa844d838260d31768c8232ff4caa9793d8cfa38c",
+   "expect": {
+    "vis": 8,
+    "name": "Robot 36",
+    "width": 320,
+    "height": 240
+   }
+  },
+  {
+   "name": "MartinM1_snr10",
+   "mode": "MartinM1",
+   "snr_db": 10,
+   "wav": "MartinM1_snr10.wav",
+   "source": "src_MartinM1.png",
+   "source_size": [
+    320,
+    256
+   ],
+   "patches": [
+    [
+     12,
+     10,
+     75,
+     51
+    ],
+    [
+     88,
+     10,
+     151,
+     51
+    ],
+    [
+     164,
+     10,
+     227,
+     51
+    ],
+    [
+     240,
+     10,
+     303,
+     51
+    ],
+    [
+     12,
+     62,
+     75,
+     103
+    ],
+    [
+     88,
+     62,
+     151,
+     103
+    ],
+    [
+     164,
+     62,
+     227,
+     103
+    ],
+    [
+     240,
+     62,
+     303,
+     103
+    ]
+   ],
+   "lead_samples": 24000,
+   "samples": 2860804,
+   "seconds": 119.20016666666666,
+   "clipped_samples": 0,
+   "wav_sha256": "3f9f034e25442f92b46e6eb975562d9a35a8df4d858ecf339562a44b5c077bd0",
+   "source_sha256": "1005701bacecb6974b0b309da4c4d1bb80db81d2d62328a2d640eac1a95e048f",
+   "expect": {
+    "vis": 44,
+    "name": "Martin 1",
+    "width": 320,
+    "height": 256
+   }
+  },
+  {
+   "name": "PD90_snr10",
+   "mode": "PD90",
+   "snr_db": 10,
+   "wav": "PD90_snr10.wav",
+   "source": "src_PD90.png",
+   "source_size": [
+    320,
+    256
+   ],
+   "patches": [
+    [
+     12,
+     10,
+     75,
+     51
+    ],
+    [
+     88,
+     10,
+     151,
+     51
+    ],
+    [
+     164,
+     10,
+     227,
+     51
+    ],
+    [
+     240,
+     10,
+     303,
+     51
+    ],
+    [
+     12,
+     62,
+     75,
+     103
+    ],
+    [
+     88,
+     62,
+     151,
+     103
+    ],
+    [
+     164,
+     62,
+     227,
+     103
+    ],
+    [
+     240,
+     62,
+     303,
+     103
+    ]
+   ],
+   "lead_samples": 24000,
+   "samples": 2277578,
+   "seconds": 94.89908333333334,
+   "clipped_samples": 0,
+   "wav_sha256": "77621c37e43335226e9ffa230435e24883b5288dfc86c3aaec7632463be56736",
+   "source_sha256": "113acef5a7e850727e24a84e41275b31ff124c6818bc9a3d697b66913f4821d4",
+   "expect": {
+    "vis": 99,
+    "name": "PD-90",
+    "width": 320,
+    "height": 256
+   }
+  },
+  {
+   "name": "Robot36_off+30",
+   "mode": "Robot36",
+   "offset_hz": 30,
+   "wav": "Robot36_off+30.wav",
+   "source": "src_Robot36.png",
+   "source_size": [
+    320,
+    240
+   ],
+   "patches": [
+    [
+     12,
+     10,
+     75,
+     49
+    ],
+    [
+     88,
+     10,
+     151,
+     49
+    ],
+    [
+     164,
+     10,
+     227,
+     49
+    ],
+    [
+     240,
+     10,
+     303,
+     49
+    ],
+    [
+     12,
+     60,
+     75,
+     99
+    ],
+    [
+     88,
+     60,
+     151,
+     99
+    ],
+    [
+     164,
+     60,
+     227,
+     99
+    ],
+    [
+     240,
+     60,
+     303,
+     99
+    ]
+   ],
+   "lead_samples": 24000,
+   "samples": 981840,
+   "seconds": 40.91,
+   "clipped_samples": 0,
+   "wav_sha256": "c83c6e2a4815868c4379598afdfc178d249857e76e10053c022a08174400a101",
+   "source_sha256": "625e29dd3c363c0944ec530fa844d838260d31768c8232ff4caa9793d8cfa38c",
+   "expect": {
+    "vis": 8,
+    "name": "Robot 36",
+    "width": 320,
+    "height": 240
+   }
+  },
+  {
+   "name": "Robot36_off-45",
+   "mode": "Robot36",
+   "offset_hz": -45,
+   "wav": "Robot36_off-45.wav",
+   "source": "src_Robot36.png",
+   "source_size": [
+    320,
+    240
+   ],
+   "patches": [
+    [
+     12,
+     10,
+     75,
+     49
+    ],
+    [
+     88,
+     10,
+     151,
+     49
+    ],
+    [
+     164,
+     10,
+     227,
+     49
+    ],
+    [
+     240,
+     10,
+     303,
+     49
+    ],
+    [
+     12,
+     60,
+     75,
+     99
+    ],
+    [
+     88,
+     60,
+     151,
+     99
+    ],
+    [
+     164,
+     60,
+     227,
+     99
+    ],
+    [
+     240,
+     60,
+     303,
+     99
+    ]
+   ],
+   "lead_samples": 24000,
+   "samples": 981840,
+   "seconds": 40.91,
+   "clipped_samples": 0,
+   "wav_sha256": "d95b37053edc4d808ed894f67fa7da61f5adecec5db566495e848475316d2b04",
+   "source_sha256": "625e29dd3c363c0944ec530fa844d838260d31768c8232ff4caa9793d8cfa38c",
+   "expect": {
+    "vis": 8,
+    "name": "Robot 36",
+    "width": 320,
+    "height": 240
+   }
+  },
+  {
+   "name": "Robot36_off+60",
+   "mode": "Robot36",
+   "offset_hz": 60,
+   "wav": "Robot36_off+60.wav",
+   "source": "src_Robot36.png",
+   "source_size": [
+    320,
+    240
+   ],
+   "patches": [
+    [
+     12,
+     10,
+     75,
+     49
+    ],
+    [
+     88,
+     10,
+     151,
+     49
+    ],
+    [
+     164,
+     10,
+     227,
+     49
+    ],
+    [
+     240,
+     10,
+     303,
+     49
+    ],
+    [
+     12,
+     60,
+     75,
+     99
+    ],
+    [
+     88,
+     60,
+     151,
+     99
+    ],
+    [
+     164,
+     60,
+     227,
+     99
+    ],
+    [
+     240,
+     60,
+     303,
+     99
+    ]
+   ],
+   "lead_samples": 24000,
+   "samples": 981840,
+   "seconds": 40.91,
+   "clipped_samples": 0,
+   "wav_sha256": "c0eb8acb0d389afd479bd188b90a0692e3daf605b2066256d5a1a3228259f979",
+   "source_sha256": "625e29dd3c363c0944ec530fa844d838260d31768c8232ff4caa9793d8cfa38c",
+   "expect": {
+    "vis": 8,
+    "name": "Robot 36",
+    "width": 320,
+    "height": 240
+   }
+  },
+  {
+   "name": "MartinM1_off+40",
+   "mode": "MartinM1",
+   "offset_hz": 40,
+   "wav": "MartinM1_off+40.wav",
+   "source": "src_MartinM1.png",
+   "source_size": [
+    320,
+    256
+   ],
+   "patches": [
+    [
+     12,
+     10,
+     75,
+     51
+    ],
+    [
+     88,
+     10,
+     151,
+     51
+    ],
+    [
+     164,
+     10,
+     227,
+     51
+    ],
+    [
+     240,
+     10,
+     303,
+     51
+    ],
+    [
+     12,
+     62,
+     75,
+     103
+    ],
+    [
+     88,
+     62,
+     151,
+     103
+    ],
+    [
+     164,
+     62,
+     227,
+     103
+    ],
+    [
+     240,
+     62,
+     303,
+     103
+    ]
+   ],
+   "lead_samples": 24000,
+   "samples": 2860804,
+   "seconds": 119.20016666666666,
+   "clipped_samples": 0,
+   "wav_sha256": "61f97d2b9573c08c8cb1c31f5532e1ddad90561e880e54fb19ba198e7ae79ddb",
+   "source_sha256": "1005701bacecb6974b0b309da4c4d1bb80db81d2d62328a2d640eac1a95e048f",
+   "expect": {
+    "vis": 44,
+    "name": "Martin 1",
+    "width": 320,
+    "height": 256
+   }
+  },
+  {
+   "name": "ScottieS1_off-30_snr10",
+   "mode": "ScottieS1",
+   "offset_hz": -30,
+   "snr_db": 10,
+   "wav": "ScottieS1_off-30_snr10.wav",
+   "source": "src_ScottieS1.png",
+   "source_size": [
+    320,
+    256
+   ],
+   "patches": [
+    [
+     12,
+     10,
+     75,
+     51
+    ],
+    [
+     88,
+     10,
+     151,
+     51
+    ],
+    [
+     164,
+     10,
+     227,
+     51
+    ],
+    [
+     240,
+     10,
+     303,
+     51
+    ],
+    [
+     12,
+     62,
+     75,
+     103
+    ],
+    [
+     88,
+     62,
+     151,
+     103
+    ],
+    [
+     164,
+     62,
+     227,
+     103
+    ],
+    [
+     240,
+     62,
+     303,
+     103
+    ]
+   ],
+   "lead_samples": 24000,
+   "samples": 2748823,
+   "seconds": 114.53429166666666,
+   "clipped_samples": 0,
+   "wav_sha256": "e1c5baa5f2bca29c2c357a332c97f1457aab808fd6f4b9d003828f9990bc21cb",
+   "source_sha256": "7cf07fe4b101fb832400a36da75a854da1f160ed82287f2d7242e836edfe2615",
+   "expect": {
+    "vis": 60,
+    "name": "Scottie 1",
+    "width": 320,
+    "height": 256
+   }
+  },
+  {
+   "name": "MartinM1_clock+500ppm",
+   "mode": "MartinM1",
+   "clock_ratio": 1.0005,
+   "wav": "MartinM1_clock+500ppm.wav",
+   "source": "src_MartinM1.png",
+   "source_size": [
+    320,
+    256
+   ],
+   "patches": [
+    [
+     12,
+     10,
+     75,
+     51
+    ],
+    [
+     88,
+     10,
+     151,
+     51
+    ],
+    [
+     164,
+     10,
+     227,
+     51
+    ],
+    [
+     240,
+     10,
+     303,
+     51
+    ],
+    [
+     12,
+     62,
+     75,
+     103
+    ],
+    [
+     88,
+     62,
+     151,
+     103
+    ],
+    [
+     164,
+     62,
+     227,
+     103
+    ],
+    [
+     240,
+     62,
+     303,
+     103
+    ]
+   ],
+   "lead_samples": 24000,
+   "samples": 2862186,
+   "seconds": 119.25775,
+   "clipped_samples": 0,
+   "wav_sha256": "fd42cf466d5f1bb37c73f0207fbf1f58e1283eb7975d8953fd1fc923998afa66",
+   "source_sha256": "1005701bacecb6974b0b309da4c4d1bb80db81d2d62328a2d640eac1a95e048f",
+   "expect": {
+    "vis": 44,
+    "name": "Martin 1",
+    "width": 320,
+    "height": 256
+   }
+  },
+  {
+   "name": "ScottieS1_clock-500ppm",
+   "mode": "ScottieS1",
+   "clock_ratio": 0.9995,
+   "wav": "ScottieS1_clock-500ppm.wav",
+   "source": "src_ScottieS1.png",
+   "source_size": [
+    320,
+    256
+   ],
+   "patches": [
+    [
+     12,
+     10,
+     75,
+     51
+    ],
+    [
+     88,
+     10,
+     151,
+     51
+    ],
+    [
+     164,
+     10,
+     227,
+     51
+    ],
+    [
+     240,
+     10,
+     303,
+     51
+    ],
+    [
+     12,
+     62,
+     75,
+     103
+    ],
+    [
+     88,
+     62,
+     151,
+     103
+    ],
+    [
+     164,
+     62,
+     227,
+     103
+    ],
+    [
+     240,
+     62,
+     303,
+     103
+    ]
+   ],
+   "lead_samples": 24000,
+   "samples": 2747497,
+   "seconds": 114.47904166666666,
+   "clipped_samples": 0,
+   "wav_sha256": "367a2e47b924cc7fb21175f9bad8f9412bd3eed8fe5d572b359f603b73d65ed1",
+   "source_sha256": "7cf07fe4b101fb832400a36da75a854da1f160ed82287f2d7242e836edfe2615",
+   "expect": {
+    "vis": 60,
+    "name": "Scottie 1",
+    "width": 320,
+    "height": 256
+   }
+  },
+  {
+   "name": "Robot36_vox",
+   "mode": "Robot36",
+   "vox": true,
+   "wav": "Robot36_vox.wav",
+   "source": "src_Robot36.png",
+   "source_size": [
+    320,
+    240
+   ],
+   "patches": [
+    [
+     12,
+     10,
+     75,
+     49
+    ],
+    [
+     88,
+     10,
+     151,
+     49
+    ],
+    [
+     164,
+     10,
+     227,
+     49
+    ],
+    [
+     240,
+     10,
+     303,
+     49
+    ],
+    [
+     12,
+     60,
+     75,
+     99
+    ],
+    [
+     88,
+     60,
+     151,
+     99
+    ],
+    [
+     164,
+     60,
+     227,
+     99
+    ],
+    [
+     240,
+     60,
+     303,
+     99
+    ]
+   ],
+   "lead_samples": 24000,
+   "samples": 1001040,
+   "seconds": 41.71,
+   "clipped_samples": 0,
+   "wav_sha256": "8a13d02ca09815ed04f349c318cbed9b95871efacbad0af83cc2fc92b8f41dcb",
+   "source_sha256": "625e29dd3c363c0944ec530fa844d838260d31768c8232ff4caa9793d8cfa38c",
+   "expect": {
+    "vis": 8,
+    "name": "Robot 36",
+    "width": 320,
+    "height": 240
+   }
+  },
+  {
+   "name": "Robot24BW_unsupported",
+   "mode": "Robot24BW",
+   "wav": "Robot24BW_unsupported.wav",
+   "source": "src_Robot24BW.png",
+   "source_size": [
+    320,
+    240
+   ],
+   "patches": [
+    [
+     12,
+     10,
+     75,
+     49
+    ],
+    [
+     88,
+     10,
+     151,
+     49
+    ],
+    [
+     164,
+     10,
+     227,
+     49
+    ],
+    [
+     240,
+     10,
+     303,
+     49
+    ],
+    [
+     12,
+     60,
+     75,
+     99
+    ],
+    [
+     88,
+     60,
+     151,
+     99
+    ],
+    [
+     164,
+     60,
+     227,
+     99
+    ],
+    [
+     240,
+     60,
+     303,
+     99
+    ]
+   ],
+   "lead_samples": 24000,
+   "samples": 693840,
+   "seconds": 28.91,
+   "clipped_samples": 0,
+   "wav_sha256": "e82533df090982c4455d8ed093ab48473e0435a488527945784d0d9179af09cf",
+   "source_sha256": "ba022f9cd5944773bbc52074990ecd8082962baba966834d1b1305267f7973bd",
+   "expect": null
+  }
+ ]
+}

@@ -56,7 +56,7 @@ void main() {
       );
       await tester.pump();
 
-      await tester.tap(find.byKey(const ValueKey('tab-3')));
+      await tester.tap(find.byKey(const ValueKey('tab-1')));
       await tester.pump();
       await tester.tap(find.byKey(const ValueKey('decoderSelector')));
       await tester.pumpAndSettle();
@@ -68,7 +68,7 @@ void main() {
         reason: 'preview cannot claim tuner',
       );
 
-      await tester.tap(find.byKey(const ValueKey('tab-1')));
+      await tester.tap(find.byKey(const ValueKey('tab-2')));
       await tester.pump();
       await tester.tap(find.byKey(const ValueKey('addFavorite')));
       await tester.pumpAndSettle();
@@ -117,14 +117,14 @@ void main() {
     );
     await tester.pump();
 
-    await tester.tap(find.byKey(const ValueKey('tab-1')));
+    await tester.tap(find.byKey(const ValueKey('tab-2')));
     await tester.pump();
     final f = favorites.entries.firstWhere((e) => e.name == 'Sensors');
     await tester.tap(find.byKey(ValueKey('apply-${f.id}')));
     await tester.pump();
     // Applying switches to Receive (onApplied); check the Decoder tab now
     // shows the restored preview.
-    await tester.tap(find.byKey(const ValueKey('tab-3')));
+    await tester.tap(find.byKey(const ValueKey('tab-1')));
     await tester.pump();
     expect(find.byKey(const ValueKey('decoderPanel-rtl_433')), findsOneWidget);
     expect(
@@ -157,7 +157,7 @@ void main() {
     radio.setTuning(centerFrequency: 29912500, vfoOffset: 0);
     await tester.pump();
 
-    await tester.tap(find.byKey(const ValueKey('tab-3')));
+    await tester.tap(find.byKey(const ValueKey('tab-1')));
     await tester.pump();
     await tester.tap(find.byKey(const ValueKey('decoderSelector')));
     await tester.pumpAndSettle();
@@ -215,7 +215,7 @@ void main() {
       ),
     );
     await tester.pump();
-    await tester.tap(find.byKey(const ValueKey('tab-1')));
+    await tester.tap(find.byKey(const ValueKey('tab-2')));
     await tester.pump();
     final f = favorites.entries.firstWhere((e) => e.name == 'Sensors');
     await tester.tap(find.byKey(ValueKey('favoriteMenu-${f.id}')));
@@ -263,7 +263,7 @@ void main() {
       ),
     );
     await tester.pump();
-    await tester.tap(find.byKey(const ValueKey('tab-1')));
+    await tester.tap(find.byKey(const ValueKey('tab-2')));
     await tester.pump();
     await tester.tap(find.byKey(ValueKey('favoriteMenu-${preset.id}')));
     await tester.pumpAndSettle();
@@ -279,7 +279,7 @@ void main() {
       (entry) => entry.id == preset.id,
     );
     expect(saved.decoderId, 'sstv');
-    expect(saved.decoderSettings, {'mode': 'auto'});
+    expect(saved.decoderSettings, {'mode': 'auto', 'underlying': 'usb'});
     expect(radio.mode, DemodMode.wfm);
     await tester.pumpWidget(const SizedBox());
     radio.dispose();
@@ -296,7 +296,7 @@ void main() {
       mode: DemodMode.am,
       category: 'UHF',
       decoderId: 'sstv',
-      decoderSettings: const {'mode': 'martin_m1'},
+      decoderSettings: const {'mode': 'auto', 'underlying': 'lsb'},
     );
     repo.add(
       frequencyHz: 868000000,
@@ -304,7 +304,7 @@ void main() {
       mode: DemodMode.am,
       category: 'UHF',
       decoderId: 'sstv',
-      decoderSettings: const {'mode': 'scottie_s1'},
+      decoderSettings: const {'mode': 'auto', 'underlying': 'nfm'},
     );
     await repo.flush();
 
@@ -312,8 +312,8 @@ void main() {
     await reopened.load();
     final a = reopened.entries.firstWhere((e) => e.name == 'A');
     final b = reopened.entries.firstWhere((e) => e.name == 'B');
-    expect(a.decoderSettings, {'mode': 'martin_m1'});
-    expect(b.decoderSettings, {'mode': 'scottie_s1'});
+    expect(a.decoderSettings, {'mode': 'auto', 'underlying': 'lsb'});
+    expect(b.decoderSettings, {'mode': 'auto', 'underlying': 'nfm'});
     expect(a.frequencyHz, 433920000);
     expect(b.frequencyHz, 868000000);
   });

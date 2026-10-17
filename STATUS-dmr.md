@@ -1,6 +1,7 @@
 # STATUS — DMR audit (OpenWebRX+ chain, digiham, codecserver, mbelib)
 
-Task t_5724f368. This is an audit and interface definition only; no DMR code exists in the app yet.
+Task t_5724f368 is the audit and interface definition. Section 9 tracks the
+subsequent symbol-level framing port; no live DMR decoder is registered yet.
 Child cards: t_8e3dfcc0 (filter + 4FSK), t_0c6cc09e (framing/metadata),
 t_5b101746 (AMBE synthesis + audio), t_e1e6186c (UI). Integration: t_bc6f9eeb.
 
@@ -193,6 +194,95 @@ No tuner control, no subprocess, no PCM/IQ through Dart.
 ## 8. Remaining gaps / not verified
 - No over-the-air DMR test yet; no local DMR IQ recording found. Child cards need a capture
   (Blog V4 on debian-ai) or a synthetic vector generated from the sync/EMB tables.
-- Talker-alias charset handling, embedded LC checksum behaviour and GPS formulas were read but not
-  executed.
+- Full talker-alias charset cases, nonzero GPS and embedded LC checksum failure
+  remain unverified; zero-coordinate/ISO-8859-1/four-fragment paths are tested in section 9.
 - Legal status outside US/EP not checked; this is not legal advice.
+
+## 9. Framing port (t_0c6cc09e)
+
+The GPL-3.0 digiham DMR phase, metadata, LC, CACH, EMB, slot-type, GPS,
+talker-alias and FEC sources are compiled as `sdrcore_dmr_framing` from
+`native/third_party/digiham_dmr/upstream/` (pinned provenance and local delta in
+`native/third_party/digiham_dmr/PROVENANCE.md`). `native/src/dmr/framing.hpp`
+exposes streaming 4800-symbol/s dibits to `Framing::on_symbols`, per-slot
+`SlotMeta` callbacks and three 9-byte interleaved AMBE frames per accepted
+voice burst. The adapter has no second tuner, subprocess, IQ/PCM FFI or audio
+sink. `reset()` clears partial bursts, reinitializes digiham and sends no-sync
+for both slots. Digiham's first active voice slot wins unless the slot mask
+mutes it; optional CC filtering withholds metadata and voice until EMB/slot-type
+CC is known. TS1 is slot 0, TS2 is slot 1. Group `target` is the talkgroup;
+unit-to-unit `target` is the destination radio ID. Privacy means PI header or
+the voice LC service-options privacy bit; the payload is never decrypted.
+`duration_ms` counts observed voice frames in 30-ms increments, not wall time.
+
+Host synthetic tests cover four BS/MS sync words at the three-bit-error limit,
+rejection above that limit, alternating CACH slot tracking, voice slot selection,
+CC filtering, symbol-stream chunk boundaries, AMBE dibit packing, reset,
+Hamming/QR/BPTC correction, LC group/direct IDs and privacy, zero-coordinate
+GPS, an ISO-8859-1 talker alias and four-fragment embedded LC. The native
+target and tests also compile for Android arm64 API 26. No matching DMR air
+capture, full BPTC LC over a burst, RS(12,9) verification, or codec PCM
+comparison has been exercised here; the oracle card t_371d403a owns that
+end-to-end check. The demodulator/receiver registration, vocoder and UI are
+separate child cards; DMR cannot be selected as a live decoder yet.
+
+## 10. Flutter controls and call display (t_e1e6186c)
+
+Dart side only; it consumes the §7.3 config and §7.4 events and never
+touches IQ or PCM.
+
+- **Catalog.** `dmr` sits in the one decoder list after the v3 demod rows
+  (`lib/ui/decoders/decoder_contract.dart`): `voice: true`, `demodMode: null`,
+  `input: baseband`. Session logic separates demod rows by `demodMode`, so
+  selecting DMR never calls `setMode` and never retunes. Settings and their
+  allowed values: `slot_filter` 1/2/3 (default 3), `color_code` -1..15
+  (default -1 = off), `voice` true/false. They are stored and restored via
+  `decoderId`/`decoderSettings` presets like the other decoders.
+- **Config to native.** `DecoderBackend.select('dmr', {"schema":"dmr/1",
+  "slot_filter":…, "color_code":…, "voice":…})` is the flat object from
+  §7.3, not the `{version, settings}` envelope. Any setting change
+  reselects, so the native decoder restarts with the new filter. Values
+  outside the allowed set are rejected before they reach native code.
+- **Readiness.** DMR uses the same 200–300 kS/s baseband branch as
+  rtl_433. Below that rate the panel shows the existing not-ready reason. If
+  the native registry lacks `dmr`, which is true today because §9
+  registration is not done, the panel says it is unavailable and every
+  control is disabled.
+- **Events.** Only payloads with `schema=="dmr/1"`, `protocol=="DMR"` and an
+  integer `slot` of 0 or 1 are accepted. Upstream keys are kept as-is.
+  Missing keys stay null and are never shown as placeholders.
+- **Slot cards (OpenWebRX+ `DmrMetaSlot`).** There is one card each for TS1
+  and TS2. Each shows sync (voice/data/none), call type (group/direct),
+  talkgroup or destination ID, source ID, colour code, an encrypted badge
+  when `privacy==true` (indication only), talker alias and GPS. A card
+  shows a live call only while `sync=="voice"`. As upstream does, tapping a
+  card toggles that slot in the `slot_filter` bitmask. The UI will not mute
+  both slots, and a muted slot is labelled "Отключён".
+- **Call lifecycle.** A call is identified by slot + source + target + type.
+  Alias, GPS, privacy and `duration_ms` persist for the rest of that call,
+  because they arrive in separate LC blocks. A call ends and moves to
+  history when the source, target or type changes, sync leaves voice, the
+  slot gets no event for `dmrCallTimeout` (3 s), or the stream generation
+  changes. Retune, rate change, VFO offset change and stop clear the slot
+  cards and the history. A filter change clears only the live slot cards,
+  not finished calls.
+- **History.** It is session-local, newest first, bounded to 100 entries,
+  and can be cleared. It shows duration from native `duration_ms` (voice
+  frames × 30 ms) when present; otherwise it shows the Dart event span,
+  labelled "по событиям".
+- **Not implemented, shown honestly.** radioid.net ID lookup, callsign
+  enrichment and the map pin need network access, and the panel states
+  that lookup is unsupported. The panel has no volume control: DMR voice
+  uses the normal audio volume and mute once t_5b101746 routes AMBE PCM
+  into the native sink. The `voice` key in events (`ok|muted|unavailable`)
+  is displayed when present.
+- **Tests.** `test/ui/dmr_session_test.dart` (8) and `test/ui/dmr_panel_test.dart`
+  (6) cover config propagation and rejection, both slots, call close and
+  history bound, clear on retune/generation/stop, silent-slot expiry,
+  history retained across a filter change, metadata persistence within a
+  call, malformed/foreign events, the unavailable state, and the slot-tap
+  mask at 344 dp and 690 dp. A mutation check confirmed that removing
+  history retention, generation clear or expiry fails the matching test.
+- **Not verified.** No native `dmr` backend is registered on master, so no
+  real event has gone through `NativeDecoderBackend`. Live RTL-SDR/air and
+  phone checks have not been done.

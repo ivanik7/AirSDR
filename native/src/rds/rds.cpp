@@ -58,11 +58,25 @@ void Sink::configure(uint32_t input_rate_hz, bool rbds) {
 
 void Sink::reset() {
   // Channel owns block sync, PI error correction and station assembly; never
-  // carry any of it across a stream/tune/mode/RBDS boundary.
-  const uint32_t rate = state_->rate;
-  const bool rbds = state_->rbds;
-  state_->rate = 0;
-  configure(rate, rbds);
+  // carry any of it across a stream/tune/mode/RBDS boundary. It is cheap to
+  // rebuild (~2 us). The filter banks are not: constructing SubcarrierSet and
+  // the liquid resampler designs every FIR/RRC bank again (~13 ms on the
+  // debian-ai host, more on the phone). reset() runs on the DSP thread up to
+  // four times per frequency switch (and on the caller's thread for every
+  // VFO move), so a full rebuild here drained the 60 ms playback cushion and
+  // punched an audible hole into the audio on every switch (t_8063d101).
+  // Keep the filters and only restart their tracking state, exactly as
+  // upstream redsea recovers from a lost carrier (subcarrier reset + new PI).
+  // Residual FIR history (< 2 ms) cannot form a block: the syndrome check
+  // needs consecutive valid blocks before Channel emits a group.
+  state_->groups.clear();
+  state_->input.used_size = 0;
+  state_->had_group = false;
+  state_->output.str("");
+  state_->output.clear();
+  if (!state_->channel) return;
+  state_->channel = std::make_unique<redsea::Channel>(state_->options, 0);
+  state_->subcarrier->reset();
 }
 
 void Sink::process(const float* mpx, size_t count) {

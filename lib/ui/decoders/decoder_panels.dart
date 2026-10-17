@@ -4,7 +4,11 @@
 import 'package:flutter/material.dart';
 
 import 'decoder_contract.dart';
+import 'adsb_panel.dart';
 import 'decoder_session.dart';
+import 'dmr_panel.dart';
+import 'rds_widgets.dart';
+import 'sstv_panel.dart';
 import '../legacy/centered_receiver.dart';
 import '../legacy/squelch_controls.dart';
 import '../legacy/theme.dart';
@@ -15,6 +19,74 @@ const _demodOptionLabels = <String, String>{
   'lowPass': 'Фильтр НЧ',
   'carrierAgc': 'АРУ несущей',
 };
+
+/// Everything a decoder panel may need; each panel picks its own inputs.
+class DecoderPanelContext {
+  const DecoderPanelContext({
+    required this.descriptor,
+    required this.controller,
+    required this.receiver,
+    required this.session,
+  });
+  final DecoderDescriptor descriptor;
+  final RadioController controller;
+  final CenteredReceiver receiver;
+  final DecoderSession session;
+}
+
+typedef DecoderPanelBuilder = Widget Function(DecoderPanelContext context);
+
+Widget _voicePanel(DecoderPanelContext c) =>
+    VoiceDecoderPanel(controller: c.controller, receiver: c.receiver);
+
+/// One panel per decoder id. Panels never share widgets: RDS/RBDS belongs
+/// to the WFM panel only, data decoders show only their own results.
+final Map<String, DecoderPanelBuilder> decoderPanels = {
+  for (final d in decoderCatalog)
+    if (d.demodMode != null && d.demodMode != DemodMode.wfm) d.id: _voicePanel,
+  decoderIdForMode(DemodMode.wfm): (c) => WfmDecoderPanel(
+    controller: c.controller,
+    receiver: c.receiver,
+    session: c.session,
+  ),
+  'rtl_433': (c) => Rtl433DecoderPanel(session: c.session),
+  'dmr': (c) => DmrDecoderPanel(session: c.session),
+  'sstv': (c) => SstvDecoderPanel(session: c.session),
+  'adsb': (c) => AdsbPanel(session: c.session, receiver: c.receiver),
+};
+
+/// Exactly one panel for [selectedId]; an unknown id falls back to the
+/// panel of the radio's current demodulator. The wrapper is keyed
+/// `decoderPanelFor-<id>` so tests can tell which panel is mounted.
+Widget buildDecoderPanel({
+  required String selectedId,
+  required RadioController controller,
+  required CenteredReceiver receiver,
+  required DecoderSession session,
+}) {
+  final descriptor =
+      decoderById(selectedId) ??
+      decoderById(decoderIdForMode(controller.mode))!;
+  final builder =
+      decoderPanels[descriptor.id] ??
+      (descriptor.demodMode != null
+          ? _voicePanel
+          : (c) => DecoderPlaceholderPanel(
+              descriptor: c.descriptor,
+              session: c.session,
+            ));
+  return KeyedSubtree(
+    key: ValueKey('decoderPanelFor-${descriptor.id}'),
+    child: builder(
+      DecoderPanelContext(
+        descriptor: descriptor,
+        controller: controller,
+        receiver: receiver,
+        session: session,
+      ),
+    ),
+  );
+}
 
 /// Scrollable menu keeps every choice accessible on the 344dp cover screen.
 class DecoderSelector extends StatelessWidget {
@@ -163,14 +235,31 @@ class VoiceDecoderPanel extends StatelessWidget {
   );
 }
 
+/// WFM decoder: voice controls plus RDS station details and the RBDS switch.
+class WfmDecoderPanel extends StatelessWidget {
+  const WfmDecoderPanel({
+    super.key,
+    required this.controller,
+    required this.receiver,
+    required this.session,
+  });
+  final RadioController controller;
+  final CenteredReceiver receiver;
+  final DecoderSession session;
+
+  @override
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      VoiceDecoderPanel(controller: controller, receiver: receiver),
+      RdsDetailsPanel(session: session),
+    ],
+  );
+}
+
 /// Per-id icon/title/empty-state text for the data decoders
 /// (decoder_contract.dart `DecoderResult`). Keyed by [DecoderDescriptor.id].
 const Map<String, (IconData, String, String)> _placeholderMeta = {
-  'sstv': (
-    Icons.image_outlined,
-    'SSTV · изображение',
-    'Изображение пока не получено.',
-  ),
   'rtl_433': (Icons.sensors, 'rtl_433 · сообщения', 'Сообщений пока нет.'),
   'adsb': (
     Icons.flight_outlined,
@@ -374,43 +463,23 @@ class DecoderPlaceholderPanel extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 8),
-        if (descriptor.id == 'sstv')
-          AspectRatio(
-            aspectRatio: 4 / 3,
-            child: KeyedSubtree(
-              key: const ValueKey('decoderResult-sstv'),
-              child: legacyCard(
-                child: const Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.image_not_supported_outlined, size: 42),
-                      SizedBox(height: 8),
-                      Text('Изображение не получено'),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          )
-        else
-          SizedBox(
-            height: 130,
-            child: KeyedSubtree(
-              key: ValueKey('decoderResult-${descriptor.id}'),
-              child: legacyCard(
-                child: Align(
-                  alignment: Alignment.topLeft,
-                  child: Text(
-                    descriptor.id == 'rtl_433'
-                        ? 'Журнал сообщений пуст'
-                        : 'Список самолётов пуст',
-                    style: plex(size: 12, color: LegacyColors.muted),
-                  ),
+        SizedBox(
+          height: 130,
+          child: KeyedSubtree(
+            key: ValueKey('decoderResult-${descriptor.id}'),
+            child: legacyCard(
+              child: Align(
+                alignment: Alignment.topLeft,
+                child: Text(
+                  descriptor.id == 'rtl_433'
+                      ? 'Журнал сообщений пуст'
+                      : 'Список самолётов пуст',
+                  style: plex(size: 12, color: LegacyColors.muted),
                 ),
               ),
             ),
           ),
+        ),
         if (descriptor.settings.isNotEmpty) ...[
           const SizedBox(height: 8),
           legacyCard(

@@ -36,14 +36,21 @@ void main() {
         'demod:3',
         'demod:5',
         'demod:7',
+        'dmr',
         'sstv',
         'rtl_433',
         'adsb',
       ]);
       expect(
-        decoderCatalog.where((d) => d.voice).length,
+        decoderCatalog.where((d) => d.demodMode != null).length,
         DemodMode.values.length,
       );
+      // DMR is a voice mode in the same list, decoded natively (no v3 demod).
+      expect(
+        decoderCatalog.where((d) => d.voice).map((d) => d.id),
+        contains('dmr'),
+      );
+      expect(decoderById('dmr')!.demodMode, isNull);
       expect(decoderById('voice'), isNull);
     },
   );
@@ -78,7 +85,7 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(home: LegacyAppShell(controller: radio)),
       );
-      await tester.tap(find.byKey(const ValueKey('tab-3')));
+      await tester.tap(find.byKey(const ValueKey('tab-1')));
       await tester.pump();
       expect(find.byKey(const ValueKey('legacyModeSelect')), findsNothing);
       expect(find.text('Режим приёма'), findsNothing);
@@ -113,7 +120,7 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(home: LegacyAppShell(controller: radio)),
       );
-      await tester.tap(find.byKey(const ValueKey('tab-3')));
+      await tester.tap(find.byKey(const ValueKey('tab-1')));
       await tester.pump();
       await tester.tap(find.byKey(const ValueKey('decoderSelector')));
       await tester.pumpAndSettle();

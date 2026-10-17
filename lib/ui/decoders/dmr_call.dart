@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Presentation-only DMR metadata. The native pipeline owns IQ and voice PCM.
+// Presentation-only DMR metadata parsed from native `dmr/1` events
+// (STATUS-dmr.md §7.4). Absent keys stay null: nothing is invented. The
+// native pipeline owns IQ and voice PCM.
 class DmrCall {
   const DmrCall({
     required this.slot,
@@ -15,6 +17,7 @@ class DmrCall {
     this.latitude,
     this.longitude,
     this.voice,
+    this.durationMs,
   });
 
   final int slot;
@@ -25,6 +28,10 @@ class DmrCall {
   final bool? privacy;
   final double? latitude, longitude;
 
+  /// Native duration: observed voice frames × 30 ms (not wall time).
+  final int? durationMs;
+
+  /// Wall-clock span between the first and last/ending event in Dart.
   Duration elapsed(DateTime now) => (endedAt ?? now).difference(startedAt);
 
   DmrCall end(DateTime when) => DmrCall(
@@ -41,6 +48,7 @@ class DmrCall {
     latitude: latitude,
     longitude: longitude,
     voice: voice,
+    durationMs: durationMs,
   );
 
   static DmrCall? fromEvent(
@@ -73,6 +81,7 @@ class DmrCall {
     final lon = data['lon'];
     final alias = data['talkeralias'];
     final voice = data['voice'];
+    final duration = data['duration_ms'];
     return DmrCall(
       slot: slot,
       startedAt: same ? prior.startedAt : now,
@@ -80,14 +89,27 @@ class DmrCall {
       source: source,
       target: target,
       type: callType,
-      privacy: data['privacy'] is bool ? data['privacy'] as bool : null,
+      privacy: data['privacy'] is bool
+          ? data['privacy'] as bool
+          : (same ? prior.privacy : null),
       colorCode: color is int && color >= 0 && color <= 15 ? color : null,
-      alias: alias is String && alias.isNotEmpty ? alias : null,
-      latitude: lat is num ? lat.toDouble() : null,
-      longitude: lon is num ? lon.toDouble() : null,
+      // Talker alias and GPS arrive in separate LC blocks; keep them for the
+      // rest of the same call instead of flickering between events.
+      alias: alias is String && alias.isNotEmpty
+          ? alias
+          : (same ? prior.alias : null),
+      latitude: lat is num && lon is num
+          ? lat.toDouble()
+          : (same ? prior.latitude : null),
+      longitude: lat is num && lon is num
+          ? lon.toDouble()
+          : (same ? prior.longitude : null),
       voice: voice == 'ok' || voice == 'muted' || voice == 'unavailable'
           ? voice as String
           : null,
+      durationMs: duration is int && duration >= 0
+          ? duration
+          : (same ? prior.durationMs : null),
     );
   }
 }
