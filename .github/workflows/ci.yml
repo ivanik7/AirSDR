@@ -258,11 +258,35 @@ jobs:
       - name: Build packages
         run: packaging/linux/build-packages.sh build/linux/x64/release/bundle dist
 
-      - name: Upload Linux packages
+      - name: Upload Debian / Ubuntu package
         uses: actions/upload-artifact@v7
         with:
-          name: AirSDR-${{ steps.ver.outputs.FULL_VERSION }}-linux-x86_64
-          path: dist/*
+          name: AirSDR-${{ steps.ver.outputs.FULL_VERSION }}-linux-x86_64-deb
+          path: dist/*.deb
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload Fedora / openSUSE package
+        uses: actions/upload-artifact@v7
+        with:
+          name: AirSDR-${{ steps.ver.outputs.FULL_VERSION }}-linux-x86_64-rpm
+          path: dist/*.rpm
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload Arch package
+        uses: actions/upload-artifact@v7
+        with:
+          name: AirSDR-${{ steps.ver.outputs.FULL_VERSION }}-linux-x86_64-arch
+          path: dist/*.pkg.tar.zst
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload portable Linux archive
+        uses: actions/upload-artifact@v7
+        with:
+          name: AirSDR-${{ steps.ver.outputs.FULL_VERSION }}-linux-x86_64-tar
+          path: dist/*.tar.gz
           if-no-files-found: error
           retention-days: 30
 
@@ -292,7 +316,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@v8
         with:
-          pattern: AirSDR-*-linux-x86_64
+          pattern: AirSDR-*-linux-x86_64-*
           path: dist
           merge-multiple: true
 

@@ -129,8 +129,10 @@ Each run uploads, where `<version>` is `FULL_VERSION` from `tool/version.sh`:
 - `AirSDR-<version>-android-arm64-v8a.apk`, `...-android-armeabi-v7a.apk`
   and `...-android-x86_64.apk` (uploaded unzipped; most phones need
   arm64-v8a);
-- `AirSDR-<version>-linux-x86_64` (a zip with the `.deb`, `.rpm`,
-  `.pkg.tar.zst` and `.tar.gz`);
+- four separate Linux artifacts: `AirSDR-<version>-linux-x86_64-deb`
+  (Debian / Ubuntu), `...-rpm` (Fedora / openSUSE), `...-arch` (Arch)
+  and `...-tar` (portable archive). Each artifact is a zip containing one
+  package (`.deb`, `.rpm`, `.pkg.tar.zst` or `.tar.gz`, respectively);
 - `AirSDR-<version>-macos.dmg` and `AirSDR-<version>-windows-x86_64.zip`
   (uploaded as is).
 
