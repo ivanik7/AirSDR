@@ -1,0 +1,110 @@
+docs/lora-upstream-feasibility.md
+  s_6ef9e80366bc3a::t_76f0c7c3362a7f 40
+lib/ui/decoders/dmr_call.dart
+  s_6ef9e80366bc3a::t_76f0c7c3362a7f 3
+native/tests/adsb_iq_oracle.py
+  s_6ef9e80366bc3a::t_76f0c7c3362a7f 4
+native/third_party/csdr_sstv/sdr_flutter.patch
+  s_6ef9e80366bc3a::t_76f0c7c3362a7f 67
+docs/status/adsb.md
+  s_6ef9e80366bc3a::t_76f0c7c3362a7f 1-18
+native/third_party/dump1090/PROVENANCE.md
+  s_6ef9e80366bc3a::t_76f0c7c3362a7f 10,68,111,138,203,207,215,225,227,263
+native/third_party/mbelib/PROVENANCE.md
+  s_6ef9e80366bc3a::t_76f0c7c3362a7f 18
+native/src/dmr/dmr_voice.cmake
+  s_6ef9e80366bc3a::t_76f0c7c3362a7f 14,16
+docs/decoder-architecture.md
+  s_6ef9e80366bc3a::t_76f0c7c3362a7f 4,11-12,36,112,262,265
+docs/status/sstv.md
+  s_6ef9e80366bc3a::t_76f0c7c3362a7f 1-165
+native/third_party/dump1090/bridge.c
+  s_6ef9e80366bc3a::t_76f0c7c3362a7f 67
+lib/ui/decoders/sstv_image.dart
+  s_6ef9e80366bc3a::t_76f0c7c3362a7f 4
+README.md
+  s_6ef9e80366bc3a::t_76f0c7c3362a7f 18,38
+native/src/dmr/README-vocoder.md
+  s_6ef9e80366bc3a::t_76f0c7c3362a7f 58
+native/src/dmr/README.md
+  s_6ef9e80366bc3a::t_76f0c7c3362a7f 50
+test/ui/sstv_model_test.dart
+  s_6ef9e80366bc3a::t_76f0c7c3362a7f 3
+docs/status/sstv-ui.md
+  s_6ef9e80366bc3a::t_76f0c7c3362a7f 1-112
+native/third_party/csdr_sstv/PROVENANCE.md
+  s_6ef9e80366bc3a::t_76f0c7c3362a7f 53,58,210
+tool/sstv_oracle/compare.py
+  s_6ef9e80366bc3a::t_76f0c7c3362a7f 49,344
+native/src/dmr/ambe_frame.hpp
+  s_6ef9e80366bc3a::t_76f0c7c3362a7f 4
+native/third_party/csdr_sstv/src/sstv.cpp
+  s_6ef9e80366bc3a::t_76f0c7c3362a7f 239
+native/third_party/meshtastic.cmake
+  s_6ef9e80366bc3a::t_76f0c7c3362a7f 7
+native/src/dmr/vocoder.hpp
+  s_6ef9e80366bc3a::t_76f0c7c3362a7f 12
+native/src/meshtastic/meshtastic.cpp
+  s_6ef9e80366bc3a::t_76f0c7c3362a7f 340
+native/include/decoder.hpp
+  s_6ef9e80366bc3a::t_76f0c7c3362a7f 64
+docs/adsb-snapshot-v1.md
+  s_6ef9e80366bc3a::t_76f0c7c3362a7f 3,33
+lib/ui/decoders/decoder_contract.dart
+  s_6ef9e80366bc3a::t_76f0c7c3362a7f 95,119
+docs/status/devices.md
+  s_6ef9e80366bc3a::t_caa87d440503ad 1-65
+native/src/meshtastic/meshtastic.h
+  s_6ef9e80366bc3a::t_76f0c7c3362a7f 7
+lib/ui/decoders/decoder_session.dart
+  s_6ef9e80366bc3a::t_76f0c7c3362a7f 526
+native/src/decoder/sstv.cpp
+  s_6ef9e80366bc3a::t_76f0c7c3362a7f 5,41,208
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "0.0.62",
+  "base_commit_sha": "005a32f118ad7c7d47302d8f6555cbff0495ec03",
+  "prompts": {},
+  "sessions": {
+    "s_6ef9e80366bc3a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "fbc2db38-1e9a-43a4-b9ce-5ea3cf7aa615",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "ivanik <ivan170102@gmail.com>",
+      "usage": [
+        {
+          "model": "claude-opus-5-5",
+          "input_tokens": 234,
+          "output_tokens": 74535,
+          "cache_read_tokens": 11548064,
+          "cache_write_5m_tokens": 0,
+          "cache_write_1h_tokens": 207222,
+          "assistant_messages": 117,
+          "turns": 6,
+          "ai_wall_ms": 239436,
+          "first_ts": "2026-10-17T15:48:09.501Z",
+          "last_ts": "2026-10-17T16:05:50.094Z",
+          "session_total_output_tokens": 74535
+        }
+      ],
+      "tools": [
+        {
+          "tool": "Bash",
+          "model": "claude-opus-5-5",
+          "calls": 54,
+          "result_chars": 119097,
+          "result_input_tokens": 104,
+          "result_cache_write_5m_tokens": 0,
+          "result_cache_write_1h_tokens": 89976,
+          "call_output_tokens": 29510
+        }
+      ],
+      "context_at_start_tokens": 37893,
+      "accepted_lines": 58,
+      "overridden_lines": 0
+    }
+  }
+}
