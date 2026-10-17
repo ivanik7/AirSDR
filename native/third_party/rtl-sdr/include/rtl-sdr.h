@@ -64,6 +64,15 @@ RTLSDR_API int rtlsdr_open(rtlsdr_dev_t **dev, uint32_t index);
 
 RTLSDR_API int rtlsdr_open_sys_dev(rtlsdr_dev_t **out_dev, intptr_t sys_dev);
 
+/*!
+ * Open the known RTL-SDR at a libusb bus number / device address.
+ *
+ * \return 0 on success, LIBUSB_ERROR_NOT_FOUND (-5) if no supported device is
+ * at that location, otherwise the libusb error of libusb_open() or of
+ * claiming interface 0
+ */
+RTLSDR_API int rtlsdr_open_bus_address(rtlsdr_dev_t **dev, uint8_t bus, uint8_t address);
+
 RTLSDR_API int rtlsdr_close(rtlsdr_dev_t *dev);
 
 /* configuration functions */

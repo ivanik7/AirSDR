@@ -2,14 +2,25 @@
 #include "usb_hackrf_adapter.h"
 
 #include "hackrf.h"
+#include "libusb.h"
 
 #include "sdrcore.h"
+#include "usb_host_errors.h"
 
 #include <algorithm>
 #include <chrono>
 #include <mutex>
 #include <thread>
+#ifndef _WIN32
 #include <unistd.h>
+#endif
+
+#ifndef __ANDROID__
+// libhackrf records the libusb error of a failed libusb_open/claim here
+// (hackrf.c: `int last_libusb_error`). It is a non-static global of the
+// statically linked vendored library; used only to classify open failures.
+extern "C" int last_libusb_error;
+#endif
 
 namespace {
 // HackRF has two cascaded RX gain stages (LNA 0-40dB/8dB steps, VGA/BB
@@ -54,6 +65,12 @@ HackRfAdapter::~HackRfAdapter() { close(); }
 
 int HackRfAdapter::open(int fd) {
   if (dev_) return SDR_INVALID_STATE;
+#ifdef _WIN32
+  // Windows has no USB file descriptors; the host layer uses
+  // open_bus_address() there.
+  (void)fd;
+  return SDR_UNSUPPORTED;
+#else
   std::lock_guard<std::mutex> lifecycle(g_hackrf_lifecycle);
   if (g_hackrf_init_refcount == 0 && hackrf_init() != 0)
     return SDR_INTERNAL_ERROR;
@@ -76,6 +93,58 @@ int HackRfAdapter::open(int fd) {
   owned_fd_ = dup_fd;
   ++g_hackrf_init_refcount;
   return SDR_OK;
+#endif
+}
+
+int HackRfAdapter::open_bus_address(uint8_t bus, uint8_t address) {
+  if (dev_) return SDR_INVALID_STATE;
+#ifdef __ANDROID__
+  // Built with DISABLE_USB_DEVICE_DISCOVERY: only the UsbManager fd works.
+  (void)bus;
+  (void)address;
+  return SDR_UNSUPPORTED;
+#else
+  std::lock_guard<std::mutex> lifecycle(g_hackrf_lifecycle);
+  if (g_hackrf_init_refcount == 0 && hackrf_init() != 0)
+    return SDR_INTERNAL_ERROR;
+  auto release = [] {
+    if (g_hackrf_init_refcount == 0) hackrf_exit();
+  };
+  hackrf_device_list_t* list = hackrf_device_list();
+  if (!list) {
+    release();
+    return SDR_IO_ERROR;
+  }
+  int index = -1;
+  for (int i = 0; i < list->devicecount; ++i) {
+    auto* usb = static_cast<libusb_device*>(
+        list->usb_devices[list->usb_device_index[i]]);
+    if (libusb_get_bus_number(usb) == bus &&
+        libusb_get_device_address(usb) == address) {
+      index = i;
+      break;
+    }
+  }
+  if (index < 0) {
+    hackrf_device_list_free(list);
+    release();
+    return sdrcore::kHostNotFound;
+  }
+  hackrf_device* dev = nullptr;
+  last_libusb_error = 0;
+  const int rc = hackrf_device_list_open(list, index, &dev);
+  hackrf_device_list_free(list);
+  if (rc != HACKRF_SUCCESS || !dev) {
+    const int result = rc == HACKRF_ERROR_LIBUSB && last_libusb_error != 0
+                           ? sdrcore::map_libusb_open_error(last_libusb_error)
+                           : SDR_DEVICE_GONE;
+    release();
+    return result;
+  }
+  dev_ = dev;
+  ++g_hackrf_init_refcount;
+  return SDR_OK;
+#endif
 }
 
 int HackRfAdapter::configure(uint64_t frequency_hz, uint32_t sample_rate,
@@ -152,8 +221,10 @@ void HackRfAdapter::close() {
     dev_ = nullptr;
     if (--g_hackrf_init_refcount == 0) hackrf_exit();
   }
+#ifndef _WIN32
   if (owned_fd_ >= 0) {
     ::close(owned_fd_);
     owned_fd_ = -1;
   }
+#endif
 }

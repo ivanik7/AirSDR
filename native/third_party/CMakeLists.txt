@@ -24,6 +24,34 @@ cmake_minimum_required(VERSION 3.22)
 
 find_package(Threads REQUIRED)
 
+# libusb OS backend per target. Each has a hand-written config.h under
+# libusb/config/<os>/ (libusb's autotools/meson configure is not used).
+if(ANDROID OR CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    set(SDRCORE_LIBUSB_OS linux)
+    set(SDRCORE_LIBUSB_OS_SOURCES
+        libusb/libusb/os/linux_usbfs.c
+        libusb/libusb/os/linux_netlink.c
+        libusb/libusb/os/events_posix.c
+        libusb/libusb/os/threads_posix.c)
+elseif(APPLE)
+    set(SDRCORE_LIBUSB_OS darwin)
+    set(SDRCORE_LIBUSB_OS_SOURCES
+        libusb/libusb/os/darwin_usb.c
+        libusb/libusb/os/events_posix.c
+        libusb/libusb/os/threads_posix.c)
+elseif(WIN32)
+    set(SDRCORE_LIBUSB_OS windows)
+    set(SDRCORE_LIBUSB_OS_SOURCES
+        libusb/libusb/os/windows_common.c
+        libusb/libusb/os/windows_usbdk.c
+        libusb/libusb/os/windows_winusb.c
+        libusb/libusb/os/events_windows.c
+        libusb/libusb/os/threads_windows.c)
+else()
+    message(FATAL_ERROR "sdrcore: no libusb backend configured for "
+        "${CMAKE_SYSTEM_NAME} (supported: Android, Linux, macOS, Windows)")
+endif()
+
 add_library(sdrcore_libusb STATIC
     libusb/libusb/core.c
     libusb/libusb/descriptor.c
@@ -31,20 +59,20 @@ add_library(sdrcore_libusb STATIC
     libusb/libusb/io.c
     libusb/libusb/sync.c
     libusb/libusb/strerror.c
-    libusb/libusb/os/linux_usbfs.c
-    libusb/libusb/os/linux_netlink.c
-    libusb/libusb/os/events_posix.c
-    libusb/libusb/os/threads_posix.c
+    ${SDRCORE_LIBUSB_OS_SOURCES}
 )
 target_include_directories(sdrcore_libusb
     PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/libusb/libusb
-    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/libusb
+    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/libusb/config/${SDRCORE_LIBUSB_OS}
 )
 target_compile_definitions(sdrcore_libusb PRIVATE HAVE_CONFIG_H)
 target_compile_options(sdrcore_libusb PRIVATE -fvisibility=hidden)
 target_link_libraries(sdrcore_libusb PUBLIC Threads::Threads)
 if(ANDROID)
     target_link_libraries(sdrcore_libusb PUBLIC log)
+elseif(APPLE)
+    target_link_libraries(sdrcore_libusb PUBLIC
+        "-framework IOKit" "-framework CoreFoundation" "-framework Security")
 endif()
 set_target_properties(sdrcore_libusb PROPERTIES
     C_STANDARD 11
@@ -66,7 +94,7 @@ target_compile_options(sdrcore_rtlsdr PRIVATE -fvisibility=hidden)
 # rtlsdr_STATIC makes RTLSDR_API expand to nothing instead of an explicit
 # __attribute__((visibility("default"))) (see rtl-sdr/include/rtl-sdr_export.h),
 # so -fvisibility=hidden above actually hides these symbols in libsdrcore.so.
-target_compile_definitions(sdrcore_rtlsdr PRIVATE rtlsdr_STATIC)
+target_compile_definitions(sdrcore_rtlsdr PUBLIC rtlsdr_STATIC)
 if(ANDROID)
     # Matches upstream rtlsdr_create_device(): skip libusb device discovery,
     # required on unrooted Android where only libusb_wrap_sys_device() works.
@@ -83,6 +111,9 @@ target_include_directories(sdrcore_hackrf PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/hac
 target_link_libraries(sdrcore_hackrf PUBLIC sdrcore_libusb)
 target_compile_options(sdrcore_hackrf PRIVATE -fvisibility=hidden)
 target_compile_definitions(sdrcore_hackrf PRIVATE LIBRARY_RELEASE="n1-native-drivers")
+# Static linkage: keeps hackrf.h from marking the API __declspec(dllexport) on
+# Windows, so sdrcore.dll exports only sdr_* (patches/hackrf-static-windows.patch).
+target_compile_definitions(sdrcore_hackrf PUBLIC HACKRF_STATIC)
 if(ANDROID)
     # See hackrf_init()/hackrf_open_by_fd() in hackrf.c: without this, libusb
     # device enumeration aborts on unrooted Android before wrap_sys_device runs.

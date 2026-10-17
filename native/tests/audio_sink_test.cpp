@@ -36,9 +36,15 @@ int g_failures = 0;
   } while (0)
 
 std::string TempPath(const char* name) {
+#ifdef _WIN32
+  const char* tmpdir = std::getenv("TEMP");
+  std::string dir = (tmpdir && *tmpdir) ? tmpdir : ".";
+  return dir + "\\" + name;
+#else
   const char* tmpdir = std::getenv("TMPDIR");
   std::string dir = (tmpdir && *tmpdir) ? tmpdir : "/tmp";
   return dir + "/" + name;
+#endif
 }
 
 // --- Spec parsing table ---------------------------------------------------
@@ -89,6 +95,30 @@ void TestParseSpec() {
 
   CHECK(!parse_audio_sink_spec("alsa:", &spec));
   CHECK(spec.kind == AudioSinkKind::kWav && spec.target == "sentinel");
+
+  CHECK(!parse_audio_sink_spec("miniaudio:", &spec));
+  CHECK(spec.kind == AudioSinkKind::kWav && spec.target == "sentinel");
+  CHECK(!parse_audio_sink_spec("miniaudio:foo", &spec));
+  CHECK(spec.kind == AudioSinkKind::kWav && spec.target == "sentinel");
+
+  spec = AudioSinkSpec{};
+  CHECK(parse_audio_sink_spec("miniaudio", &spec));
+  CHECK(spec.kind == AudioSinkKind::kMiniaudio);
+  CHECK(spec.target.empty());
+
+  spec = AudioSinkSpec{};
+  CHECK(parse_audio_sink_spec("miniaudio:null", &spec));
+  CHECK(spec.kind == AudioSinkKind::kMiniaudio);
+  CHECK(spec.target == "null");
+#ifdef SDRCORE_HAVE_MINIAUDIO
+  {
+    auto sink = sdrcore::make_audio_sink(spec);
+    CHECK(sink != nullptr);
+    CHECK(sink && std::strcmp(sink->name(), "miniaudio") == 0);
+  }
+#else
+  CHECK(sdrcore::make_audio_sink(spec) == nullptr);
+#endif
 
   std::printf("[ok] parse_audio_sink_spec\n");
 }

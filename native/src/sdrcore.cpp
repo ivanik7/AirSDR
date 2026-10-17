@@ -5,6 +5,7 @@
 
 #include "audio/audio_sink.h"
 #include "dsp/receiver.h"
+#include "sdrcore_internal.h"
 #include "usb_adapter.h"
 #include "usb_hackrf_adapter.h"
 #include "usb_rtlsdr_adapter.h"
@@ -22,12 +23,34 @@
 #include <memory>
 #include <mutex>
 #include <new>
-#include <poll.h>
 #include <string>
 #include <thread>
+#ifdef _WIN32
+#include <io.h>
+#else
+#include <poll.h>
 #include <unistd.h>
+#endif
 
 namespace {
+// Descriptor primitives of the diagnostic file source (sdr_v2_open_file).
+// POSIX: the plain calls. Windows (UCRT): the CRT's _dup/_read/_close/_lseeki64
+// on CRT file descriptors; there is no poll(), so reads simply block (the
+// file source is meant for regular files, where a read never waits).
+#ifdef _WIN32
+int fd_dup(int fd) { return _dup(fd); }
+int fd_close(int fd) { return _close(fd); }
+long long fd_read(int fd, void* buf, size_t len) {
+  return _read(fd, buf, static_cast<unsigned>(len));
+}
+bool fd_rewind(int fd) { return _lseeki64(fd, 0, SEEK_SET) == 0; }
+#else
+int fd_dup(int fd) { return dup(fd); }
+int fd_close(int fd) { return close(fd); }
+long long fd_read(int fd, void* buf, size_t len) { return read(fd, buf, len); }
+bool fd_rewind(int fd) { return lseek(fd, 0, SEEK_SET) == 0; }
+#endif
+
 // 64 x 8 KiB = 512 KiB, ~109 ms of CU8 at 2.4 MS/s. Eight slots (27 ms) dropped
 // IQ on ordinary scheduler stalls in the 600 s Blog V4 soak (t_848e6a1c).
 constexpr size_t kSlots = 64;
@@ -337,6 +360,7 @@ struct SdrHandle {
     while (!stopping.load()) {
       size_t length = 0;
       if (fd >= 0) {
+#ifndef _WIN32
         pollfd p{fd, POLLIN, 0};
         int rc = poll(&p, 1, 50);
         if (rc < 0 && errno == EINTR) continue;
@@ -347,13 +371,14 @@ struct SdrHandle {
           else { stats.last_error = SDR_IO_ERROR; stats.state = SDR_ERROR; }
           break;
         }
-        ssize_t n = read(fd, bytes.data() + carry, kBytes - carry);
+#endif
+        const long long n = fd_read(fd, bytes.data() + carry, kBytes - carry);
         if (n < 0 && errno == EINTR) continue;
         if (n == 0 && v3_active) {
           // Radio sessions replay recordings in a loop like the Dart
           // FileSource. A non-seekable stream that ends is lost input.
           // An empty recording would spin; treat it like a lost stream.
-          if (data_since_rewind && lseek(fd, 0, SEEK_SET) == 0) {
+          if (data_since_rewind && fd_rewind(fd)) {
             carry = 0;
             data_since_rewind = false;
             continue;
@@ -628,7 +653,7 @@ extern "C" void sdr_destroy(SdrHandle* handle) {
   if (handle->receiver) handle->receiver->set_decoder(nullptr);
   if (handle->usb_adapter) handle->usb_adapter->close();
   if (handle->owns_usb_claim) g_native_usb_claim = false;
-  if (handle->fd >= 0) close(handle->fd);
+  if (handle->fd >= 0) fd_close(handle->fd);
   delete handle;
 }
 
@@ -636,7 +661,7 @@ extern "C" int32_t sdr_v2_open_file(SdrHandle* h, int32_t fd, uint32_t rate) {
   if (!h || fd < 0 || !valid_rate(rate)) return SDR_INVALID_ARGUMENT;
   std::lock_guard<std::mutex> lock(h->mutex);
   if (h->stats.state != SDR_IDLE) return SDR_INVALID_STATE;
-  int copy = dup(fd);
+  int copy = fd_dup(fd);
   if (copy < 0) return SDR_IO_ERROR;
   h->fd = copy;
   h->stats = SdrStats{};
@@ -665,9 +690,13 @@ extern "C" int32_t sdr_v2_open_synthetic(SdrHandle* h, uint32_t rate) {
   return SDR_OK;
 }
 
-extern "C" int32_t sdr_v2_open_usb(SdrHandle* h, int32_t fd, uint32_t source) {
-  if (!h || fd < 0 || (source != SDR_RTLSDR && source != SDR_HACKRF))
-    return SDR_INVALID_ARGUMENT;
+namespace {
+// Shared by the fd path (sdr_v2_open_usb) and the desktop direct path
+// (sdrcore_open_usb_bus_address): state check, the single process-wide native
+// USB claim, adapter creation and the IDLE -> OPEN transition. `open_device`
+// runs the adapter's open call without the handle lock held.
+template <typename OpenFn>
+int32_t open_usb_session(SdrHandle* h, uint32_t source, OpenFn open_device) {
   {
     std::lock_guard<std::mutex> lock(h->mutex);
     if (h->stats.state != SDR_IDLE) return SDR_INVALID_STATE;
@@ -686,10 +715,7 @@ extern "C" int32_t sdr_v2_open_usb(SdrHandle* h, int32_t fd, uint32_t source) {
     g_native_usb_claim = false;
     return SDR_INTERNAL_ERROR;
   }
-  // open() dup()s fd itself (see usb_*_adapter.h); the caller's original fd,
-  // owned by the Kotlin UsbSdrPlugin/UsbDeviceConnection, is never touched
-  // and must stay open for the session (same contract as sdr_v2_open_file).
-  const int rc = adapter->open(fd);
+  const int rc = open_device(*adapter);
   if (rc != SDR_OK) { g_native_usb_claim = false; return rc; }
   std::lock_guard<std::mutex> lock(h->mutex);
   if (h->stats.state != SDR_IDLE) {
@@ -707,6 +733,29 @@ extern "C" int32_t sdr_v2_open_usb(SdrHandle* h, int32_t fd, uint32_t source) {
   h->stats.checksum = kFnvOffset;
   h->reset_v3_open();
   return SDR_OK;
+}
+}  // namespace
+
+// Internal (hidden) entry points of the desktop host layer, see
+// sdrcore_internal.h. Validation of bus/address/source is done by the caller.
+int32_t sdrcore_open_usb_bus_address(SdrHandle* h, uint8_t bus, uint8_t address,
+                                     uint32_t source) {
+  return open_usb_session(h, source, [&](UsbRxAdapter& adapter) {
+    return adapter.open_bus_address(bus, address);
+  });
+}
+
+bool sdrcore_native_usb_claim_active() { return g_native_usb_claim.load(); }
+
+extern "C" int32_t sdr_v2_open_usb(SdrHandle* h, int32_t fd, uint32_t source) {
+  if (!h || fd < 0 || (source != SDR_RTLSDR && source != SDR_HACKRF))
+    return SDR_INVALID_ARGUMENT;
+  // open() dup()s fd itself (see usb_*_adapter.h); the caller's original fd,
+  // owned by the Kotlin UsbSdrPlugin/UsbDeviceConnection, is never touched
+  // and must stay open for the session (same contract as sdr_v2_open_file).
+  return open_usb_session(h, source, [fd](UsbRxAdapter& adapter) {
+    return adapter.open(fd);
+  });
 }
 
 extern "C" int32_t sdr_v2_configure(SdrHandle* h, uint64_t frequency,
@@ -776,7 +825,7 @@ extern "C" int32_t sdr_v2_close(SdrHandle* h) {
   std::lock_guard<std::mutex> lock(h->mutex);
   if (h->usb_adapter) { h->usb_adapter->close(); h->usb_adapter.reset(); }
   if (h->owns_usb_claim) { h->owns_usb_claim = false; g_native_usb_claim = false; }
-  if (h->fd >= 0) { close(h->fd); h->fd = -1; }
+  if (h->fd >= 0) { fd_close(h->fd); h->fd = -1; }
   h->stats.state = SDR_IDLE;
   h->stats.source = SDR_NONE;
   h->v3_active = false;
@@ -1027,7 +1076,7 @@ extern "C" int32_t sdr_v3_start(SdrHandle* h) {
       h->stale_bytes = 0;
       // A recording restarts from its beginning (Dart FileSource rewinds on
       // stop). Sockets/pipes cannot seek and simply continue.
-      if (h->stats.source == SDR_FILE && h->fd >= 0) (void)lseek(h->fd, 0, SEEK_SET);
+      if (h->stats.source == SDR_FILE && h->fd >= 0) (void)fd_rewind(h->fd);
       h->producer_done = false;
       h->stopping = false;
       h->stats.state = SDR_RUNNING;

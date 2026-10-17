@@ -1687,6 +1687,56 @@ int rtlsdr_open(rtlsdr_dev_t **out_dev, uint32_t index)
 	return rtlsdr_init_device(out_dev, dev);
 }
 
+int rtlsdr_open_bus_address(rtlsdr_dev_t **out_dev, uint8_t bus, uint8_t address)
+{
+	int r;
+	int i;
+	libusb_device **list;
+	rtlsdr_dev_t *dev = NULL;
+	libusb_device *device = NULL;
+	struct libusb_device_descriptor dd;
+	ssize_t cnt;
+
+	r = rtlsdr_create_device(&dev);
+	if(r < 0){
+		return r;
+	}
+
+	cnt = libusb_get_device_list(dev->ctx, &list);
+	if (cnt < 0) {
+		rtlsdr_free_device(dev);
+		return (int)cnt;
+	}
+
+	for (i = 0; i < cnt; i++) {
+		if (libusb_get_bus_number(list[i]) != bus ||
+		    libusb_get_device_address(list[i]) != address)
+			continue;
+
+		libusb_get_device_descriptor(list[i], &dd);
+
+		if (find_known_device(dd.idVendor, dd.idProduct))
+			device = list[i];
+		break;
+	}
+
+	if (!device) {
+		libusb_free_device_list(list, 1);
+		rtlsdr_free_device(dev);
+		return LIBUSB_ERROR_NOT_FOUND;
+	}
+
+	r = libusb_open(device, &dev->devh);
+	libusb_free_device_list(list, 1);
+	if (r < 0) {
+		fprintf(stderr, "usb_open error %d\n", r);
+		rtlsdr_free_device(dev);
+		return r;
+	}
+
+	return rtlsdr_init_device(out_dev, dev);
+}
+
 int rtlsdr_open_sys_dev(rtlsdr_dev_t **out_dev, intptr_t sys_dev) {
 #if !defined(_WIN32) && LIBUSB_API_VERSION >= 0x01000107
 	int r;

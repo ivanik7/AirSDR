@@ -1,6 +1,16 @@
 cmake_minimum_required(VERSION 3.22)
 project(sdrcore VERSION 1.0.0 LANGUAGES C CXX)
 
+# Supported toolchains: GCC/Clang on Linux, the NDK on Android, Apple Clang on
+# macOS, and llvm-mingw Clang on Windows (cmake/llvm-mingw-x86_64.cmake). The
+# sources use GNU flags and liquid-dsp needs C99 _Complex, so MSVC/clang-cl
+# cannot build the core (docs/desktop-build.md).
+if(MSVC)
+    message(FATAL_ERROR "sdrcore cannot be built with MSVC or clang-cl. Build "
+        "sdrcore.dll with llvm-mingw: -DCMAKE_TOOLCHAIN_FILE="
+        "native/cmake/llvm-mingw-x86_64.cmake (see docs/desktop-build.md).")
+endif()
+
 add_subdirectory(third_party)
 include(third_party/rds.cmake)
 include(third_party/fftw.cmake)
@@ -44,6 +54,17 @@ set_target_properties(sdrcore_rtl433 PROPERTIES POSITION_INDEPENDENT_CODE ON
 target_compile_definitions(sdrcore_rtl433 PRIVATE _GNU_SOURCE)
 target_compile_options(sdrcore_rtl433 PRIVATE -O2 -ffunction-sections -fdata-sections -w)
 target_include_directories(sdrcore_rtl433 PUBLIC ${RTL433_ROOT}/include)
+if(APPLE OR WIN32)
+    # ld64 and lld-COFF resolve symbols before dead stripping; define the
+    # CLI-only rtl_433 symbols that r_api.c references (see the file header).
+    target_sources(sdrcore_rtl433 PRIVATE src/decoder/rtl433_cli_stubs.c
+        ${RTL433_ROOT}/src/rfraw.c)
+endif()
+if(WIN32)
+    # rtl_433's compat/socket code needs Winsock even when unused paths are
+    # dropped; matches upstream rtl_433's Windows build.
+    target_link_libraries(sdrcore_rtl433 PUBLIC ws2_32)
+endif()
 
 add_library(sdrcore SHARED
     src/sdrcore.cpp
@@ -59,18 +80,39 @@ add_library(sdrcore SHARED
 if(ANDROID)
     target_sources(sdrcore PRIVATE src/sdr_jni.cpp)
 else()
-    # Desktop Linux platform layer (L1): libusb enumeration + open by path.
+    # Desktop host platform layer (Linux, macOS, Windows): libusb enumeration
+    # and open by usbfs path (Linux) or by bus/address (every host).
     target_sources(sdrcore PRIVATE src/sdrcore_host.cpp)
     target_link_libraries(sdrcore PRIVATE sdrcore_libusb)
 endif()
 target_compile_features(sdrcore PRIVATE cxx_std_17)
 find_package(Threads REQUIRED)
-target_link_libraries(sdrcore PRIVATE Threads::Threads sdrcore_rtlsdr sdrcore_hackrf sdrcore_rtl433 sdrcore_rds sdrcore_meshtastic sdrcore_csdr_sstv sdrcore_dump1090 m)
+target_link_libraries(sdrcore PRIVATE Threads::Threads sdrcore_rtlsdr sdrcore_hackrf sdrcore_rtl433 sdrcore_rds sdrcore_meshtastic sdrcore_csdr_sstv sdrcore_dump1090)
+if(NOT WIN32)
+    target_link_libraries(sdrcore PRIVATE m)
+endif()
 if(UNIX AND NOT APPLE)
     # Do not export upstream's API from libsdrcore: otherwise exported but
     # unused CLI/network sections keep unresolved CLI dependencies alive.
     target_link_options(sdrcore PRIVATE -Wl,--exclude-libs,ALL
         -Wl,--gc-sections)
+elseif(APPLE)
+    # libsdrcore.dylib, loaded from <App>.app/Contents/Frameworks through the
+    # runner's @executable_path/../Frameworks rpath. Static dependencies are
+    # compiled with hidden visibility; export only the sdr_* C API.
+    set_target_properties(sdrcore PROPERTIES
+        INSTALL_NAME_DIR "@rpath"
+        BUILD_WITH_INSTALL_NAME_DIR ON)
+    target_link_options(sdrcore PRIVATE -Wl,-dead_strip
+        "-Wl,-exported_symbols_list,${CMAKE_CURRENT_SOURCE_DIR}/cmake/sdrcore-macos.exp")
+elseif(WIN32)
+    # sdrcore.dll (no "lib" prefix), loaded by the MSVC-built Flutter runner
+    # through FFI only. Self-contained: libc++, libunwind and winpthreads are
+    # linked statically, so the DLL imports only Windows system DLLs and the
+    # UCRT. Only the __declspec(dllexport) sdr_* API is exported.
+    set_target_properties(sdrcore PROPERTIES PREFIX "")
+    target_link_options(sdrcore PRIVATE -static -Wl,--gc-sections
+        -Wl,--exclude-all-symbols)
 endif()
 set_target_properties(sdrcore PROPERTIES
     CXX_EXTENSIONS OFF
@@ -94,9 +136,9 @@ set_source_files_properties(src/decoder/adsb.cpp PROPERTIES
 include(src/audio/audio.cmake)
 target_link_libraries(sdrcore PRIVATE sdrcore_audio)
 
-# Tests only for a standalone host configure (native/ as the top-level project);
-# the Flutter Linux runner adds native/ as a subdirectory and needs the library only.
-if(NOT ANDROID AND PROJECT_IS_TOP_LEVEL)
+# Linux regression/oracle tests include usbfs fds, POSIX clocks and GNU linker
+# wrapping. Keep these off Apple/Windows, where the portable subset below runs.
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND PROJECT_IS_TOP_LEVEL)
     enable_testing()
     # Existing native tests use assert() for API calls with side effects;
     # retain those calls even when the production library is built Release.
@@ -200,6 +242,9 @@ if(NOT ANDROID AND PROJECT_IS_TOP_LEVEL)
     add_executable(sdrcore_host_usb_test tests/host_usb_test.c)
     target_link_libraries(sdrcore_host_usb_test PRIVATE sdrcore)
     add_test(NAME sdrcore_host_usb COMMAND sdrcore_host_usb_test)
+    add_executable(sdrcore_host_usb_direct_test tests/host_usb_direct_test.c)
+    target_link_libraries(sdrcore_host_usb_direct_test PRIVATE sdrcore)
+    add_test(NAME sdrcore_host_usb_direct COMMAND sdrcore_host_usb_direct_test)
     add_executable(sdrcore_rtl_gain_list_test
         tests/rtl_gain_list_test.cpp
         tests/decoder_registry_stub.cpp
@@ -238,6 +283,9 @@ if(NOT ANDROID AND PROJECT_IS_TOP_LEVEL)
     add_executable(sdrcore_host_rtl_gain_test tests/host_rtl_gain_test.c)
     target_link_libraries(sdrcore_host_rtl_gain_test PRIVATE sdrcore)
     add_test(NAME sdrcore_host_rtl_gain COMMAND sdrcore_host_rtl_gain_test)
+    # Tests that may open the attached SDR hardware must not run concurrently.
+    set_tests_properties(sdrcore_host_usb sdrcore_host_usb_direct
+        sdrcore_host_rtl_gain PROPERTIES RESOURCE_LOCK sdr_usb_device)
     add_executable(sdrcore_host_rx_diag tests/host_rx_diag.c)
     target_link_libraries(sdrcore_host_rx_diag PRIVATE sdrcore)
     # Manual real-hardware diagnostic (needs an attached RTL-SDR); not a ctest.
@@ -296,4 +344,21 @@ if(NOT ANDROID AND PROJECT_IS_TOP_LEVEL)
     # SSTV backend (adapter + upstream decoder) and receiver audio-tap tests.
     include(tests/sstv_tests.cmake)
     include(tests/audio_tap_tests.cmake)
+endif()
+
+# Standalone macOS/Windows CTest: link the actual shared library and run the
+# ABI and direct-USB argument/no-device regressions. Audio CTests live in
+# src/audio/audio.cmake and run on all desktops.
+if((APPLE OR WIN32) AND PROJECT_IS_TOP_LEVEL)
+    enable_testing()
+    add_executable(sdrcore_abi_test tests/abi_test.c)
+    target_link_libraries(sdrcore_abi_test PRIVATE sdrcore)
+    add_test(NAME sdrcore_abi COMMAND sdrcore_abi_test)
+    add_executable(sdrcore_host_usb_direct_test tests/host_usb_direct_test.c)
+    target_link_libraries(sdrcore_host_usb_direct_test PRIVATE sdrcore)
+    add_test(NAME sdrcore_host_usb_direct COMMAND sdrcore_host_usb_direct_test)
+    add_executable(sdrcore_decoder_abi_test tests/decoder_abi_test.cpp)
+    target_link_libraries(sdrcore_decoder_abi_test PRIVATE sdrcore)
+    target_compile_options(sdrcore_decoder_abi_test PRIVATE -UNDEBUG)
+    add_test(NAME sdrcore_decoder_abi COMMAND sdrcore_decoder_abi_test)
 endif()

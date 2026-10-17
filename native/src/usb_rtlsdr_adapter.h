@@ -7,17 +7,21 @@
 
 // RTL-SDR (R820T/R828D incl. Blog V4, E4000, FC0012/13) receive adapter over
 // the vendored librtlsdr (third_party/rtl-sdr), opened from a caller-owned fd
-// via rtlsdr_open_sys_dev() -> libusb_wrap_sys_device(). RX only.
+// via rtlsdr_open_sys_dev() -> libusb_wrap_sys_device() (Android, Linux), or
+// on desktops by bus/address via rtlsdr_open_bus_address() -> libusb_open()
+// (macOS, Windows; see sdr_host_open_usb_direct). RX only.
 //
 // Ownership: libusb_wrap_sys_device() stores the fd value as-is and neither
 // dup()s it nor closes it in libusb_close(). open() therefore dup()s the
 // caller's fd itself and hands the dup to librtlsdr; close() closes that dup.
 // The caller's original fd is never touched and must stay open for the
-// duration (same contract as sdr_v2_open_file's native dup).
+// duration (same contract as sdr_v2_open_file's native dup). The direct path
+// owns no descriptor; librtlsdr's own libusb context owns the device handle.
 class RtlSdrAdapter final : public UsbRxAdapter {
  public:
   ~RtlSdrAdapter() override;
   int open(int fd) override;
+  int open_bus_address(uint8_t bus, uint8_t address) override;
   int configure(uint64_t frequency_hz, uint32_t sample_rate,
                  int32_t gain_tenths_db) override;
   int start(PushFn push, void* ctx) override;
