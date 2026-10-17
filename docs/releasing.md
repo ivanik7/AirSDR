@@ -53,8 +53,10 @@ release), it only tags master.
 
 Pushing the tag runs CI for the tag. When the test, Android and Linux jobs
 pass, the `release` job checks the tag against pubspec.yaml and publishes a
-GitHub release `AirSDR v1.2.0` with the APKs and Linux packages attached and
-notes generated from the commits since the previous tag.
+GitHub release `AirSDR v1.2.0` with notes generated from the commits since
+the previous tag. Its files have version-free names, so
+`releases/latest/download/<file>` links keep working (docs/ci.md). Every
+push to master also refreshes the `nightly` pre-release the same way.
 
 Version numbers follow semantic versioning: patch for fixes, minor for new
 features, major for incompatible changes to saved data or settings.

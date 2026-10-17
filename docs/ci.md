@@ -83,11 +83,35 @@ set; `windows/CMakeLists.txt` installs the DLL beside `sdr_flutter.exe`. The
 result is `AirSDR-<version>-windows-x86_64.zip`, unsigned. RTL-SDR and
 HackRF need the WinUSB driver (Zadig).
 
-### `release` (tags `v*` only)
+### `release` (tags `v*` only) and `nightly` (pushes to master)
 
-After all jobs pass, checks the tag against `version:` in `pubspec.yaml` and
-creates a GitHub release with the APKs and Linux packages attached. Tags are
-made by `tool/release.sh`, see [releasing.md](releasing.md).
+Both need `test`, `android` and `linux-install` to pass. `macos` and
+`windows` are optional while those builds are experimental: if they fail,
+their files are left out.
+
+- `release` checks the tag against `version:` in `pubspec.yaml` and creates
+  the GitHub release `AirSDR vX.Y.Z` (marked latest) with notes generated
+  from the commits. Tags are made by `tool/release.sh`, see
+  [releasing.md](releasing.md).
+- `nightly` deletes the pre-release `nightly` and its tag and recreates both
+  at the pushed commit, so it always holds the newest master build. It is
+  never marked latest. Because the tag moves, `git fetch --tags` may report
+  a rejected `nightly` tag locally; `git fetch --tags --force` updates it.
+
+Both publish the files under version-free names from
+`tool/stable-asset-names.sh`, which the README links to:
+
+| File | Content |
+|---|---|
+| `AirSDR-android-arm64-v8a.apk`, `AirSDR-android-armeabi-v7a.apk`, `AirSDR-android-x86_64.apk` | Android APKs |
+| `AirSDR-linux-amd64.deb`, `AirSDR-linux-x86_64.rpm`, `AirSDR-linux-x86_64.pkg.tar.zst`, `AirSDR-linux-x86_64.tar.gz` | Linux packages |
+| `AirSDR-macos.dmg` | macOS app |
+| `AirSDR-windows-x86_64.zip` | Windows app |
+
+Stable URLs: `https://github.com/ivanik7/AirSDR/releases/latest/download/<file>`
+and `https://github.com/ivanik7/AirSDR/releases/download/nightly/<file>`.
+The version is in the release title and inside the packages; CI run
+artifacts keep the versioned file names.
 
 ## Versions
 

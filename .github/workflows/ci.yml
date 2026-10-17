@@ -467,10 +467,17 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-  # Tag pushes (v*) publish every artifact as a GitHub release.
+  # Tag pushes (v*) publish a GitHub release; pushes to master replace the
+  # "nightly" pre-release. Both carry version-free file names
+  # (tool/stable-asset-names.sh) so README links point at fixed files. The
+  # macOS and Windows builds are still experimental: when they fail, the
+  # release goes out without them.
   release:
     name: GitHub release
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: >-
+      !cancelled() && startsWith(github.ref, 'refs/tags/v') &&
+      needs.test.result == 'success' && needs.android.result == 'success' &&
+      needs.linux-install.result == 'success'
     needs: [test, android, linux, linux-install, macos, windows]
     runs-on: ubuntu-24.04
     permissions:
@@ -495,6 +502,48 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          ls -l dist
-          gh release create "$GITHUB_REF_NAME" dist/* \
-            --repo "$GITHUB_REPOSITORY" --title "AirSDR $GITHUB_REF_NAME" --generate-notes
+          tool/stable-asset-names.sh dist assets
+          gh release create "$GITHUB_REF_NAME" assets/* \
+            --repo "$GITHUB_REPOSITORY" --title "AirSDR $GITHUB_REF_NAME" \
+            --generate-notes --latest
+
+  nightly:
+    name: Nightly pre-release
+    if: >-
+      !cancelled() && github.event_name == 'push' && github.ref == 'refs/heads/master' &&
+      needs.test.result == 'success' && needs.android.result == 'success' &&
+      needs.linux-install.result == 'success'
+    needs: [test, android, linux, linux-install, macos, windows]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Version
+        id: ver
+        run: tool/version.sh | tee -a "$GITHUB_OUTPUT"
+
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: AirSDR-*
+          path: dist
+          merge-multiple: true
+
+      # Recreated on every push: deleting the release and its tag, then
+      # creating both at the new commit, keeps the download URLs and never
+      # force-pushes a ref. --latest=false keeps releases/latest on the last
+      # tagged release.
+      - name: Replace nightly pre-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tool/stable-asset-names.sh dist assets
+          gh release delete nightly --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes || true
+          gh release create nightly assets/* \
+            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --prerelease --latest=false \
+            --title "AirSDR nightly ${{ steps.ver.outputs.FULL_VERSION }}" \
+            --notes "Automatic build of master at $GITHUB_SHA (${{ steps.ver.outputs.FULL_VERSION }}). Not a release: replaced on every push."
