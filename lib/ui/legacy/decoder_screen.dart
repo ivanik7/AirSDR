@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../decoders/decoder_contract.dart';
 import '../decoders/decoder_panels.dart';
 import '../decoders/decoder_session.dart';
+import '../decoders/dmr_panel.dart';
 import '../radio_controller.dart';
 import 'centered_receiver.dart';
 import 'theme.dart';
@@ -36,6 +37,8 @@ class DecoderScreen extends StatelessWidget {
           const SizedBox(height: 14),
           if (selected?.id == 'rtl_433')
             Rtl433DecoderPanel(session: session)
+          else if (selected?.id == 'dmr')
+            DmrDecoderPanel(session: session)
           else if (selected == null || selected.voice)
             VoiceDecoderPanel(controller: controller, receiver: receiver)
           else

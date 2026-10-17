@@ -81,6 +81,25 @@ final decoderCatalog = <DecoderDescriptor>[
       demodMode: mode,
     ),
   DecoderDescriptor(
+    id: 'dmr',
+    label: 'DMR',
+    input: DecoderInput.baseband,
+    exclusiveReceiver: false,
+    requiredMode: null,
+    requiredRateHz: null,
+    result: DecoderResult.message,
+    voice: true,
+    settings: [
+      DecoderSetting('slot_filter', 3, allowed: [1, 2, 3]),
+      DecoderSetting(
+        'color_code',
+        -1,
+        allowed: [-1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
+      ),
+      DecoderSetting('voice', true, allowed: [true, false]),
+    ],
+  ),
+  DecoderDescriptor(
     id: 'sstv',
     label: 'SSTV',
     input: DecoderInput.audio,

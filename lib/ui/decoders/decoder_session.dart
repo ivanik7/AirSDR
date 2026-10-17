@@ -9,6 +9,7 @@ import 'package:flutter/foundation.dart';
 import '../radio_controller.dart';
 import '../legacy/centered_receiver.dart';
 import 'decoder_contract.dart';
+import 'dmr_call.dart';
 
 class DecoderMessage {
   const DecoderMessage(
@@ -49,8 +50,11 @@ class DecoderMessage {
 }
 
 class DecoderSession extends ChangeNotifier {
-  DecoderSession(this.radio, {CenteredReceiver? receiver})
-    : _receiver = receiver ?? CenteredReceiver(radio) {
+  DecoderSession(
+    this.radio, {
+    CenteredReceiver? receiver,
+    this.dmrCallTimeout = const Duration(seconds: 3),
+  }) : _receiver = receiver ?? CenteredReceiver(radio) {
     _wasRunning = radio.running;
     _lastTunedFrequency = radio.tunedFrequency;
     _lastSampleRate = radio.sampleRate.round();
@@ -58,9 +62,14 @@ class DecoderSession extends ChangeNotifier {
   }
   final RadioController radio;
   final CenteredReceiver _receiver;
+  final Duration dmrCallTimeout;
   late String _selectedId = decoderIdForMode(radio.mode);
   final Map<String, Map<String, Object>> _settings = {};
   final List<DecoderMessage> _messages = [];
+  final List<DmrCall?> _dmrSlots = [null, null];
+  final List<String?> _dmrSync = [null, null];
+  final List<DateTime?> _dmrLastSeen = [null, null];
+  final List<DmrCall> _dmrHistory = [];
   Timer? _pollTimer;
   bool _attached = false;
   bool _wasRunning = false;
@@ -76,6 +85,9 @@ class DecoderSession extends ChangeNotifier {
   String? get failureReason => _failure;
   int get droppedEvents => _droppedEvents;
   List<DecoderMessage> get messages => List.unmodifiable(_messages);
+  List<DmrCall?> get dmrSlots => List.unmodifiable(_dmrSlots);
+  List<String?> get dmrSync => List.unmodifiable(_dmrSync);
+  List<DmrCall> get dmrHistory => List.unmodifiable(_dmrHistory);
   int get inputRateHz => radio.sampleRate.round();
   int get decoderRateHz {
     final rate = inputRateHz;
@@ -109,9 +121,14 @@ class DecoderSession extends ChangeNotifier {
     if (frequency != _lastTunedFrequency || rate != _lastSampleRate) {
       _lastTunedFrequency = frequency;
       _lastSampleRate = rate;
-      if (decoderById(_selectedId)?.voice != true) {
+      if (decoderById(_selectedId)?.demodMode == null) {
         _resetEvents();
-        if (rate != 0 && decoderRateHz == 0 && _selectedId == 'rtl_433') {
+        if (running && _selectedId == 'dmr') {
+          // Reselect to discard pre-retune FIFO events as well as visible calls.
+          _attachSelected();
+        } else if (rate != 0 &&
+            decoderRateHz == 0 &&
+            _selectedId == 'rtl_433') {
           _attached = false;
           _stopPolling();
           _failure =
@@ -127,11 +144,13 @@ class DecoderSession extends ChangeNotifier {
       _attached = false;
       _resetEvents();
     }
-    if (running && !_wasRunning && decoderById(_selectedId)?.voice != true) {
+    if (running &&
+        !_wasRunning &&
+        decoderById(_selectedId)?.demodMode == null) {
       _attachSelected();
     }
     _wasRunning = running;
-    if (decoderById(_selectedId)?.voice == true) {
+    if (decoderById(_selectedId)?.demodMode != null) {
       final next = decoderIdForMode(radio.mode);
       if (_selectedId != next) _selectedId = next;
     }
@@ -147,7 +166,15 @@ class DecoderSession extends ChangeNotifier {
     _afterSequence = 0;
     _streamGeneration = null;
     _droppedEvents = 0;
+    _clearUiEvents();
+  }
+
+  void _clearUiEvents() {
     _messages.clear();
+    _dmrSlots.fillRange(0, 2, null);
+    _dmrSync.fillRange(0, 2, null);
+    _dmrLastSeen.fillRange(0, 2, null);
+    _dmrHistory.clear();
   }
 
   void _attachSelected() {
@@ -156,7 +183,7 @@ class DecoderSession extends ChangeNotifier {
     _failure = null;
     final id = _selectedId;
     final backend = radio.decoderBackend;
-    if (decoderById(id)?.voice == true) {
+    if (decoderById(id)?.demodMode != null) {
       backend?.select(null, const <String, Object>{});
       return;
     }
@@ -180,7 +207,7 @@ class DecoderSession extends ChangeNotifier {
     }
     _attached = true;
     _resetEvents();
-    if (id == 'rtl_433') {
+    if (id == 'rtl_433' || id == 'dmr') {
       _pollTimer = Timer.periodic(
         const Duration(milliseconds: 100),
         (_) => _drainEvents(),
@@ -189,7 +216,7 @@ class DecoderSession extends ChangeNotifier {
   }
 
   void _drainEvents() {
-    if (!active || _selectedId != 'rtl_433') return;
+    if (!active || (_selectedId != 'rtl_433' && _selectedId != 'dmr')) return;
     final backend = radio.decoderBackend;
     if (backend == null) return;
     var changed = false;
@@ -202,7 +229,7 @@ class DecoderSession extends ChangeNotifier {
       _droppedEvents = event.droppedEvents;
       if (_streamGeneration != null &&
           event.streamGeneration != _streamGeneration) {
-        _messages.clear();
+        _clearUiEvents();
         changed = true;
       }
       _streamGeneration = event.streamGeneration;
@@ -212,6 +239,17 @@ class DecoderSession extends ChangeNotifier {
       try {
         final data = jsonDecode(utf8.decode(event.payload));
         if (data is! Map<String, dynamic>) continue;
+        if (_selectedId == 'dmr') {
+          if (data['schema'] != 'dmr/1' ||
+              data['protocol'] != 'DMR' ||
+              data['slot'] is! int ||
+              (data['slot'] != 0 && data['slot'] != 1)) {
+            continue;
+          }
+          _onDmrEvent(data, DateTime.now());
+          changed = true;
+          continue;
+        }
         _messages.insert(
           0,
           DecoderMessage(
@@ -227,11 +265,54 @@ class DecoderSession extends ChangeNotifier {
         // A malformed native payload is not a message.
       }
     }
+    if (_selectedId == 'dmr' && _expireDmr(DateTime.now())) changed = true;
     if (changed) notifyListeners();
+  }
+
+  void _archiveDmr(int slot, DateTime now) {
+    final call = _dmrSlots[slot];
+    if (call == null) return;
+    _dmrHistory.insert(0, call.end(now));
+    if (_dmrHistory.length > 100) _dmrHistory.removeLast();
+    _dmrSlots[slot] = null;
+  }
+
+  void _onDmrEvent(Map<String, dynamic> data, DateTime now) {
+    final slot = data['slot'] as int;
+    final sync = data['sync'];
+    _dmrSync[slot] = sync == 'voice' || sync == 'data' ? sync as String : null;
+    _dmrLastSeen[slot] = now;
+    final next = DmrCall.fromEvent(data, now, _dmrSlots[slot]);
+    final current = _dmrSlots[slot];
+    if (current != null &&
+        (next == null || current.startedAt != next.startedAt)) {
+      _archiveDmr(slot, now);
+    }
+    _dmrSlots[slot] = next;
+  }
+
+  bool _expireDmr(DateTime now) {
+    var changed = false;
+    for (var slot = 0; slot < 2; slot++) {
+      final call = _dmrSlots[slot];
+      final lastSeen = _dmrLastSeen[slot];
+      if (lastSeen != null && now.difference(lastSeen) >= dmrCallTimeout) {
+        if (call != null) _archiveDmr(slot, now);
+        _dmrSync[slot] = null;
+        _dmrLastSeen[slot] = null;
+        changed = true;
+      }
+    }
+    return changed;
   }
 
   void clearMessages() {
     _messages.clear();
+    notifyListeners();
+  }
+
+  void clearDmrHistory() {
+    _dmrHistory.clear();
     notifyListeners();
   }
 
@@ -242,10 +323,9 @@ class DecoderSession extends ChangeNotifier {
     super.dispose();
   }
 
-  Map<String, Object> _config(String id) => {
-    'version': 1,
-    'settings': settingsFor(id),
-  };
+  Map<String, Object> _config(String id) => id == 'dmr'
+      ? {'schema': 'dmr/1', ...settingsFor(id)}
+      : {'version': 1, 'settings': settingsFor(id)};
 
   Map<String, Object> settingsFor(String id) {
     final descriptor = decoderById(id);
@@ -279,7 +359,7 @@ class DecoderSession extends ChangeNotifier {
       return;
     }
     _settings.putIfAbsent(id, () => <String, Object>{})[key] = value;
-    if (id == _selectedId && descriptor?.voice != true && _canAttach(id)) {
+    if (id == _selectedId && descriptor?.demodMode == null && _canAttach(id)) {
       _attachSelected();
     }
     notifyListeners();
