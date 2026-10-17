@@ -249,6 +249,10 @@ int libusb_get_device_descriptor(libusb_device *dev, struct libusb_device_descri
 	return 0;
 }
 
+uint8_t libusb_get_bus_number(libusb_device *dev) { (void)dev; return 1; }
+
+uint8_t libusb_get_device_address(libusb_device *dev) { (void)dev; return 1; }
+
 libusb_device *libusb_get_device(libusb_device_handle *h) { return h->dev; }
 
 int libusb_open(libusb_device *dev, libusb_device_handle **h)
