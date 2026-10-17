@@ -342,3 +342,27 @@ events, `{"voice":false}` mapping) still has to own one
 `VoiceOutput` and return `provides_audio() == true`. That wiring is part of
 the backend integration. Once the backend is registered, the UI from
 §10 needs no volume control of its own.
+
+## 12. Single-receiver channel input stage
+
+`native/src/dmr/channel_tap.{hpp,cpp}` adds `ChannelDecoder`, an abstract
+native `Decoder` base with a `SymbolSink`. It accepts interleaved CF32 and
+the actual complex sample rate from the receiver's existing `Input::baseband`
+VFO branch; a bounded `ChannelTap` copies samples into `Channel` without
+aliasing float objects as complex objects. The receiver supplies integer
+native decimation and invokes `reset()` on attach, stream restart, rate
+change, VFO move and retune. These boundaries reset the 48 kS/s IF, Wide
+RRC and GFSK(10) state. Neither the source sample rate nor tuner center is
+changed for DMR. The channel retains its ±6250 Hz filter and no-squelch
+behavior. This class remains abstract until the backend integration card
+attaches `Framing`/`VoiceOutput`, implements configuration/events and
+registers the `dmr` factory; the app still shows DMR as unavailable.
+
+`sdrcore_dmr_channel_tap` sends synthetic CU8 through the real receiver
+at 2.4, 2.5 and 2.88 MS/s device rates (240, 250 and 240 kS/s taps), plus
+576 kS/s (288 kS/s tap). In each 200 ms window it checks 9600–9601 IF
+samples and >900 dibits with manual squelch closed and audio muted. It also
+checks deterministic reset/replay, detach, rate propagation, VFO changes
+and retune. Direct filter and symbol-decision tests are separate; the
+downstream oracle card owns reference fixture parity. Live DMR RF reception
+and voice output remain unverified.

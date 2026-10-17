@@ -45,6 +45,7 @@ target_link_libraries(sdrcore_meshtastic PUBLIC sdrcore_meshtastic_pb)
 set(DMR_VENDOR ${CMAKE_CURRENT_SOURCE_DIR}/third_party/openwebrx-dmr)
 add_library(sdrcore_dmr_channel STATIC
     src/dmr/channel.cpp
+    src/dmr/channel_tap.cpp
     src/dmr/channel_filter.cpp
     ${DMR_VENDOR}/csdr/fmdemod.cpp
     ${DMR_VENDOR}/csdr/dcblock.cpp
@@ -53,7 +54,7 @@ add_library(sdrcore_dmr_channel STATIC
 set_target_properties(sdrcore_dmr_channel PROPERTIES POSITION_INDEPENDENT_CODE ON)
 target_compile_features(sdrcore_dmr_channel PUBLIC cxx_std_17)
 target_include_directories(sdrcore_dmr_channel PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/src ${DMR_VENDOR})
+    ${CMAKE_CURRENT_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR}/include ${DMR_VENDOR})
 target_link_libraries(sdrcore_dmr_channel PUBLIC sdrcore_dmr_csdr_base)
 
 # rtl_433 upstream sources are embedded, not run as a subprocess. Preserve
@@ -189,6 +190,13 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND PROJECT_IS_TOP_LEVEL)
     target_link_libraries(sdrcore_dmr_channel_test PRIVATE sdrcore_dmr_channel Threads::Threads m)
     target_compile_options(sdrcore_dmr_channel_test PRIVATE -UNDEBUG)
     add_test(NAME sdrcore_dmr_channel COMMAND sdrcore_dmr_channel_test)
+    add_executable(sdrcore_dmr_channel_tap_test
+        tests/dmr_channel_tap_test.cpp src/dsp/receiver.cpp)
+    target_include_directories(sdrcore_dmr_channel_tap_test PRIVATE include)
+    target_link_libraries(sdrcore_dmr_channel_tap_test PRIVATE
+        sdrcore_dmr_channel sdrcore_rds Threads::Threads m)
+    target_compile_options(sdrcore_dmr_channel_tap_test PRIVATE -O2 -UNDEBUG)
+    add_test(NAME sdrcore_dmr_channel_tap COMMAND sdrcore_dmr_channel_tap_test)
     add_executable(sdrcore_dmr_channel_filter_test tests/dmr_channel_filter_test.cpp)
     target_link_libraries(sdrcore_dmr_channel_filter_test PRIVATE sdrcore_dmr_channel Threads::Threads m)
     target_compile_options(sdrcore_dmr_channel_filter_test PRIVATE -UNDEBUG)

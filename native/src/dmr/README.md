@@ -21,6 +21,25 @@ framing/metadata decoder (t_0c6cc09e) and registry/sink hookup in the DMR
 integration card are still required. This library does not advertise DMR to
 users or produce decoded calls/audio on its own.
 
+`ChannelDecoder` in `channel_tap.{hpp,cpp}` is the reusable native
+`Decoder::process(interleaved CF32, pairs, actual_rate_hz)` input stage for
+the full DMR backend: it copies interleaved samples in bounded blocks into
+`Channel`, receives 4800 dibits/s through `SymbolSink::on_symbols()`, and
+forwards every `Decoder::reset()` to all FIR/DC/symbol-clock state. The full
+backend must derive from it, forward symbols to `Framing`, implement config
+and event polling, and register `dmr` itself; this stage alone deliberately
+does not advertise a partially working decoder. The receiver's existing
+VFO branch shifts and integer-decimates source IQ; it supplies the *actual*
+tap rate. For example 2.4 MS/s -> 240 kS/s, 2.5 MS/s -> 250 kS/s,
+2.88 MS/s -> 240 kS/s, and 576 kS/s -> 288 kS/s. No source retune,
+separate receive path, or squelch gate is involved. A changed tap rate
+reconfigures the channel before accepting more IQ; a stream/retune reset
+discards old IF and symbol history. `sdrcore_dmr_channel_tap` runs synthetic
+CU8 through the real `Receiver::set_decoder(Input::baseband)` branch with
+manual squelch closed and audio muted, checking rate propagation, 48-kS/s
+IF and 4800-symbol/s counts, reset/replay, detach and retune. Live RF and
+full framing/voice event output remain unverified here.
+
 Signal path: 127-tap Blackman FIR and integer decimation at the *actual* tap
 rate (e.g. 250k -> 50k), then 161-tap, 64-phase low-pass/resampler for a
 6250 Hz complex channel at exactly 48 kS/s. There is no squelch. The native
