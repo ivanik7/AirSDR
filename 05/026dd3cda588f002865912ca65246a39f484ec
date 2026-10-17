@@ -1,0 +1,273 @@
+test/ui/legacy_shell_test.dart
+  s_3328c7e6df19c5::t_23502d822b1636 69,95,100,107,115,119,123,127,129,164-165,167-168,176,217,261-263,265,267-268,288
+test/ui/favorites_test.dart
+  s_3328c7e6df19c5::t_50d9c0314f5230 85,99,107,114,160,167,178,180,189-190,192-193,218
+test/ui/rds_widgets_test.dart
+  s_3328c7e6df19c5::t_16f0f8b5a18ca4 67
+test/native/sstv_replay_e2e_test.dart
+  s_3328c7e6df19c5::t_16f0f8b5a18ca4 14,331-332
+lib/ui/decoders/rds_widgets.dart
+  s_3328c7e6df19c5::t_16f0f8b5a18ca4 28-31,33,43,59,71
+lib/ui/bands/bands.dart
+  s_3328c7e6df19c5::t_891035c840e9ea 5-6,118,134,142,150,209-210,212-214,473,475,477,484,496,505
+lib/ui/legacy/receive_screen.dart
+  s_3328c7e6df19c5::t_23502d822b1636 86,116,124-125,215,240,438-439,531-538
+lib/ui/decoders/sstv_panel.dart
+  s_3328c7e6df19c5::t_18ad1765be1626 25,28,30,32-33,53,67-69,76-77,83-84,107,144,152,158,199,202,224,234,248-250,266-268,270,272-273,303,305,337,357,363
+  s_3328c7e6df19c5::t_f8a10f9874a603 182
+android/app/src/main/kotlin/net/ivanik/sdr_flutter/ReceptionService.kt
+  s_3328c7e6df19c5::t_bf580f6748987c 119,121,262,264
+test/ui/sstv_panel_test.dart
+  s_3328c7e6df19c5::t_16f0f8b5a18ca4 148-150,155,157-158,195-196,198,207,214,221,226-227,242,255
+test/ui/legacy_compact_receive_test.dart
+  s_3328c7e6df19c5::t_23502d822b1636 53,135-136,156,159,161
+docs/status/ui-avd-qa.md
+  s_3328c7e6df19c5::t_bf580f6748987c 8,11,17-18
+lib/ui/decoders/adsb_panel.dart
+  s_3328c7e6df19c5::t_16f0f8b5a18ca4 58,71,82,91,98,105,163,167,171,174-175,184,189,194,216,223,229,240,246-247,254,263,297,307,309,311,313,315,317,319,321-322
+lib/ui/decoders/decoder_panels.dart
+  s_3328c7e6df19c5::t_16f0f8b5a18ca4 18-20,99,112,158,165,167,190,204,224,263,266-267,272-273,279,295,297,299,308,312,323,328,339,347,356,420,445-446,454-455,475-476,489,540-541
+test/ui/ui_cleanup_test.dart
+  s_3328c7e6df19c5::t_23502d822b1636 59,78-79,82,90-91,143-146,148,192-193,201,212
+docs/status/sstv-oracle.md
+  s_3328c7e6df19c5::t_bf580f6748987c 42
+test/ui/shared_decoder_selection_test.dart
+  s_3328c7e6df19c5::t_16f0f8b5a18ca4 230
+docs/decoder-architecture.md
+  s_3328c7e6df19c5::t_4611df7f4721b8 127
+test/ui/bands_test.dart
+  s_3328c7e6df19c5::t_50d9c0314f5230 71-74,81,83-85,122,125,462,504,509,552,603,606,617,627,725,737,769
+docs/native-core-abi.md
+  s_3328c7e6df19c5::t_538ac521db4dec 1,3-5,11-13,15,17-24,26,28,30-129
+test/ui/decoder_favorites_integration_test.dart
+  s_3328c7e6df19c5::t_16f0f8b5a18ca4 131,179,223,270
+docs/status/linux-host.md
+  s_3328c7e6df19c5::t_bf580f6748987c 85
+lib/ui/legacy/app_shell.dart
+  s_3328c7e6df19c5::t_23502d822b1636 46
+test/ui/channels_test.dart
+  s_3328c7e6df19c5::t_01f79394ec6bda 316,320,345
+  s_3328c7e6df19c5::t_50d9c0314f5230 24,36,281,289,296-298,344
+test/ui/decoder_screen_test.dart
+  s_3328c7e6df19c5::t_16f0f8b5a18ca4 111,120,136,233,267,346,353
+test/ui/legacy_device_status_test.dart
+  s_3328c7e6df19c5::t_23502d822b1636 72,82,98,121,128,134,138
+test/ui/decoder_tab_architecture_test.dart
+  s_3328c7e6df19c5::t_16f0f8b5a18ca4 42,117,160
+test/ui/bands_screen_test.dart
+  s_3328c7e6df19c5::t_50d9c0314f5230 36,43,46,52,57,73-74
+docs/status/dmr.md
+  s_3328c7e6df19c5::t_bf580f6748987c 269,281
+test/native/sstv_session_hw_test.dart
+  s_3328c7e6df19c5::t_16f0f8b5a18ca4 72
+lib/ui/legacy/settings_screen.dart
+  s_3328c7e6df19c5::t_23502d822b1636 29,43,47,51,53-54,61,78,80-81,86,90-91,93,99-100,103,108-109,124,135-136,140,145,153-154,158,161,166-167,171,176-177,184,216,219,241,243-244,249-251,259,262-265
+docs/status/sstv-ui.md
+  s_3328c7e6df19c5::t_bf580f6748987c 92
+lib/ui/decoders/sstv_image.dart
+  s_3328c7e6df19c5::t_16f0f8b5a18ca4 282,293-300
+test/ui/favorites_decoder_test.dart
+  s_3328c7e6df19c5::t_16f0f8b5a18ca4 44
+lib/ui/favorites/favorites.dart
+  s_3328c7e6df19c5::t_891035c840e9ea 15,232,262,464
+  s_3328c7e6df19c5::t_1badbbf9627d7d 187-188
+test/ui/squelch_controls_test.dart
+  s_3328c7e6df19c5::t_23502d822b1636 2,31,36,40,45,47,56,66,78,81,85,89,99,104,114,119,122
+lib/ui/legacy/squelch_controls.dart
+  s_3328c7e6df19c5::t_23502d822b1636 3-4,17,19,22,24-25,27,58,79,84,89,109,119
+  s_3328c7e6df19c5::t_e35dd8dc5ac5cf 31-32
+lib/ui/decoders/decoder_session.dart
+  s_3328c7e6df19c5::t_16f0f8b5a18ca4 229,324-326,332,345
+lib/ui/main_screen.dart
+  s_3328c7e6df19c5::t_23502d822b1636 507,511-512,521
+lib/ui/channels/channels.dart
+  s_3328c7e6df19c5::t_891035c840e9ea 162
+lib/ui/legacy/bands_screen.dart
+  s_3328c7e6df19c5::t_891035c840e9ea 3,32,37,43,54,58,70,114,127,193-194,232,243,254,265,336,341
+test/ui/legacy_channels_test.dart
+  s_3328c7e6df19c5::t_50d9c0314f5230 70,76,110-112,126-127,146,173-174,190,220,278-280,319,324,331-332,348-350,367,369,374,376-378,383,396,413,417,424,426,431,434,436,450,464,470,501,631,637,639,666,734,798
+  s_3328c7e6df19c5::t_01f79394ec6bda 535
+test/ui/preset_editor_decoder_dropdown_test.dart
+  s_3328c7e6df19c5::t_16f0f8b5a18ca4 95,208,216
+docs/status/legacy-ui.md
+  s_3328c7e6df19c5::t_bf580f6748987c 7,11,15,17,19,22-23,44,54,56,58
+test/ui/decoder_session_test.dart
+  s_3328c7e6df19c5::t_16f0f8b5a18ca4 315
+test/ui/ui_small_fixes_test.dart
+  s_3328c7e6df19c5::t_23502d822b1636 166
+lib/ui/source_settings.dart
+  s_3328c7e6df19c5::t_23502d822b1636 27-39,45-48,73,75,82,117-120
+test/ui/unified_decoder_selection_test.dart
+  s_3328c7e6df19c5::t_16f0f8b5a18ca4 91-92
+lib/ui/legacy/channels_section.dart
+  s_3328c7e6df19c5::t_891035c840e9ea 3,43,99,118,122,171,179,188,194,199,234-235,340,354-355,375,381,383-384,398,429,711
+test/ui/source_settings_test.dart
+  s_3328c7e6df19c5::t_23502d822b1636 86-93,105
+test/ui/step_grid_test.dart
+  s_3328c7e6df19c5::t_23502d822b1636 155,259,292,334
+test/ui/preset_channel_mode_pin_test.dart
+  s_3328c7e6df19c5::t_50d9c0314f5230 29
+lib/ui/channels/channel_controller.dart
+  s_3328c7e6df19c5::t_891035c840e9ea 134,180,213
+test/ui/legacy_settings_connection_test.dart
+  s_3328c7e6df19c5::t_23502d822b1636 36,57-61,68,74,80,101
+lib/ui/decoders/sstv_save.dart
+  s_3328c7e6df19c5::t_16f0f8b5a18ca4 155
+test/ui/dmr_panel_test.dart
+  s_3328c7e6df19c5::t_16f0f8b5a18ca4 113,179,184-185,188,198,205
+test/ui/adsb_panel_test.dart
+  s_3328c7e6df19c5::t_16f0f8b5a18ca4 108,114,120,127-128
+docs/status/usb.md
+  s_3328c7e6df19c5::t_aa76a45461ad85 3-4,6-14,16-17,19-25,27,29,31-37,39-42
+lib/ui/legacy/presets_screen.dart
+  s_3328c7e6df19c5::t_891035c840e9ea 16,18-21,43,79,85,93,124,132,137,185,198,203,209,233,237,245,289,296-297,302,322,324,362
+docs/android-emulator.md
+  s_3328c7e6df19c5::t_538ac521db4dec 1,3-5,7,9-32,38,41,43,47,50-51,56-109
+test/ui/legacy_layout_test.dart
+  s_3328c7e6df19c5::t_0d14b25674fa29 132
+  s_3328c7e6df19c5::t_905af1a0ecf6ac 144
+  s_3328c7e6df19c5::t_23502d822b1636 55,120,167,170,173,198,203
+lib/ui/decoders/dmr_panel.dart
+  s_3328c7e6df19c5::t_16f0f8b5a18ca4 37,41,43,46-47,57-58,62-63,79,81,84,87,90,97,112,121,186,193,195-196,210,224,226-227,231,235-236,238-239,241-242,254,280
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "0.0.62",
+  "base_commit_sha": "05026dd3cda588f002865912ca65246a39f484ec",
+  "prompts": {},
+  "sessions": {
+    "s_3328c7e6df19c5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6c9d9ebb-b10b-4ec2-a4f0-b94074f20c43",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "ivanik <ivan170102@gmail.com>",
+      "usage": [
+        {
+          "model": "claude-opus-5-5",
+          "input_tokens": 140,
+          "output_tokens": 43887,
+          "cache_read_tokens": 4121769,
+          "cache_write_5m_tokens": 0,
+          "cache_write_1h_tokens": 157330,
+          "assistant_messages": 63,
+          "turns": 6,
+          "ai_wall_ms": 93776,
+          "first_ts": "2026-10-17T16:08:16.379Z",
+          "last_ts": "2026-10-17T16:14:39.614Z",
+          "session_total_output_tokens": 43887
+        },
+        {
+          "model": "claude-sonnet-5-5",
+          "input_tokens": 154,
+          "output_tokens": 1270,
+          "cache_read_tokens": 3557561,
+          "cache_write_5m_tokens": 508083,
+          "cache_write_1h_tokens": 0,
+          "assistant_messages": 77,
+          "turns": 5,
+          "ai_wall_ms": 301430,
+          "first_ts": "2026-10-17T16:09:52.202Z",
+          "last_ts": "2026-10-17T16:13:17.086Z",
+          "session_total_output_tokens": 1270
+        }
+      ],
+      "tools": [
+        {
+          "tool": "Agent",
+          "model": "claude-opus-5-5",
+          "calls": 5,
+          "result_chars": 5275,
+          "result_input_tokens": 2,
+          "result_cache_write_5m_tokens": 0,
+          "result_cache_write_1h_tokens": 4808,
+          "call_output_tokens": 13885
+        },
+        {
+          "tool": "Bash",
+          "model": "claude-opus-5-5",
+          "calls": 18,
+          "result_chars": 30865,
+          "result_input_tokens": 34,
+          "result_cache_write_5m_tokens": 0,
+          "result_cache_write_1h_tokens": 25479,
+          "call_output_tokens": 10170
+        },
+        {
+          "tool": "Bash",
+          "model": "claude-sonnet-5-5",
+          "calls": 39,
+          "result_chars": 156921,
+          "result_input_tokens": 72,
+          "result_cache_write_5m_tokens": 129006,
+          "result_cache_write_1h_tokens": 0,
+          "call_output_tokens": 512
+        },
+        {
+          "tool": "Edit",
+          "model": "claude-opus-5-5",
+          "calls": 2,
+          "result_chars": 259,
+          "result_input_tokens": 4,
+          "result_cache_write_5m_tokens": 0,
+          "result_cache_write_1h_tokens": 1058,
+          "call_output_tokens": 883
+        },
+        {
+          "tool": "Monitor",
+          "model": "claude-opus-5-5",
+          "calls": 1,
+          "result_chars": 1578,
+          "result_input_tokens": 2,
+          "result_cache_write_5m_tokens": 0,
+          "result_cache_write_1h_tokens": 731,
+          "call_output_tokens": 129
+        },
+        {
+          "tool": "Read",
+          "model": "claude-opus-5-5",
+          "calls": 1,
+          "result_chars": 108,
+          "result_input_tokens": 2,
+          "result_cache_write_5m_tokens": 0,
+          "result_cache_write_1h_tokens": 182,
+          "call_output_tokens": 104
+        },
+        {
+          "tool": "Read",
+          "model": "claude-sonnet-5-5",
+          "calls": 5,
+          "result_chars": 17210,
+          "result_input_tokens": 10,
+          "result_cache_write_5m_tokens": 84116,
+          "result_cache_write_1h_tokens": 0,
+          "call_output_tokens": 393
+        },
+        {
+          "tool": "SubagentHandback",
+          "model": "claude-sonnet-5-5",
+          "calls": 5,
+          "result_chars": 305,
+          "result_input_tokens": 0,
+          "result_cache_write_5m_tokens": 0,
+          "result_cache_write_1h_tokens": 0,
+          "call_output_tokens": 88
+        },
+        {
+          "tool": "Write",
+          "model": "claude-sonnet-5-5",
+          "calls": 1,
+          "result_chars": 198,
+          "result_input_tokens": 2,
+          "result_cache_write_5m_tokens": 3076,
+          "result_cache_write_1h_tokens": 0,
+          "call_output_tokens": 9
+        }
+      ],
+      "context_at_start_tokens": 47597,
+      "accepted_lines": 884,
+      "overridden_lines": 0
+    }
+  }
+}
