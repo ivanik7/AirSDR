@@ -7,6 +7,21 @@ import 'package:sdr_flutter/native/native_radio_api.dart';
 import 'package:sdr_flutter/native/sdr_core.dart';
 
 void main() {
+  test('SSTV build excludes the unused Linux mirrored ringbuffer', () {
+    final cmake = File('native/third_party/csdr_sstv.cmake').readAsStringSync();
+    expect(cmake, isNot(contains(r'${CSDR_SSTV_ROOT}/src/ringbuffer.cpp')));
+  });
+
+  test('Windows CI resolves the toolchain from the checkout root', () {
+    final workflow = File('.github/workflows/ci.yml').readAsStringSync();
+    expect(
+      workflow,
+      contains(
+        r'-DCMAKE_TOOLCHAIN_FILE="$GITHUB_WORKSPACE/native/cmake/llvm-mingw-x86_64.cmake"',
+      ),
+    );
+  });
+
   test('desktop library candidates resolve within each Flutter bundle', () {
     expect(sdrCoreLibraryCandidates('linux', '/opt/AirSDR/airsdr'), [
       '/opt/AirSDR/lib/libsdrcore.so',

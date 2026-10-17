@@ -34,7 +34,7 @@ Windows, cross from Linux or native, with llvm-mingw
 (https://github.com/mstorsjo/llvm-mingw/releases, the `ucrt` flavour):
 
     cmake -S native -B build-win -G Ninja \
-      -DCMAKE_TOOLCHAIN_FILE=native/cmake/llvm-mingw-x86_64.cmake \
+      -DCMAKE_TOOLCHAIN_FILE="$PWD/native/cmake/llvm-mingw-x86_64.cmake" \
       -DLLVM_MINGW_ROOT=/path/to/llvm-mingw-<ver>-ucrt-<host> \
       -DCMAKE_BUILD_TYPE=Release
     cmake --build build-win --target sdrcore

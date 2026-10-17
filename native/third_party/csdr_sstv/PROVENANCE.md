@@ -17,12 +17,12 @@ Files copied verbatim unless noted otherwise below.
 | `include/sink.hpp` | `include/sink.hpp` | GPL-3.0-or-later (Jakob Ketterl) | Verbatim. |
 | `include/reader.hpp` | `include/reader.hpp` | GPL-3.0-or-later (Jakob Ketterl) | Verbatim. |
 | `include/writer.hpp` | `include/writer.hpp` | GPL-3.0-or-later (Jakob Ketterl) | Verbatim. |
-| `include/ringbuffer.hpp` | `include/ringbuffer.hpp` | GPL-3.0-or-later (Jakob Ketterl) | Verbatim. Not actually used by the adapter (it uses a plain `MemoryReader`-style custom reader instead; `RingbufferReader`/`Ringbuffer` are vendored for completeness/future reuse and are compiled but otherwise unreferenced by `sstv.cpp` / `native/src/decoder/sstv.cpp`). |
+| `include/ringbuffer.hpp` | `include/ringbuffer.hpp` | GPL-3.0-or-later (Jakob Ketterl) | Verbatim. Not actually used by the adapter (it uses a plain `MemoryReader`-style custom reader instead; `RingbufferReader`/`Ringbuffer` are vendored for completeness/future reuse and are excluded from the build and unreferenced by `sstv.cpp` / `native/src/decoder/sstv.cpp`). |
 | `include/complex.hpp` | `include/complex.hpp` | GPL-3.0-or-later (Jakob Ketterl) | Verbatim. Not used by the `SstvDecoder<float>` instantiation (no complex IQ involved) but required transitively by `module.hpp`/`source.hpp`. |
 | `src/module.cpp` | `src/lib/module.cpp` | GPL-3.0-or-later (Jakob Ketterl) | Verbatim. Explicit template instantiation list unmodified; `Module<float, unsigned char>` is already instantiated upstream (line 109 `template class Module<float, unsigned char>;`), which is exactly what `SstvDecoder<float> : Module<float, unsigned char>` needs. |
 | `src/source.cpp` | `src/lib/source.cpp` | GPL-3.0-or-later (Jakob Ketterl) | Verbatim. Only `Source<unsigned char>` template instantiation is used (line 123); the `TcpSource<T>` template is also instantiated upstream but is dead code here (never constructed) and not used by the adapter. |
 | `src/sink.cpp` | `src/lib/sink.cpp` | GPL-3.0-or-later (Jakob Ketterl) | Verbatim. `Sink<float>` instantiation used (line 46). |
-| `src/ringbuffer.cpp` | `src/lib/ringbuffer.cpp` | GPL-3.0-or-later (Jakob Ketterl) | Verbatim. Compiled for completeness (see ringbuffer.hpp note); not exercised by the adapter's own `MemoryReader`-style byte buffer in `native/src/decoder/sstv.cpp`. |
+| `src/ringbuffer.cpp` | `src/lib/ringbuffer.cpp` | GPL-3.0-or-later (Jakob Ketterl) | Verbatim. Excluded from the build: its mirrored mapping requires Linux-only `mremap` (see ringbuffer.hpp note); not exercised by the adapter's own `MemoryReader`-style byte buffer in `native/src/decoder/sstv.cpp`. |
 | `sdr_flutter.patch` | n/a | n/a | Unified diff of `sstv.hpp`/`sstv.cpp` against the pristine upstream pin. |
 
 No minimal GPL-3.0-or-later shim .cpp was required: `module.cpp`, `source.cpp`

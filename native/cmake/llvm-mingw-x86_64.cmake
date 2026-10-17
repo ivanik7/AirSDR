@@ -11,7 +11,7 @@
 #
 # Usage (cross from Linux, or natively on Windows with the llvm-mingw zip):
 #   cmake -S native -B build-win -G Ninja \
-#     -DCMAKE_TOOLCHAIN_FILE=native/cmake/llvm-mingw-x86_64.cmake \
+#     -DCMAKE_TOOLCHAIN_FILE="$PWD/native/cmake/llvm-mingw-x86_64.cmake" \
 #     -DLLVM_MINGW_ROOT=/path/to/llvm-mingw-<ver>-ucrt-<host>
 # LLVM_MINGW_ROOT may also come from the environment. Without it the
 # compilers must be on PATH.

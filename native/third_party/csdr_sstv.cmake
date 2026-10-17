@@ -14,7 +14,6 @@ add_library(sdrcore_csdr_sstv STATIC
     ${CSDR_SSTV_ROOT}/src/module.cpp
     ${CSDR_SSTV_ROOT}/src/source.cpp
     ${CSDR_SSTV_ROOT}/src/sink.cpp
-    ${CSDR_SSTV_ROOT}/src/ringbuffer.cpp
 )
 target_include_directories(sdrcore_csdr_sstv PUBLIC ${CSDR_SSTV_ROOT}/include)
 target_link_libraries(sdrcore_csdr_sstv PUBLIC sdrcore_fftw3f)
@@ -25,12 +24,7 @@ target_compile_features(sdrcore_csdr_sstv PUBLIC cxx_std_17)
 # bounded by patch 4); do not apply this app's warning policy to it.
 target_compile_options(sdrcore_csdr_sstv PRIVATE -w)
 
-# Bionic defines PAGE_SIZE as a macro on 32-bit ABIs, which breaks the local
-# `PAGE_SIZE` constant in ringbuffer.cpp; compat/bionic_no_page_size.h drops
-# it without patching the vendored source.
-if(ANDROID)
-    target_compile_options(sdrcore_csdr_sstv PRIVATE
-        -include ${CMAKE_CURRENT_LIST_DIR}/compat/bionic_no_page_size.h)
-endif()
+# The adapter supplies its own reader/writer buffers. Upstream ringbuffer.cpp
+# is unused and requires Linux-only mremap; keep it vendored but unbuilt.
 find_package(Threads REQUIRED)
 target_link_libraries(sdrcore_csdr_sstv PUBLIC Threads::Threads)

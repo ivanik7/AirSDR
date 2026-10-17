@@ -392,7 +392,7 @@ jobs:
       - name: Build sdrcore.dll
         run: |
           cmake -S native -B build/native-windows -G Ninja \
-            -DCMAKE_TOOLCHAIN_FILE=native/cmake/llvm-mingw-x86_64.cmake \
+            -DCMAKE_TOOLCHAIN_FILE="$GITHUB_WORKSPACE/native/cmake/llvm-mingw-x86_64.cmake" \
             -DCMAKE_BUILD_TYPE=Release
           cmake --build build/native-windows --target sdrcore
           dll="$(find build/native-windows -name sdrcore.dll -print -quit)"
