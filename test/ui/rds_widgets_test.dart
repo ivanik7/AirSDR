@@ -64,7 +64,7 @@ void main() {
           ),
         ),
       );
-      expect(find.text('RDS · нет сигнала'), findsOneWidget);
+      expect(find.text('RDS · no signal'), findsOneWidget);
       final hz = radio.tunedFrequency.round();
       backend.events.add(
         DecoderEvent(

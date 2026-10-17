@@ -152,7 +152,7 @@ void main() {
       r.setStepHz(100000);
       expectOnGrid(radio, 100000, 118200000);
       expect(radio.centers, [118200000], reason: 'one LO retune');
-      // cycleStep (the ШАГ button) does the same.
+      // cycleStep (the STEP button) does the same.
       r.setStepHz(25000);
       r.tune(118175000);
       r.cycleStep(); // 25 kHz → 100 kHz
@@ -256,7 +256,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('legacyStep-100000')));
     await tester.pumpAndSettle();
-    expect(find.text('ШАГ 100 кГц'), findsOneWidget);
+    expect(find.text('STEP 100 kHz'), findsOneWidget);
     expectOnGrid(radio, 100000, 118200000);
     expect(radio.centers.last, 118200000);
     expect(shownFrequency(tester), '118.200');
@@ -289,7 +289,7 @@ void main() {
     );
     await tester.pump();
     await tester.pump();
-    expect(find.text('ШАГ 100 кГц'), findsOneWidget);
+    expect(find.text('STEP 100 kHz'), findsOneWidget);
     expectOnGrid(radio2, 100000, 145500000);
     await tester.pumpWidget(const SizedBox());
     radio.dispose();
@@ -331,7 +331,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('legacyStep-6250')));
       await tester.pumpAndSettle();
-      expect(find.text('ШАГ 6.25 кГц'), findsOneWidget);
+      expect(find.text('STEP 6.25 kHz'), findsOneWidget);
       expectOnGrid(radio, 6250, 118212500);
       // 118.20625 typed on the 6.25 kHz grid stays exact.
       for (final k in ['1', '1', '8', '.', '2', '0', '6', '2', '5']) {

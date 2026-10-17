@@ -1,132 +1,132 @@
-# ADR — N0 C ABI и владение нативным движком
+# ADR — N0 C ABI and native engine ownership
 
-Статус: принят для N0; раздел «Следующие этапы» — проектный контракт, **не реализованный API**.
-Исторический документ N0: текущая частичная ABI 2 и ограничения N1 — `docs/native-n1-status.md`
-и `native/include/sdrcore.h`; описанная ниже версия 1 относится только к N0.
+Status: accepted for N0; the "Next stages" section is a design contract, **not an implemented API**.
+Historical N0 document: for the current partial ABI 2 and the N1 limits see `docs/native-n1-status.md`
+and `native/include/sdrcore.h`; the version 1 described below applies to N0 only.
 For the integrated N1 ABI 2 contract, use `docs/native-n1-adr.md` and the public header;
 the N0 version-1 table below is retained as historical context.
 For the N2 ABI 3 radio contract, use `docs/native-n2-adr.md` and
 `native/include/sdrcore_v3.h`. Since the N2 integration `sdr_version()` returns 3
 and exports the `sdr_v3_*` symbols; ABI 2 symbols are unchanged.
-Основание: `~/prj/docs/40-native-core-plan.md` (§ «Целевая схема», N0–N5),
-`native/include/sdrcore.h`. При конфликте с прежним Dart-only описанием в
-`~/prj/docs/10-architecture.md` приоритет у `AGENTS.md` и плана 40.
+Basis: `~/prj/docs/40-native-core-plan.md` (section "Target scheme", N0–N5),
+`native/include/sdrcore.h`. On conflict with the earlier Dart-only description in
+`~/prj/docs/10-architecture.md`, `AGENTS.md` and plan 40 take precedence.
 
-## Решение и граница N0
+## Decision and the N0 boundary
 
-`native/` — общий C++17/CMake для Linux host и Android (`externalNativeBuild`,
-`libsdrcore.so`). Единственная публичная бинарная граница — C ABI из
-`native/include/sdrcore.h`; C++ классы и исключения её не пересекают.
-N0 содержит **только инертный handle**: создание не открывает USB, не запускает
-DSP, звук или поток приёма. Ни FFI-обёртка, ни нативный каркас не являются
-заменой рабочего Dart-приёмника. UI и данные пользователя остаются на прежнем
-пути до паритета на телефоне. `RadioController` (`lib/ui/radio_controller.dart`)
-остаётся UI-контрактом при будущем переключении реализации.
+`native/` is a shared C++17/CMake tree for the Linux host and Android (`externalNativeBuild`,
+`libsdrcore.so`). The only public binary boundary is the C ABI in
+`native/include/sdrcore.h`; C++ classes and exceptions do not cross it.
+N0 contains **only an inert handle**: creating it does not open USB and does not start
+DSP, audio, or a receive stream. Neither the FFI wrapper nor the native skeleton is a
+replacement for the working Dart receiver. The UI and user data stay on the previous
+path until parity on the phone. `RadioController` (`lib/ui/radio_controller.dart`)
+remains the UI contract when the implementation is switched in the future.
 
-Действующие экспортируемые функции (C linkage, `SDRCORE_API`):
+Currently exported functions (C linkage, `SDRCORE_API`):
 
-| Сигнатура | Контракт N0 |
+| Signature | N0 contract |
 |---|---|
-| `uint32_t sdr_version(void)` | Возвращает `1` — ревизию C ABI, а не версию приложения/SDR++ и не признак готового приёма. Не требует handle. |
-| `SdrHandle* sdr_create(void)` | Создаёт новый непрозрачный инертный объект; `NULL` только при ошибке выделения памяти. Каждый успешный вызов передаёт вызывающему эксклюзивное владение отдельным handle. |
-| `void sdr_destroy(SdrHandle* handle)` | Освобождает один ранее созданный handle; `NULL` допустим и ничего не делает. Для ненулевого указателя вызывается ровно один раз. |
+| `uint32_t sdr_version(void)` | Returns `1`, the C ABI revision, not the app/SDR++ version and not an indication that reception is ready. Needs no handle. |
+| `SdrHandle* sdr_create(void)` | Creates a new opaque inert object; `NULL` only on allocation failure. Each successful call gives the caller exclusive ownership of a separate handle. |
+| `void sdr_destroy(SdrHandle* handle)` | Releases one previously created handle; `NULL` is allowed and does nothing. For a non-null pointer it is called exactly once. |
 
-N0 не возвращает диагностическую строку или код ошибки: отсутствие памяти
-отличается по `NULL`; `sdr_version` не может сообщить ошибку; `sdr_destroy`
-не возвращает результат. Передача чужого, уже освобождённого указателя или
-двойное освобождение — нарушение контракта (не механизм идемпотентного stop).
-После `destroy` запрещены все обращения к handle. Повторное создание допустимо.
-Dart FFI обязан проверять версию **до** использования символов/handle, проверять
-`NULL` после create и освобождать каждый успешный handle один раз (явный
-`dispose` с защитой от повторного вызова); не полагаться исключительно на GC.
-В N0 нет параллельных вызовов с одним handle: его создание и освобождение
-сериализует владелец. Нет обещаний о потокобезопасности будущих операций.
+N0 returns no diagnostic string or error code: out-of-memory is signalled by `NULL`;
+`sdr_version` cannot report an error; `sdr_destroy` returns no result. Passing a
+foreign or already freed pointer, or a double free, violates the contract (it is not
+an idempotent stop mechanism). After `destroy` all access to the handle is forbidden.
+Creating again is allowed.
+Dart FFI must check the version **before** using symbols/the handle, check
+`NULL` after create, and release each successful handle once (an explicit
+`dispose` guarded against repeated calls); do not rely solely on the GC.
+In N0 there are no concurrent calls on one handle: its creation and release are
+serialized by the owner. There are no thread-safety promises for future operations.
 
-Версия — целое число ревизии контракта: `1` сейчас. При расширении сначала
-обновляются этот ADR и заголовок, затем реализация и биндинги/тесты.
-Существующие символы и их значения/семантика не меняются молча; при
-несовместимости повышается ревизия и биндинг отказывает до создания handle,
-а не пробует работать с неизвестной ABI. Новые возможности не выводятся из
-номера версии без проверки соответствующего контракта и наличия символов;
-N0-клиент использует только три существующих символа. Номер версии не
-означает поддержку команд, событий или устройств.
+The version is an integer contract revision: `1` now. When extending, this ADR and
+the header are updated first, then the implementation and bindings/tests.
+Existing symbols and their values/semantics do not change silently; on
+incompatibility the revision is raised and the binding refuses before creating a handle,
+instead of trying to work with an unknown ABI. New capabilities are not inferred from
+the version number without checking the corresponding contract and the presence of symbols;
+the N0 client uses only the three existing symbols. The version number does not
+imply support for commands, events, or devices.
 
-## Владение процессом и потоками — целевая модель (не реализована в N0)
+## Process and thread ownership — target model (not implemented in N0)
 
-Движок должен быть объектом **процесса приложения**, не `FlutterActivity` и не
-Dart-изолята. Android `ReceptionService` отвечает за foreground-режим,
-уведомление и wakelock; process-scoped владелец (например, компонент
-`Application`, доступный Service) хранит единственный нативный handle и
-сериализует команды. Activity/Flutter UI лишь подключается и отключается,
-не создавая второй приёмник при пересоздании экрана. Service управляет
-продолжением/остановкой приёма в фоне, но существующую реализацию
-`ReceptionService` с Dart engine не заменять в N0. Уход UI не равен stop;
-`onDestroy` Activity не освобождает работающий движок. Смерть Android-процесса
-закрывает native ресурсы; автоматического возобновления без разрешений и
-явной проверки foreground-ограничений не предусматривать. Не запускать
-приём до успешного foreground-start; отказ запуска и запрос Stop обязаны
-приводить к остановке, а не к невидимой работе.
+The engine must be an object of the **application process**, not of `FlutterActivity` nor
+of a Dart isolate. The Android `ReceptionService` is responsible for foreground mode,
+the notification, and the wakelock; a process-scoped owner (for example, a component of
+`Application` accessible to the Service) holds the single native handle and
+serializes commands. The Activity/Flutter UI only attaches and detaches,
+without creating a second receiver when the screen is recreated. The Service controls
+continuing/stopping reception in the background, but the existing `ReceptionService`
+implementation with the Dart engine is not to be replaced in N0. Leaving the UI is not a stop;
+the Activity's `onDestroy` does not release a running engine. Death of the Android process
+closes native resources; do not plan automatic resumption without permissions and
+an explicit check of foreground restrictions. Do not start
+reception before a successful foreground start; a start failure and a Stop request must
+lead to a stop, not to invisible work.
 
-Один активный аппаратный источник, один VFO и один аудиопоток. Владение USB fd
-и его дублирование/закрытие между Kotlin и C++ нужно зафиксировать отдельно
-перед N1: не сохранять fd, жизненный цикл которого принадлежит Activity;
-при потере USB разрешения/detach останавливать поток и возвращать ошибку.
-Нативный движок владеет USB-reader, DSP и аудиопотоками. Их порядок завершения:
-отменить входящие операции → остановить чтение/декодеры/DSP и аудио → дождаться
-потоков → освободить их буферы и fd → освободить handle. `destroy` работающего
-движка после N0 должен либо синхронно завершить все потоки до возврата,
-либо требовать отдельного подтверждённого stop; выбор закрепить при
-расширении ABI, прежде чем реализовывать. Не допускать callback после
-освобождения handle или переиспользования его адреса.
+One active hardware source, one VFO, and one audio stream. Ownership of the USB fd
+and its duplication/closing between Kotlin and C++ must be fixed separately
+before N1: do not keep an fd whose lifecycle belongs to the Activity;
+on loss of USB permission/detach, stop the stream and return an error.
+The native engine owns the USB reader, DSP, and audio threads. Their shutdown order:
+cancel pending operations → stop reading/decoders/DSP and audio → wait for the
+threads → release their buffers and the fd → release the handle. `destroy` of a running
+engine after N0 must either synchronously finish all threads before returning,
+or require a separate confirmed stop; fix the choice when
+extending the ABI, before implementing. Do not allow a callback after
+the handle is released or its address is reused.
 
-## Следующие этапы: проектный контракт команд и событий
+## Next stages: design contract for commands and events
 
-Ниже граница для N1–N3, **не набор экспортируемых сегодня функций**.
-Не добавлять в Dart вызовов, которые отсутствуют в `sdrcore.h`.
+Below is the boundary for N1–N3, **not a set of functions exported today**.
+Do not add calls to Dart that are absent from `sdrcore.h`.
 
-- Команды управления идут UI → `RadioController` → FFI → нативный владелец:
-  выбор источника, start/stop, перестройка частоты, режим/полоса, усиление,
-  шумоподавитель и громкость. Требуются явные единицы (Hz, dB), типы фиксированной
-  ширины, размер/ревизия структур и проверка диапазонов; один сериализованный
-  поток команд на handle. Результат должен отличать `OK`, неверный аргумент,
-  неверное состояние, несовместимую ABI, ошибку USB/разрешений/устройства,
-  внутреннюю ошибку и неподдерживаемую функцию. Ошибка команды не выдаётся
-  за успешную смену состояния в UI. События подтверждают асинхронные переходы
-  start/stop и ошибки потока. Точные C-сигнатуры, коды и формат параметров
-  фиксируются новым ADR/версией заголовка **до** параллельной реализации.
-- Нативные события → UI: состояние, статистика/drops, декодированные
-  сообщения/изображения и децимированные до ширины UI строки FFT. Для доставки
-  допускается `Dart_PostCObject` (`dart_api_dl`) на актуальный `NativePort`
-  или ограниченный кольцевой буфер с явным чтением. Нельзя хранить Dart port
-  как бессрочную зависимость: attach/detach при пересоздании isolate,
-  закрытии UI и ошибке постинга, с безопасным продолжением приёма без UI.
-  События несут тип, длину, временную метку/последовательность и поколение
-  handle, чтобы отбрасывать устаревшие события. Очередь ограничена;
-  FFT/статистика могут терять старые кадры при перегрузке, ошибки и финальное
-  состояние не должны тихо исчезать. Политику переполнения и формат
-  сериализации фиксировать до ввода конкретного event API.
-- Буферы IQ и аудиосэмплов **никогда не передавать через Dart** (в том числе
-  в сообщениях isolate/`NativePort` и в callback FFI). Их память принадлежит
-  нативным ступеням графа: производитель передаёт владение слотом следующему
-  потребителю, возвращение в пул — только после окончания обработки; остановка
-  дожидается всех занятых слотов. Для UI допустимы только небольшие
-  самодостаточные события и подготовленные FFT-строки: при передаче копией
-  получатель владеет своей копией, при чтении из кольца память принадлежит
-  native до подтверждения чтения. Ни одна сторона не удерживает указатель на
-  чужой временный буфер после завершения вызова. Формат кадра/изображения и
-  освобождение памяти должны быть задокументированы в конкретном ABI.
-- Декодеры (после N0) получают audio/baseband/raw IQ **внутри native графа**;
-  наружу отдают только результаты. Широкополосные режимы с захватом всего
-  тюнера взаимоисключают обычный приём, а не создают второй канал. Источники
-  и лицензии — план 40 и `~/prj/docs/30-openwebrx-decoders-plan.md`.
+- Control commands go UI → `RadioController` → FFI → native owner:
+  source selection, start/stop, retuning, mode/bandwidth, gain,
+  squelch, and volume. They require explicit units (Hz, dB), fixed-width types,
+  struct size/revision, and range checks; one serialized
+  command stream per handle. The result must distinguish `OK`, invalid argument,
+  invalid state, incompatible ABI, USB/permission/device error,
+  internal error, and unsupported function. A command error is not presented
+  as a successful state change in the UI. Events confirm asynchronous start/stop
+  transitions and stream errors. Exact C signatures, codes, and the parameter format
+  are fixed by a new ADR/header version **before** parallel implementation.
+- Native events → UI: state, statistics/drops, decoded
+  messages/images, and FFT rows decimated to the UI width. For delivery,
+  `Dart_PostCObject` (`dart_api_dl`) to a current `NativePort` is allowed,
+  or a bounded ring buffer with explicit reads. A Dart port must not be kept
+  as an indefinite dependency: attach/detach on isolate recreation,
+  UI close, and post failure, with reception safely continuing without the UI.
+  Events carry a type, length, timestamp/sequence, and handle
+  generation, to discard stale events. The queue is bounded;
+  FFT/statistics may drop old frames under overload, while errors and the final
+  state must not vanish silently. The overflow policy and serialization
+  format are to be fixed before a concrete event API is introduced.
+- IQ and audio sample buffers are **never passed through Dart** (including
+  in isolate/`NativePort` messages and in FFI callbacks). Their memory belongs
+  to the native graph stages: the producer hands ownership of a slot to the next
+  consumer, and it returns to the pool only after processing finishes; stopping
+  waits for all busy slots. For the UI only small
+  self-contained events and prepared FFT rows are allowed: when passed by copy,
+  the receiver owns its copy; when read from a ring, the memory belongs to
+  native until the read is acknowledged. No side keeps a pointer to
+  another side's temporary buffer after the call ends. The frame/image format and
+  memory release must be documented in the concrete ABI.
+- Decoders (after N0) receive audio/baseband/raw IQ **inside the native graph**;
+  they hand out only results. Wideband modes that capture the whole
+  tuner are mutually exclusive with normal reception, rather than creating a second channel. Sources
+  and licenses: plan 40 and `~/prj/docs/30-openwebrx-decoders-plan.md`.
 
-## Проверка границы
+## Boundary verification
 
-Для N0: C test `native/tests/abi_test.c` проверяет ревизию, разные handle,
-`destroy(NULL)` и повторное создание; host CMake/CTest и включение .so в APK
-проверяются отдельно. FFI-вызов из Dart — отдельная downstream-задача.
-Ни тест N0, ни сборка APK не подтверждают USB, DSP, звук, фон на устройстве
-или слышимость: это отдельные гейты N1/N2 и аппаратная QA.
+For N0: the C test `native/tests/abi_test.c` checks the revision, distinct handles,
+`destroy(NULL)`, and re-creation; host CMake/CTest and inclusion of the .so in the APK
+are verified separately. An FFI call from Dart is a separate downstream task.
+Neither the N0 test nor the APK build confirms USB, DSP, audio, background operation on the device,
+or audibility: those are separate N1/N2 gates and hardware QA.
 
 ## N5 addendum: RTL-SDR tuner gain-list query (`sdr_v3_rtl_tuner_gains`)
 

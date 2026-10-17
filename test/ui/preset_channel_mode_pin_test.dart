@@ -26,7 +26,7 @@ void main() {
   ) async {
     await tester.longPress(find.byKey(ValueKey('channel-$channelId')));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Сохранить как пресет'));
+    await tester.tap(find.text('Save as preset'));
     await tester.pumpAndSettle();
     await tester.enterText(find.byKey(const ValueKey('presetName')), name);
     await tester.tap(find.byKey(const ValueKey('presetNameSave')));

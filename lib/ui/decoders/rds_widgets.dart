@@ -25,12 +25,12 @@ class RdsDetailsPanel extends StatelessWidget {
       'PTY': station.text('prog_type'),
       'TP': fields['tp'],
       'TA': fields['ta'],
-      'Музыка': fields['is_music'],
-      'DI / стерео': di is Map ? di['stereo'] ?? di : di,
-      'AF (кГц)': af,
-      'Страна': fields['country'],
+      'Music': fields['is_music'],
+      'DI / stereo': di is Map ? di['stereo'] ?? di : di,
+      'AF (kHz)': af,
+      'Country': fields['country'],
       'CT': fields['clock_time'],
-      'Позывной': fields['callsign'],
+      'Callsign': fields['callsign'],
       'RT+': fields['radiotext_plus'],
       'BLER': station.bler,
     };
@@ -40,7 +40,7 @@ class RdsDetailsPanel extends StatelessWidget {
       children: [
         const SizedBox(height: 8),
         Text(
-          'RDS · ${station.synced ? 'синхронизация' : 'нет сигнала'}',
+          'RDS · ${station.synced ? 'synced' : 'no signal'}',
           key: const ValueKey('rdsSync'),
           style: plex(size: 14),
         ),
@@ -56,7 +56,7 @@ class RdsDetailsPanel extends StatelessWidget {
           SwitchListTile(
             key: const ValueKey('rdsRbds'),
             contentPadding: EdgeInsets.zero,
-            title: const Text('RBDS (США)'),
+            title: const Text('RBDS (US)'),
             value:
                 session.settingsFor(decoderIdForMode(DemodMode.wfm))['rbds'] ==
                 true,
@@ -68,7 +68,7 @@ class RdsDetailsPanel extends StatelessWidget {
           )
         else
           Text(
-            'RBDS недоступен в текущем нативном приёмнике',
+            'RBDS is unavailable in the current native receiver',
             style: plex(size: 11, color: LegacyColors.muted),
           ),
       ],

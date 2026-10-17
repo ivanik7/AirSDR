@@ -55,7 +55,7 @@ class _AdsbPanelState extends State<AdsbPanel> {
     final result = await showDialog<ReceiverLocation?>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Координаты приёмника (необязательно)'),
+        title: const Text('Receiver coordinates (optional)'),
         content: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -68,7 +68,7 @@ class _AdsbPanelState extends State<AdsbPanel> {
                   decimal: true,
                   signed: true,
                 ),
-                decoration: const InputDecoration(labelText: 'Широта (−90…90)'),
+                decoration: const InputDecoration(labelText: 'Latitude (−90…90)'),
               ),
               TextFormField(
                 key: const ValueKey('adsbLongitude'),
@@ -79,7 +79,7 @@ class _AdsbPanelState extends State<AdsbPanel> {
                   signed: true,
                 ),
                 decoration: const InputDecoration(
-                  labelText: 'Долгота (−180…180)',
+                  labelText: 'Longitude (−180…180)',
                 ),
               ),
             ],
@@ -88,21 +88,21 @@ class _AdsbPanelState extends State<AdsbPanel> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Отмена'),
+            child: const Text('Cancel'),
           ),
           TextButton(
             onPressed: () => Navigator.pop(
               context,
               const ReceiverLocation(double.nan, double.nan),
             ),
-            child: const Text('Удалить'),
+            child: const Text('Delete'),
           ),
           TextButton(
             onPressed: () {
               final value = ReceiverLocation.parse(latitude, longitude);
               if (value != null) Navigator.pop(context, value);
             },
-            child: const Text('Сохранить'),
+            child: const Text('Save'),
           ),
         ],
       ),
@@ -160,19 +160,19 @@ class _AdsbPanelState extends State<AdsbPanel> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('ADS-B · самолёты', style: plex(size: 14)),
+              Text('ADS-B · aircraft', style: plex(size: 14)),
               const SizedBox(height: 5),
               Text(
                 !available
-                    ? 'Недоступен в текущей нативной сборке'
+                    ? 'Unavailable in the current native build'
                     : !ready
                     ? 'not ready: set sample rate 2.4 MS/s'
                     : !radio.running
-                    ? 'Приём остановлен'
+                    ? 'Reception stopped'
                     : session.failureReason ??
                           (active
-                              ? 'Декодирование активно'
-                              : 'Декодер не запущен'),
+                              ? 'Decoding active'
+                              : 'Decoder not running'),
                 key: const ValueKey('adsbStatus'),
                 style: plex(
                   size: 12,
@@ -181,17 +181,17 @@ class _AdsbPanelState extends State<AdsbPanel> {
               ),
               if (!available)
                 Text(
-                  'Декодер недоступен в текущей нативной сборке',
+                  'Decoder unavailable in the current native build',
                   key: const ValueKey('decoderUnavailable-adsb'),
                   style: plex(size: 11, color: LegacyColors.danger),
                 ),
               Text(
-                'Сообщений/с: ${snapshot?.messageRate.toStringAsFixed(1) ?? '—'} · CRC исправлено: ${snapshot?.crcFixed ?? '—'}',
+                'Messages/s: ${snapshot?.messageRate.toStringAsFixed(1) ?? '—'} · CRC fixed: ${snapshot?.crcFixed ?? '—'}',
                 key: const ValueKey('adsbMessageRate'),
                 style: plex(size: 11, color: LegacyColors.muted),
               ),
               Text(
-                'IQ: ${session.inputRateHz} Гц · Потеряно событий: ${session.droppedEvents}',
+                'IQ: ${session.inputRateHz} Hz · Dropped events: ${session.droppedEvents}',
                 style: plex(size: 11, color: LegacyColors.muted),
               ),
               Wrap(
@@ -213,20 +213,20 @@ class _AdsbPanelState extends State<AdsbPanel> {
                       key: const ValueKey('adsbRecenter'),
                       onPressed: () =>
                           widget.receiver.tune(radio.tunedFrequency),
-                      child: const Text('Центрировать VFO'),
+                      child: const Text('Center VFO'),
                     ),
                   OutlinedButton(
                     key: const ValueKey('adsbQuickTune'),
                     onPressed: canTune
                         ? () => widget.receiver.tune(1090000000)
                         : null,
-                    child: const Text('1090 МГц'),
+                    child: const Text('1090 MHz'),
                   ),
                 ],
               ),
               if (!ready && !canSetRate)
                 Text(
-                  'Выберите совместимый источник или частоту выборки в настройках приёмника.',
+                  'Choose a compatible source or sample rate in the receiver settings.',
                   style: plex(size: 11, color: LegacyColors.muted),
                 ),
             ],
@@ -237,21 +237,21 @@ class _AdsbPanelState extends State<AdsbPanel> {
           crossAxisAlignment: WrapCrossAlignment.center,
           spacing: 8,
           children: [
-            Text('Самолёты · ${aircraft.length}', style: plex(size: 14)),
+            Text('Aircraft · ${aircraft.length}', style: plex(size: 14)),
             TextButton(
               key: const ValueKey('adsbLocation'),
               onPressed: _editLocation,
               child: Text(
                 _location == null
-                    ? 'Местоположение (необязательно)'
-                    : 'Местоположение: изменить',
+                    ? 'Location (optional)'
+                    : 'Location: edit',
               ),
             ),
             if (_location != null)
               TextButton(
                 key: const ValueKey('adsbSort'),
                 onPressed: () => setState(() => _byDistance = !_byDistance),
-                child: Text(_byDistance ? 'По расстоянию' : 'По давности'),
+                child: Text(_byDistance ? 'By distance' : 'By recency'),
               ),
           ],
         ),
@@ -260,7 +260,7 @@ class _AdsbPanelState extends State<AdsbPanel> {
           child: aircraft.isEmpty
               ? legacyCard(
                   child: Text(
-                    'Список самолётов пуст',
+                    'Aircraft list is empty',
                     style: plex(size: 12, color: LegacyColors.muted),
                   ),
                 )
@@ -294,7 +294,7 @@ class _AdsbPanelState extends State<AdsbPanel> {
                                 overflow: TextOverflow.ellipsis,
                               ),
                               subtitle: Text(
-                                '$ageс назад${distance == null ? '' : ' · ${distance.toStringAsFixed(1)} км'}',
+                                '${age}s ago${distance == null ? '' : ' · ${distance.toStringAsFixed(1)} km'}',
                                 style: plex(size: 11),
                               ),
                               children: [
@@ -304,22 +304,22 @@ class _AdsbPanelState extends State<AdsbPanel> {
                                     [
                                       'ICAO: ${item.icao}',
                                       if (item.callsign != null)
-                                        'Позывной: ${item.callsign}',
+                                        'Callsign: ${item.callsign}',
                                       if (item.squawk != null)
-                                        'Код: ${item.squawk}',
+                                        'Squawk: ${item.squawk}',
                                       if (item.altitudeFt != null)
-                                        'Высота: ${item.altitudeFt} ft',
+                                        'Altitude: ${item.altitudeFt} ft',
                                       if (item.groundSpeedKt != null)
-                                        'Скорость: ${item.groundSpeedKt} kt',
+                                        'Speed: ${item.groundSpeedKt} kt',
                                       if (item.trackDeg != null)
-                                        'Курс: ${item.trackDeg}°',
+                                        'Heading: ${item.trackDeg}°',
                                       if (item.verticalRateFpm != null)
-                                        'Вертикальная скорость: ${item.verticalRateFpm} ft/min',
+                                        'Vertical rate: ${item.verticalRateFpm} ft/min',
                                       if (item.latitude != null)
-                                        'Координаты: ${item.latitude}, ${item.longitude}',
+                                        'Position: ${item.latitude}, ${item.longitude}',
                                       if (distance != null)
-                                        'Расстояние: ${distance.toStringAsFixed(1)} км',
-                                      'Сообщений: ${item.messages}',
+                                        'Distance: ${distance.toStringAsFixed(1)} km',
+                                      'Messages: ${item.messages}',
                                       if (item.rssi != null)
                                         'RSSI: ${item.rssi} dBFS',
                                     ].join('\n'),

@@ -67,13 +67,13 @@ Future<_Env> _pump(
   // Presets the channel tests name tiles after (explicit, not defaults).
   favorites.add(
     frequencyHz: 145500000,
-    name: 'Симплекс 2м',
+    name: 'Simplex 2m',
     mode: DemodMode.nfm,
     category: 'VHF',
   );
   favorites.add(
     frequencyHz: 433500000,
-    name: 'PMR вызов',
+    name: 'PMR call',
     mode: DemodMode.nfm,
     category: 'UHF',
   );
@@ -107,9 +107,9 @@ Future<void> _showChannels(WidgetTester tester) async {
 }
 
 void _seed3(ChannelsRepository c) {
-  c.add(frequencyHz: 101200000, mode: DemodMode.wfm, name: 'FM радио');
-  c.add(frequencyHz: 118100000, mode: DemodMode.am, name: 'Вышка');
-  c.add(frequencyHz: 145500000, mode: DemodMode.nfm, name: '2м');
+  c.add(frequencyHz: 101200000, mode: DemodMode.wfm, name: 'FM radio');
+  c.add(frequencyHz: 118100000, mode: DemodMode.am, name: 'Tower');
+  c.add(frequencyHz: 145500000, mode: DemodMode.nfm, name: '2m');
 }
 
 void main() {
@@ -123,8 +123,8 @@ void main() {
         tester,
         radioOverride: radio,
         seed: (c) {
-          c.add(frequencyHz: 145500000, mode: DemodMode.nfm, name: 'Выбранный');
-          c.add(frequencyHz: 433500000, mode: DemodMode.nfm, name: 'Другой');
+          c.add(frequencyHz: 145500000, mode: DemodMode.nfm, name: 'Selected');
+          c.add(frequencyHz: 433500000, mode: DemodMode.nfm, name: 'Other');
           c.activate(c.channels.first.id);
         },
       );
@@ -143,7 +143,7 @@ void main() {
         () => Future<void>.delayed(const Duration(milliseconds: 220)),
       );
       await tester.pump(const Duration(milliseconds: 25));
-      expect(find.text('Приём: PMR вызов'), findsOneWidget);
+      expect(find.text('Receiving: PMR call'), findsOneWidget);
       expect(
         tester.widget<Text>(find.byKey(const ValueKey('legacyFrequency'))).data,
         '145.500',
@@ -170,8 +170,8 @@ void main() {
       final env = await _pump(
         tester,
         seed: (c) {
-          c.add(frequencyHz: 145500000, mode: DemodMode.nfm, name: 'Выбранный');
-          c.add(frequencyHz: 433500000, mode: DemodMode.nfm, name: 'Другой');
+          c.add(frequencyHz: 145500000, mode: DemodMode.nfm, name: 'Selected');
+          c.add(frequencyHz: 433500000, mode: DemodMode.nfm, name: 'Other');
           c.activate(c.channels.first.id);
         },
       );
@@ -187,7 +187,7 @@ void main() {
       expect(tester.widget<TextButton>(toggle).onPressed, isNotNull);
       await tester.tap(toggle);
       await tester.pump();
-      expect(find.text('Стоп скан'), findsOneWidget);
+      expect(find.text('Stop scan'), findsOneWidget);
       final mute = find.byKey(const ValueKey('legacyMute'));
       expect(
         tester
@@ -217,7 +217,7 @@ void main() {
       expect(tester.takeException(), isNull);
       await tester.tap(toggle);
       await tester.pump();
-      expect(find.text('Скан'), findsOneWidget);
+      expect(find.text('Scan'), findsOneWidget);
       await _dispose(tester, env);
     },
   );
@@ -275,9 +275,9 @@ void main() {
     expect(env.channels.length, 1);
     expect(env.channels.active!.frequencyHz, env.radio.tunedFrequency.round());
     await _showChannels(tester);
-    expect(find.text('КАНАЛЫ · 1'), findsOneWidget);
-    expect(find.textContaining('активно'), findsNothing);
-    expect(find.textContaining('позже'), findsNothing);
+    expect(find.text('CHANNELS · 1'), findsOneWidget);
+    expect(find.textContaining('active'), findsNothing);
+    expect(find.textContaining('later'), findsNothing);
     await _dispose(tester, env);
   });
 
@@ -316,20 +316,20 @@ void main() {
     await _dispose(tester, env);
   });
 
-  testWidgets('+ канал adds the current frequency and makes it active', (
+  testWidgets('+ channel adds the current frequency and makes it active', (
     tester,
   ) async {
     final env = await _pump(tester, seed: _seed3);
     await _showChannels(tester);
-    expect(find.text('КАНАЛЫ · 3'), findsOneWidget);
+    expect(find.text('CHANNELS · 3'), findsOneWidget);
     env.radio.setTuning(centerFrequency: 433500000, vfoOffset: 0);
     await tester.pump();
     await tester.tap(find.byKey(const ValueKey('channelAdd')));
     await tester.pump();
     expect(env.channels.length, 4);
     expect(env.channels.active!.frequencyHz, 433500000);
-    expect(env.channels.active!.name, 'PMR вызов');
-    expect(find.text('КАНАЛЫ · 4'), findsOneWidget);
+    expect(env.channels.active!.name, 'PMR call');
+    expect(find.text('CHANNELS · 4'), findsOneWidget);
     await _dispose(tester, env);
   });
 
@@ -345,9 +345,9 @@ void main() {
     await tester.pump();
     await tester.longPress(find.byKey(ValueKey('channel-${air.id}')));
     await tester.pumpAndSettle();
-    expect(find.text('Переименовать'), findsNothing);
-    expect(find.text('Сохранить как пресет'), findsOneWidget);
-    await tester.tap(find.text('Удалить'));
+    expect(find.text('Rename'), findsNothing);
+    expect(find.text('Save as preset'), findsOneWidget);
+    await tester.tap(find.text('Delete'));
     await tester.pumpAndSettle();
     expect(find.byType(AlertDialog), findsNothing);
     expect(env.channels.length, 2);
@@ -364,23 +364,23 @@ void main() {
     await _showChannels(tester);
     final c = env.channels.channels[2];
     final tile = find.byKey(ValueKey('channel-${c.id}'));
-    // 145.500 is the built-in "Симплекс 2м": the tile shows the preset name.
+    // 145.500 is the built-in "Simplex 2m": the tile shows the preset name.
     expect(
-      find.descendant(of: tile, matching: find.text('Симплекс 2м')),
+      find.descendant(of: tile, matching: find.text('Simplex 2m')),
       findsOneWidget,
     );
     await tester.longPress(tile);
     await tester.pumpAndSettle();
-    expect(find.text('Переименовать'), findsNothing);
+    expect(find.text('Rename'), findsNothing);
     expect(find.byKey(const ValueKey('channelMenu-rename')), findsNothing);
-    expect(find.text('Сохранить как пресет'), findsOneWidget);
-    expect(find.text('Удалить'), findsOneWidget);
-    await tester.tap(find.text('Сохранить как пресет'));
+    expect(find.text('Save as preset'), findsOneWidget);
+    expect(find.text('Delete'), findsOneWidget);
+    await tester.tap(find.text('Save as preset'));
     await tester.pumpAndSettle();
     // Duplicate frequency: readable reason, as before.
     await tester.tap(find.byKey(const ValueKey('presetNameSave')));
     await tester.pumpAndSettle();
-    expect(find.textContaining('уже есть'), findsOneWidget);
+    expect(find.textContaining('already'), findsOneWidget);
 
     // A free frequency (no preset): auto name, then the dialog.
     env.radio.setTuning(centerFrequency: 99912500, vfoOffset: 0);
@@ -393,7 +393,7 @@ void main() {
     final before = env.favorites.entries.length;
     await tester.longPress(tile);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Сохранить как пресет'));
+    await tester.tap(find.text('Save as preset'));
     await tester.pumpAndSettle();
     final field = find.byKey(const ValueKey('presetName'));
     expect(
@@ -410,30 +410,30 @@ void main() {
     await tester.enterText(field, '   ');
     await tester.tap(find.byKey(const ValueKey('presetNameSave')));
     await tester.pumpAndSettle();
-    expect(find.text('введите название'), findsOneWidget);
+    expect(find.text('enter a name'), findsOneWidget);
     expect(field, findsOneWidget);
     expect(env.favorites.entries.length, before);
     // Cancel changes nothing.
-    await tester.tap(find.text('Отмена'));
+    await tester.tap(find.text('Cancel'));
     await tester.pumpAndSettle();
     expect(field, findsNothing);
     expect(env.favorites.entries.length, before);
     // Save under the typed name; the channel now shows the preset name.
     await tester.longPress(tile);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Сохранить как пресет'));
+    await tester.tap(find.text('Save as preset'));
     await tester.pumpAndSettle();
-    await tester.enterText(field, 'Ретранс');
+    await tester.enterText(field, 'Relay');
     await tester.tap(find.byKey(const ValueKey('presetNameSave')));
     await tester.pumpAndSettle();
     final saved = env.favorites.entries.last;
     expect(env.favorites.entries.length, before + 1);
-    expect(saved.name, 'Ретранс');
+    expect(saved.name, 'Relay');
     expect(saved.frequencyHz, 99912500);
     expect(saved.mode, DemodMode.nfm);
-    expect(find.text('Сохранено как пресет'), findsOneWidget);
+    expect(find.text('Saved as preset'), findsOneWidget);
     expect(
-      find.descendant(of: tile, matching: find.text('Ретранс')),
+      find.descendant(of: tile, matching: find.text('Relay')),
       findsOneWidget,
     );
     await _dispose(tester, env);
@@ -447,7 +447,7 @@ void main() {
     final c = env.channels.active!;
     final tile = find.byKey(ValueKey('channel-${c.id}'));
     expect(
-      find.descendant(of: tile, matching: find.text('Симплекс 2м')),
+      find.descendant(of: tile, matching: find.text('Simplex 2m')),
       findsOneWidget,
     );
     for (final k in ['1', '4', '5', '.', '6', 'OK']) {
@@ -461,13 +461,13 @@ void main() {
     );
     final p = env.favorites.add(
       frequencyHz: 145600000,
-      name: 'Новый пресет',
+      name: 'New preset',
       mode: DemodMode.nfm,
       category: 'VHF',
     );
     await tester.pump();
     expect(
-      find.descendant(of: tile, matching: find.text('Новый пресет')),
+      find.descendant(of: tile, matching: find.text('New preset')),
       findsOneWidget,
     );
     env.favorites.delete(p.id);
@@ -498,7 +498,7 @@ void main() {
     await tester.pump();
     await gesture.up();
     await tester.pumpAndSettle();
-    expect(find.text('Сохранить как пресет'), findsNothing, reason: 'no menu');
+    expect(find.text('Save as preset'), findsNothing, reason: 'no menu');
     expect(env.channels.channels.map((e) => e.id), [c.id, a.id, b.id]);
     expect(env.channels.activeId, c.id);
     expect(env.radio.tunedFrequency, 145500000);
@@ -532,7 +532,7 @@ void main() {
       c.add(
         frequencyHz: 1766000000 - i * 1000,
         mode: DemodMode.values[i % DemodMode.values.length],
-        name: 'Очень длинное название канала номер $i для проверки',
+        name: 'Very long channel name number $i for the check',
       );
     }
   }
@@ -628,15 +628,15 @@ void main() {
   });
 
   for (final n in [5, 12]) {
-    testWidgets('$n channels: two horizontal rows, + канал always there', (
+    testWidgets('$n channels: two horizontal rows, + channel always there', (
       tester,
     ) async {
       final env = await _pump(tester, seed: (c) => seedMany(c, n));
       await _showChannels(tester);
       expect(tester.takeException(), isNull);
-      expect(find.text('КАНАЛЫ · $n'), findsOneWidget);
+      expect(find.text('CHANNELS · $n'), findsOneWidget);
       expect(find.byKey(const ValueKey('channelsExpand')), findsNothing);
-      expect(find.textContaining('Все каналы'), findsNothing);
+      expect(find.textContaining('All channels'), findsNothing);
       final scrollables = find.descendant(
         of: find.byKey(const ValueKey('channelsSection')),
         matching: find.byType(Scrollable),
@@ -663,7 +663,7 @@ void main() {
       await tester.tap(add);
       await tester.pumpAndSettle();
       expect(env.channels.length, n + 1);
-      expect(find.text('КАНАЛЫ · ${n + 1}'), findsOneWidget);
+      expect(find.text('CHANNELS · ${n + 1}'), findsOneWidget);
       expect(fullyVisible(tester, env.channels.activeId!), isTrue);
       // Horizontal fling reveals the first channel again.
       await tester.drag(scrollables, const Offset(4000, 0));
@@ -731,7 +731,7 @@ void main() {
           c.add(
             frequencyHz: 433050000 + i * 25000,
             mode: DemodMode.nfm,
-            name: 'К$i',
+            name: 'Ch$i',
           );
         }
         c.activate(c.channels.first.id);
@@ -795,7 +795,7 @@ void main() {
     await tester.pump();
     await gesture.up();
     await tester.pumpAndSettle();
-    expect(find.text('Сохранить как пресет'), findsNothing, reason: 'no menu');
+    expect(find.text('Save as preset'), findsNothing, reason: 'no menu');
     expect(env.channels.channels.last.id, ids.first);
     expect(env.channels.activeId, ids.first);
     expect(tester.takeException(), isNull);

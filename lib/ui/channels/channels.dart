@@ -159,7 +159,7 @@ class ChannelsRepository extends ChangeNotifier {
     final id = 'ch-${_nextId++}';
     final c = ReceiverChannel(
       id: id,
-      name: _validName(name ?? 'Канал $_nextId'),
+      name: _validName(name ?? 'Channel $_nextId'),
       frequencyHz: frequencyHz,
       mode: mode,
     );

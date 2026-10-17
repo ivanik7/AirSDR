@@ -66,7 +66,7 @@ void main() {
         scrollable: find.byType(Scrollable).first,
       );
       expect(find.byType(SquelchControls), findsOneWidget);
-      expect(find.text('Авто'), findsOneWidget);
+      expect(find.text('Auto'), findsOneWidget);
 
       await tester.pumpWidget(const SizedBox());
       radio.dispose();
@@ -92,19 +92,19 @@ void main() {
       await tester.pumpAndSettle();
       await tester.enterText(
         find.byKey(const ValueKey('favoriteName')),
-        'Своя станция',
+        'Custom station',
       );
       await tester.tap(find.byKey(const ValueKey('favoriteSave')));
       await tester.pumpAndSettle();
       expect(favorites.entries.last.frequencyHz, 99500000);
-      expect(favorites.entries.last.name, 'Своя станция');
+      expect(favorites.entries.last.name, 'Custom station');
       await favorites.flush();
       expect(
         find.byKey(const ValueKey('presetSection-band-fm')),
         findsOneWidget,
       );
       expect(find.byKey(const ValueKey('category-FM')), findsNothing);
-      expect(find.text('Своя станция'), findsOneWidget);
+      expect(find.text('Custom station'), findsOneWidget);
       expect(
         find.byKey(ValueKey('toggle-${favorites.entries.last.id}')),
         findsNothing,
@@ -112,21 +112,21 @@ void main() {
       final id = favorites.entries.last.id;
       await tester.tap(find.byKey(ValueKey('favoriteMenu-$id')));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Изменить').last);
+      await tester.tap(find.text('Edit').last);
       await tester.pumpAndSettle();
       await tester.enterText(
         find.byKey(const ValueKey('favoriteName')),
-        'Другая станция',
+        'Other station',
       );
       await tester.tap(find.byKey(const ValueKey('favoriteSave')));
       await tester.pumpAndSettle();
-      expect(favorites.entries.last.name, 'Другая станция');
+      expect(favorites.entries.last.name, 'Other station');
       expect(favorites.entries.last.enabled, isTrue);
       await tester.tap(find.byKey(ValueKey('favoriteMenu-$id')));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Удалить').last);
+      await tester.tap(find.text('Delete').last);
       await tester.pumpAndSettle();
-      expect(find.text('Удалить пресет?'), findsOneWidget);
+      expect(find.text('Delete preset?'), findsOneWidget);
       await tester.tap(find.byKey(const ValueKey('favoriteDeleteConfirm')));
       await tester.pumpAndSettle();
       expect(favorites.entries.any((f) => f.id == id), isFalse);
@@ -161,11 +161,11 @@ void main() {
       // Cancel keeps it.
       await tester.tap(find.byKey(ValueKey('favoriteMenu-${fm.id}')));
       await tester.pumpAndSettle();
-      expect(find.text('Удалить'), findsOneWidget);
-      await tester.tap(find.text('Удалить'));
+      expect(find.text('Delete'), findsOneWidget);
+      await tester.tap(find.text('Delete'));
       await tester.pumpAndSettle();
-      expect(find.text('Удалить пресет?'), findsOneWidget);
-      await tester.tap(find.text('Отмена'));
+      expect(find.text('Delete preset?'), findsOneWidget);
+      await tester.tap(find.text('Cancel'));
       await tester.pumpAndSettle();
       expect(favorites.entries.any((f) => f.id == fm.id), isTrue);
       expect(find.text('FM Radio'), findsOneWidget);
@@ -173,7 +173,7 @@ void main() {
       // Confirm removes it from the list and from storage.
       await tester.tap(find.byKey(ValueKey('favoriteMenu-${fm.id}')));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Удалить'));
+      await tester.tap(find.text('Delete'));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('favoriteDeleteConfirm')));
       await tester.pumpAndSettle();
@@ -214,7 +214,7 @@ void main() {
     expect(find.byKey(const ValueKey('legacyStep-25000')), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('legacyStep-25000')));
     await tester.pumpAndSettle();
-    expect(find.text('ШАГ 25 кГц'), findsOneWidget);
+    expect(find.text('STEP 25 kHz'), findsOneWidget);
     expect(radio.centerFrequency, radio.tunedFrequency);
     radio.setTuning(centerFrequency: 90000000, vfoOffset: 3500);
     await tester.pump();
@@ -258,14 +258,14 @@ void main() {
       );
       await tester.pump();
       expect(radio.vfoOffset, 0);
-      expect(find.text('Приём'), findsOneWidget);
-      expect(find.text('Пресеты'), findsOneWidget);
-      expect(find.text('Настройки'), findsOneWidget);
+      expect(find.text('Receive'), findsOneWidget);
+      expect(find.text('Presets'), findsOneWidget);
+      expect(find.text('Settings'), findsOneWidget);
       expect(find.text('Decoder'), findsOneWidget);
-      // The Приём tab now has real channel slots, not an inert "позже" card.
+      // The Receive tab now has real channel slots, not an inert "later" card.
       expect(find.byKey(const ValueKey('channelsSection')), findsOneWidget);
-      expect(find.text('КАНАЛЫ · 1'), findsOneWidget);
-      expect(find.text('+ канал · позже'), findsNothing);
+      expect(find.text('CHANNELS · 1'), findsOneWidget);
+      expect(find.text('+ channel · later'), findsNothing);
       expect(find.byKey(const ValueKey('key-1')), findsOneWidget);
       for (final key in ['1', '2', '1', '.', '5']) {
         await tester.tap(find.byKey(ValueKey('key-$key')));
@@ -285,7 +285,7 @@ void main() {
       expect(radio.vfoOffset, 0);
       await tester.tap(find.byKey(const ValueKey('tab-3')));
       await tester.pump();
-      expect(find.text('Настройки приёмника'), findsOneWidget);
+      expect(find.text('Receiver settings'), findsOneWidget);
       await tester.pumpWidget(const SizedBox());
       radio.dispose();
       favorites.dispose();

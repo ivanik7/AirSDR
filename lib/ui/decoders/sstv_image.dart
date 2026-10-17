@@ -279,7 +279,7 @@ class SstvReceiver {
     frame.revision++;
     if (frame.receivedLines == 0) {
       lastIssue =
-          '${frame.mode}: строки не получены (${sstvReasonLabel(reason)})';
+          '${frame.mode}: no lines received (${sstvReasonLabel(reason)})';
       return;
     }
     lastIssue = null;
@@ -290,13 +290,13 @@ class SstvReceiver {
 
 /// Short Russian label for a frame end reason (UI language of the app).
 String sstvReasonLabel(String? reason) => switch (reason) {
-  'end' => 'конец кадра',
-  'sync_lost' => 'потеря синхронизации',
-  'retune' => 'перестройка частоты',
-  'mode' => 'смена демодулятора',
-  'stop' => 'приём остановлен',
-  'restart' => 'перезапуск приёма',
-  'deselect' => 'декодер выключен',
-  'lost' => 'потеря событий',
+  'end' => 'end of frame',
+  'sync_lost' => 'sync lost',
+  'retune' => 'retuned',
+  'mode' => 'demodulator changed',
+  'stop' => 'reception stopped',
+  'restart' => 'reception restarted',
+  'deselect' => 'decoder disabled',
+  'lost' => 'events lost',
   _ => reason ?? '',
 };

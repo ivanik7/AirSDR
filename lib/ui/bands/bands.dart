@@ -2,8 +2,8 @@
 //
 // Frequency bands (task t_7b20878c): named, non-overlapping frequency ranges
 // with their own demodulation mode and tuning step. The receiver looks the
-// band up by frequency (CenteredReceiver), the Приём status shows its name,
-// the Пресеты tab groups presets by band. Stored like FavoritesRepository:
+// band up by frequency (CenteredReceiver), the Receive status shows its name,
+// the Presets tab groups presets by band. Stored like FavoritesRepository:
 // SharedPreferences JSON, defaults offered once (`seenDefaults`), corrupt
 // data falls back to the default set.
 import 'dart:convert';
@@ -115,7 +115,7 @@ class Band {
 const defaultBands = <Band>[
   Band(
     id: 'band-cb27',
-    name: 'CB 27 МГц',
+    name: 'CB 27 MHz',
     startHz: 26965000,
     endHz: 27405000,
     mode: DemodMode.am,
@@ -131,7 +131,7 @@ const defaultBands = <Band>[
   ),
   Band(
     id: 'band-air',
-    name: 'Авиа',
+    name: 'Aircraft',
     startHz: 118000000,
     endHz: 136975000,
     mode: DemodMode.am,
@@ -139,7 +139,7 @@ const defaultBands = <Band>[
   ),
   Band(
     id: 'band-2m',
-    name: '2 м (любительский)',
+    name: '2 m (amateur)',
     startHz: 144000000,
     endHz: 146000000,
     mode: DemodMode.nfm,
@@ -147,7 +147,7 @@ const defaultBands = <Band>[
   ),
   Band(
     id: 'band-marine',
-    name: 'Морской',
+    name: 'Marine',
     startHz: 156000000,
     endHz: 162025000,
     mode: DemodMode.nfm,
@@ -206,12 +206,12 @@ class BandValidationException implements Exception {
   final Band? conflict;
 
   String get message => switch (issue) {
-    BandIssue.name => 'введите название (1–$bandMaxNameLength символов)',
-    BandIssue.order => 'начало должно быть меньше конца',
+    BandIssue.name => 'enter a name (1–$bandMaxNameLength characters)',
+    BandIssue.order => 'start must be below end',
     BandIssue.outOfRange =>
-      'частота вне допустимого диапазона (0–${bandMaxHz ~/ 1000000} МГц)',
-    BandIssue.step => 'шаг не из списка',
-    BandIssue.overlap => 'пересечение с «${conflict!.name}»',
+      'frequency is outside the allowed range (0–${bandMaxHz ~/ 1000000} MHz)',
+    BandIssue.step => 'step is not in the list',
+    BandIssue.overlap => 'overlaps "${conflict!.name}"',
   };
 
   @override
@@ -470,18 +470,18 @@ class BandsRepository extends ChangeNotifier {
   }
 }
 
-/// «87.500–108.000 МГц».
+/// "87.500–108.000 MHz".
 String formatBandRange(Band b) =>
-    '${formatMhz(b.startHz)}–${formatMhz(b.endHz)} МГц';
+    '${formatMhz(b.startHz)}–${formatMhz(b.endHz)} MHz';
 
-/// «5 кГц», «6.25 кГц», «12.5 кГц», «200 кГц».
+/// "5 kHz", "6.25 kHz", "12.5 kHz", "200 kHz".
 String formatStepKhz(int hz) {
   var s = (hz / 1000).toStringAsFixed(3);
   while (s.endsWith('0')) {
     s = s.substring(0, s.length - 1);
   }
   if (s.endsWith('.')) s = s.substring(0, s.length - 1);
-  return '$s кГц';
+  return '$s kHz';
 }
 
 /// Exact MHz text → Hz (up to 6 decimals, "," accepted); null if invalid.
@@ -493,7 +493,7 @@ int? parseMhzToHz(String text) {
   return int.parse(m.group(1)!) * 1000000 + int.parse(frac);
 }
 
-/// One section of the Пресеты tab: a band (null = «Вне диапазонов»).
+/// One section of the Presets tab: a band (null = "Out of band").
 @immutable
 class PresetGroup {
   const PresetGroup(this.band, this.presets);
@@ -502,7 +502,7 @@ class PresetGroup {
 }
 
 /// Presets grouped by band: sections by band start, presets by frequency,
-/// «Вне диапазонов» last; empty sections are omitted.
+/// "Out of band" last; empty sections are omitted.
 List<PresetGroup> groupPresetsByBand(List<Favorite> presets, List<Band> bands) {
   final sortedBands = [...bands]
     ..sort((a, b) => a.startHz.compareTo(b.startHz));

@@ -13,12 +13,12 @@ import 'theme.dart';
 
 /// Human-readable reason for a rejected add/edit (never an empty string).
 String favoriteErrorText(ArgumentError e) => switch (e.name) {
-  'name' => 'введите название (1–60 символов)',
+  'name' => 'enter a name (1–60 characters)',
   'frequencyHz' when e.message == 'Already saved' =>
-    'эта частота уже есть в списке',
-  'frequencyHz' => 'частота вне диапазона устройства',
-  'category' => 'неизвестная категория',
-  _ => '${e.message ?? e.invalidValue ?? 'неверные данные'}',
+    'this frequency is already in the list',
+  'frequencyHz' => 'frequency is outside the device range',
+  'category' => 'unknown category',
+  _ => '${e.message ?? e.invalidValue ?? 'invalid data'}',
 };
 
 /// The preset editor uses the same flat [decoderCatalog] as the Decoder
@@ -40,7 +40,7 @@ class PresetsScreen extends StatefulWidget {
   final CenteredReceiver receiver;
   final FavoritesRepository favorites;
 
-  /// Sections of the list; without bands everything is «Вне диапазонов».
+  /// Sections of the list; without bands everything is "Out of band".
   final BandsRepository? bands;
   final VoidCallback onApplied;
 
@@ -76,13 +76,13 @@ class _PresetsScreenState extends State<PresetsScreen> {
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, update) => AlertDialog(
-          title: Text(existing == null ? 'Добавить пресет' : 'Изменить пресет'),
+          title: Text(existing == null ? 'Add preset' : 'Edit preset'),
           content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  'Частота ${formatMhz(existing?.frequencyHz ?? widget.controller.tunedFrequency)} MHz',
+                  'Frequency ${formatMhz(existing?.frequencyHz ?? widget.controller.tunedFrequency)} MHz',
                   style: plex(mono: true),
                 ),
                 TextFormField(
@@ -90,7 +90,7 @@ class _PresetsScreenState extends State<PresetsScreen> {
                   initialValue: name,
                   onChanged: (value) => name = value,
                   maxLength: 60,
-                  decoration: const InputDecoration(labelText: 'Название'),
+                  decoration: const InputDecoration(labelText: 'Name'),
                 ),
                 DropdownButton<String>(
                   key: const ValueKey('favoriteDecoder'),
@@ -121,7 +121,7 @@ class _PresetsScreenState extends State<PresetsScreen> {
                 if (demodModeFromDecoderId(decoderChoice) == null &&
                     !(session?.isAvailable(decoderChoice) ?? false))
                   const Text(
-                    'Декодер недоступен: настройки сохраняются для будущей версии, но приём не запускается.',
+                    'Decoder unavailable: settings are saved for a future version, but reception does not start.',
                   ),
               ],
             ),
@@ -129,12 +129,12 @@ class _PresetsScreenState extends State<PresetsScreen> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context, false),
-              child: const Text('Отмена'),
+              child: const Text('Cancel'),
             ),
             FilledButton(
               key: const ValueKey('favoriteSave'),
               onPressed: () => Navigator.pop(context, true),
-              child: const Text('Сохранить'),
+              child: const Text('Save'),
             ),
           ],
         ),
@@ -182,7 +182,7 @@ class _PresetsScreenState extends State<PresetsScreen> {
       } on ArgumentError catch (e) {
         if (mounted) {
           setState(
-            () => message = 'Не удалось сохранить: ${favoriteErrorText(e)}',
+            () => message = 'Could not save: ${favoriteErrorText(e)}',
           );
         }
       }
@@ -195,18 +195,18 @@ class _PresetsScreenState extends State<PresetsScreen> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Удалить пресет?'),
+        title: const Text('Delete preset?'),
         content: Text('${f.name} · ${formatMhz(f.frequencyHz)} MHz'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('Отмена'),
+            child: const Text('Cancel'),
           ),
           FilledButton(
             key: const ValueKey('favoriteDeleteConfirm'),
             style: FilledButton.styleFrom(backgroundColor: LegacyColors.danger),
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('Удалить'),
+            child: const Text('Delete'),
           ),
         ],
       ),
@@ -230,11 +230,11 @@ class _PresetsScreenState extends State<PresetsScreen> {
       setState(() => message = null);
       widget.onApplied();
     } on ArgumentError {
-      setState(() => message = 'Частота вне диапазона выбранного устройства');
+      setState(() => message = 'Frequency is outside the selected device range');
     }
   }
 
-  /// Section title: band name and limits, or «Вне диапазонов».
+  /// Section title: band name and limits, or "Out of band".
   Widget _sectionHeader(Band? band) => Padding(
     key: ValueKey('presetSection-${band?.id ?? 'none'}'),
     padding: const EdgeInsets.fromLTRB(4, 6, 4, 6),
@@ -242,7 +242,7 @@ class _PresetsScreenState extends State<PresetsScreen> {
       children: [
         Flexible(
           child: Text(
-            band?.name ?? 'Вне диапазонов',
+            band?.name ?? 'Out of band',
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: plex(size: 12, color: LegacyColors.accent),
@@ -286,20 +286,20 @@ class _PresetsScreenState extends State<PresetsScreen> {
         ),
         PopupMenuButton<String>(
           key: ValueKey('favoriteMenu-${f.id}'),
-          tooltip: 'Редактировать пресет',
+          tooltip: 'Edit preset',
           onOpened: () => setState(() => message = null),
           onSelected: (action) {
             if (action == 'edit') edit(f);
             if (action == 'delete') confirmDelete(f);
           },
           itemBuilder: (_) => const [
-            PopupMenuItem(value: 'edit', child: Text('Изменить')),
-            PopupMenuItem(value: 'delete', child: Text('Удалить')),
+            PopupMenuItem(value: 'edit', child: Text('Edit')),
+            PopupMenuItem(value: 'delete', child: Text('Delete')),
           ],
         ),
         IconButton.filled(
           key: ValueKey('apply-${f.id}'),
-          tooltip: 'Применить',
+          tooltip: 'Apply',
           onPressed: () => apply(f),
           icon: const Icon(Icons.check),
         ),
@@ -319,9 +319,9 @@ class _PresetsScreenState extends State<PresetsScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Пресеты', style: plex(size: 22, weight: FontWeight.w600)),
+                Text('Presets', style: plex(size: 22, weight: FontWeight.w600)),
                 Text(
-                  '${widget.favorites.entries.length} сохранено · один приёмный канал',
+                  '${widget.favorites.entries.length} saved · one receive channel',
                   style: plex(size: 12, color: LegacyColors.muted),
                 ),
               ],
@@ -359,7 +359,7 @@ class _PresetsScreenState extends State<PresetsScreen> {
               child: FilledButton(
                 key: const ValueKey('addFavorite'),
                 onPressed: () => edit(),
-                child: const Text('Добавить текущую частоту'),
+                child: const Text('Add current frequency'),
               ),
             ),
           ),

@@ -50,7 +50,7 @@ void main() {
           channels.add(
             frequencyHz: 101000000 + i * 12500,
             mode: DemodMode.nfm,
-            name: 'Канал $i',
+            name: 'Channel $i',
           );
         }
         await pump(tester, radio, channels, size, 1.25);
@@ -132,8 +132,8 @@ void main() {
         await tester.pump();
         same('entry $k');
       }
-      expect(find.byTooltip('Очистить ввод'), findsOneWidget);
-      await tester.tap(find.byTooltip('Очистить ввод'));
+      expect(find.byTooltip('Clear input'), findsOneWidget);
+      await tester.tap(find.byTooltip('Clear input'));
       await tester.pump();
       expect(find.byKey(const ValueKey('legacyMute')), findsOneWidget);
       same('after clear');
@@ -153,12 +153,12 @@ void main() {
     expect(find.byKey(const ValueKey('legacyDevice')), findsNothing);
     expect(find.byKey(const ValueKey('legacyPlayStop')), findsNothing);
     expect(find.byKey(const ValueKey('legacyMute')), findsOneWidget);
-    expect(find.byTooltip('Очистить ввод'), findsNothing);
+    expect(find.byTooltip('Clear input'), findsNothing);
     await tester.tap(find.byKey(const ValueKey('key-1')));
     await tester.pump();
-    expect(find.byTooltip('Очистить ввод'), findsOneWidget);
+    expect(find.byTooltip('Clear input'), findsOneWidget);
     expect(find.byKey(const ValueKey('legacyMute')), findsNothing);
-    await tester.tap(find.byTooltip('Очистить ввод'));
+    await tester.tap(find.byTooltip('Clear input'));
     await tester.pump();
     expect(find.byKey(const ValueKey('legacyMute')), findsOneWidget);
     expect(find.byKey(const ValueKey('legacyModeSelect')), findsNothing);

@@ -227,7 +227,7 @@ void main() {
       final b = bands.byId('band-ism433')!;
       expect(b.decoderId, 'rtl_433');
       expect(b.mode, DemodMode.am, reason: 'data decoder keeps the band mode');
-      expect(find.textContaining('rtl_433 · шаг'), findsOneWidget);
+      expect(find.textContaining('rtl_433 · step'), findsOneWidget);
 
       await bands.flush();
       final restored = BandsRepository();

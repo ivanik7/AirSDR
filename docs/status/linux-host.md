@@ -82,7 +82,7 @@ Flutter:
   auto-opened the Blog V4 ("RTL-SDR Blog V4 Detected" in the log). The status
   line reads `2.40 MS/s · ring drops 0 · IQ only, no audio (N2)`; see
   `~/prj/docs/screens/linux-receive.png`. With an invalid
-  `SDRCORE_HOST_LIBRARY` the app shows `ошибка подключения` and the
+  `SDRCORE_HOST_LIBRARY` the app shows `connection error` and the
   native-required message (`~/prj/docs/screens/linux-native-required.png`).
 - `flutter analyze`: no issues. `flutter test` on master: 647 passed, 7
   skipped. The pre-existing timer test `ConfigManager: load default, debounced

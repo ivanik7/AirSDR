@@ -152,7 +152,7 @@ class PlatformSstvImageSaver implements SstvImageSaver {
         }
       case SstvSavePlatform.unsupported:
         throw UnsupportedError(
-          'Сохранение не поддерживается на этой платформе',
+          'Saving is not supported on this platform',
         );
     }
   }

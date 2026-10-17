@@ -22,15 +22,15 @@ class SstvDecoderPanel extends StatelessWidget {
 
   String _status() {
     if (!session.isAvailable('sstv')) {
-      return 'Недоступен в текущей нативной сборке';
+      return 'Unavailable in the current native build';
     }
     final radio = session.radio;
-    if (!radio.running) return radio.lastError ?? 'Приём остановлен';
+    if (!radio.running) return radio.lastError ?? 'Reception stopped';
     if (session.failureReason != null) return session.failureReason!;
-    if (!session.active) return 'Декодер не запущен';
+    if (!session.active) return 'Decoder not running';
     final frame = session.sstv.current;
-    if (frame == null) return 'Ожидание VIS-заголовка…';
-    return 'Приём кадра ${frame.mode}';
+    if (frame == null) return 'Waiting for VIS header…';
+    return 'Receiving frame ${frame.mode}';
   }
 
   @override
@@ -50,7 +50,7 @@ class SstvDecoderPanel extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('SSTV · изображение', style: plex(size: 14)),
+              Text('SSTV · image', style: plex(size: 14)),
               const SizedBox(height: 6),
               Text(
                 _status(),
@@ -64,24 +64,24 @@ class SstvDecoderPanel extends StatelessWidget {
               ),
               if (session.active)
                 Text(
-                  '${(radio.tunedFrequency / 1e6).toStringAsFixed(4)} МГц · '
-                  '${radio.mode.label} · 24 кГц · '
-                  'Потеряно событий: ${session.droppedEvents}',
+                  '${(radio.tunedFrequency / 1e6).toStringAsFixed(4)} MHz · '
+                  '${radio.mode.label} · 24 kHz · '
+                  'Dropped events: ${session.droppedEvents}',
                   key: const ValueKey('sstvRate'),
                   style: plex(size: 11, color: LegacyColors.muted),
                 ),
               if (!available) ...[
                 const SizedBox(height: 6),
                 Text(
-                  'Декодер недоступен в текущей нативной сборке — выбор здесь '
-                  'только предпросмотр панели, запуск не выполняется.',
+                  'Decoder unavailable in the current native build — selection here is '
+                  'only a panel preview, it will not start.',
                   key: const ValueKey('decoderUnavailable-sstv'),
                   style: plex(size: 11, color: LegacyColors.danger),
                 ),
               ],
               Text(
-                'Голос продолжает звучать во время декодирования. '
-                'Частота задаётся обычной настройкой приёмника (VFO).',
+                'Voice keeps playing while decoding. '
+                'Frequency is set with the regular receiver tuning (VFO).',
                 style: plex(size: 11, color: LegacyColors.muted),
               ),
             ],
@@ -104,7 +104,7 @@ class SstvDecoderPanel extends StatelessWidget {
                           ),
                           const SizedBox(height: 8),
                           Text(
-                            sstv.lastIssue ?? 'Изображение не получено',
+                            sstv.lastIssue ?? 'No image received',
                             key: const ValueKey('sstvEmpty'),
                             textAlign: TextAlign.center,
                           ),
@@ -141,7 +141,7 @@ class SstvDecoderPanel extends StatelessWidget {
           children: [
             Expanded(
               child: Text(
-                'Галерея сеанса · ${sstv.gallery.length}/$kSstvGalleryCap',
+                'Session gallery · ${sstv.gallery.length}/$kSstvGalleryCap',
                 style: plex(size: 14),
               ),
             ),
@@ -149,13 +149,13 @@ class SstvDecoderPanel extends StatelessWidget {
               key: const ValueKey('sstvClear'),
               onPressed: sstv.gallery.isEmpty ? null : session.clearSstvGallery,
               icon: const Icon(Icons.delete_outline, size: 18),
-              label: const Text('Очистить'),
+              label: const Text('Clear'),
             ),
           ],
         ),
         if (sstv.gallery.isEmpty)
           Text(
-            'Принятые кадры появятся здесь (хранятся до закрытия приложения).',
+            'Received frames will appear here (kept until the app is closed).',
             style: plex(size: 11, color: LegacyColors.muted),
           )
         else
@@ -179,7 +179,7 @@ class SstvDecoderPanel extends StatelessWidget {
                         Text(
                           item.status == SstvFrameStatus.complete
                               ? item.mode
-                              : '${item.mode} · частично',
+                              : '${item.mode} · partial',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: plex(size: 10),
@@ -196,10 +196,10 @@ class SstvDecoderPanel extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Параметры', style: plex(size: 14)),
+              Text('Settings', style: plex(size: 14)),
               const SizedBox(height: 6),
               Text(
-                'Демодулятор',
+                'Demodulator',
                 style: plex(size: 12, color: LegacyColors.muted),
               ),
               const SizedBox(height: 4),
@@ -221,7 +221,7 @@ class SstvDecoderPanel extends StatelessWidget {
                 children: [
                   Expanded(
                     child: Text(
-                      'Режим SSTV',
+                      'SSTV mode',
                       style: plex(size: 12, color: LegacyColors.muted),
                     ),
                   ),
@@ -231,7 +231,7 @@ class SstvDecoderPanel extends StatelessWidget {
                     items: [
                       DropdownMenuItem(
                         value: 'auto',
-                        child: Text('Авто (VIS)', style: plex(size: 12)),
+                        child: Text('Auto (VIS)', style: plex(size: 12)),
                       ),
                     ],
                     onChanged: editable
@@ -245,9 +245,9 @@ class SstvDecoderPanel extends StatelessWidget {
                 ],
               ),
               Text(
-                'Принудительный выбор режима недоступен: в OpenWebRX+ '
-                '(csdr-plus) режим определяется только по VIS. '
-                'Поддерживается ${kSstvModes.length} режимов: Robot, Martin, '
+                'Forced mode selection is unavailable: in OpenWebRX+ '
+                '(csdr-plus) the mode is detected from VIS only. '
+                '${kSstvModes.length} modes supported: Robot, Martin, '
                 'Scottie, Wraase SC2, PD.',
                 key: const ValueKey('sstvForcedModeNote'),
                 style: plex(size: 11, color: LegacyColors.muted),
@@ -263,14 +263,14 @@ class SstvDecoderPanel extends StatelessWidget {
 String sstvFrameSummary(SstvFrame f) {
   final time = f.timestampUtc.toIso8601String().substring(11, 19);
   final status = switch (f.status) {
-    SstvFrameStatus.receiving => 'приём',
-    SstvFrameStatus.complete => 'полный',
-    SstvFrameStatus.partial => 'частичный: ${sstvReasonLabel(f.reason)}',
+    SstvFrameStatus.receiving => 'receiving',
+    SstvFrameStatus.complete => 'complete',
+    SstvFrameStatus.partial => 'partial: ${sstvReasonLabel(f.reason)}',
   };
-  final padded = f.paddedLines > 0 ? ' · пропущено ${f.paddedLines}' : '';
+  final padded = f.paddedLines > 0 ? ' · padded ${f.paddedLines}' : '';
   return '${f.mode} · ${f.width}×${f.height} · '
-      'строк ${f.receivedLines}/${f.height}$padded · $status · '
-      '$time UTC · ${(f.frequencyHz / 1e6).toStringAsFixed(4)} МГц '
+      'lines ${f.receivedLines}/${f.height}$padded · $status · '
+      '$time UTC · ${(f.frequencyHz / 1e6).toStringAsFixed(4)} MHz '
       '${f.underlying.toUpperCase()}';
 }
 
@@ -300,9 +300,9 @@ class _SstvFrameDialogState extends State<_SstvFrameDialog> {
     setState(() => _saving = true);
     String result;
     try {
-      result = 'Сохранено: ${await widget.saver.save(widget.frame)}';
+      result = 'Saved: ${await widget.saver.save(widget.frame)}';
     } catch (e) {
-      result = 'Не удалось сохранить: $e';
+      result = 'Save failed: $e';
     }
     if (!mounted) return;
     setState(() {
@@ -334,7 +334,7 @@ class _SstvFrameDialogState extends State<_SstvFrameDialog> {
             Text(sstvFrameSummary(frame), style: plex(size: 12)),
             if (frame.status != SstvFrameStatus.complete)
               Text(
-                'Кадр принят не полностью: сохраняются только принятые строки.',
+                'Frame received incompletely: only the received lines are saved.',
                 style: plex(size: 11, color: LegacyColors.danger),
               ),
             if (_result != null)
@@ -354,13 +354,13 @@ class _SstvFrameDialogState extends State<_SstvFrameDialog> {
               children: [
                 TextButton(
                   onPressed: () => Navigator.pop(context),
-                  child: const Text('Закрыть'),
+                  child: const Text('Close'),
                 ),
                 FilledButton.icon(
                   key: const ValueKey('sstvSave'),
                   onPressed: widget.saver.supported && !_saving ? _save : null,
                   icon: const Icon(Icons.save_alt, size: 18),
-                  label: const Text('Сохранить PNG'),
+                  label: const Text('Save PNG'),
                 ),
               ],
             ),

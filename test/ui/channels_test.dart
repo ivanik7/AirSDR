@@ -21,7 +21,7 @@ void main() {
       final c = repo.add(
         frequencyHz: 145500000,
         mode: DemodMode.nfm,
-        name: '2м',
+        name: '2m',
       );
       expect(repo.activeId, c.id);
       repo.activate(b.id);
@@ -33,7 +33,7 @@ void main() {
       final again = ChannelsRepository();
       await again.load();
       expect(again.channels.map((e) => e.id), [c.id, a.id, b.id]);
-      expect(again.channels.first.name, '2м');
+      expect(again.channels.first.name, '2m');
       expect(again.channels.first.mode, DemodMode.nfm);
       expect(again.activeId, b.id);
       final d = again.add(frequencyHz: 446006000, mode: DemodMode.nfm);
@@ -278,7 +278,7 @@ void main() {
       final ch = repo.add(
         frequencyHz: 99912500,
         mode: DemodMode.wfm,
-        name: 'Моё FM',
+        name: 'My FM',
       );
       expect(ctl.saveAsPreset(ch.id), isNull);
       final f = favorites.entries.last;
@@ -286,16 +286,16 @@ void main() {
       expect(f.name, 'WFM 99.9125', reason: 'shown name, not the stored one');
       expect(f.mode, DemodMode.wfm);
       expect(f.category, 'FM');
-      expect(ctl.saveAsPreset(ch.id), contains('уже есть'));
+      expect(ctl.saveAsPreset(ch.id), contains('already'));
     });
 
     test('save as preset uses the given name; the channel shows it', () {
       ctl.attach();
       final ch = repo.add(frequencyHz: 99912500, mode: DemodMode.wfm);
       expect(ctl.displayName(ch), 'WFM 99.9125');
-      expect(ctl.saveAsPreset(ch.id, name: '  Моё радио '), isNull);
-      expect(favorites.entries.last.name, 'Моё радио');
-      expect(ctl.displayName(repo.active!), 'Моё радио');
+      expect(ctl.saveAsPreset(ch.id, name: '  My radio '), isNull);
+      expect(favorites.entries.last.name, 'My radio');
+      expect(ctl.displayName(repo.active!), 'My radio');
       expect(ctl.saveAsPreset(ch.id, name: ' '), isNotNull);
     });
 
@@ -313,11 +313,11 @@ void main() {
       // Preset added / renamed / deleted at that exact frequency.
       final p = favorites.add(
         frequencyHz: 433012500,
-        name: 'Ретранслятор',
+        name: 'Repeater',
         mode: DemodMode.nfm,
         category: 'UHF',
       );
-      expect(ctl.displayName(repo.active!), 'Ретранслятор');
+      expect(ctl.displayName(repo.active!), 'Repeater');
       favorites.edit(p.id, name: 'R1', mode: DemodMode.nfm, category: 'UHF');
       expect(ctl.displayName(repo.active!), 'R1');
       favorites.delete(p.id);
@@ -341,8 +341,8 @@ void main() {
       SharedPreferences.setMockInitialValues({
         ChannelsRepository.storageKey:
             '{"activeId":"ch-1","entries":['
-            '{"id":"ch-1","name":"Мой ручной","frequencyHz":125000000,"mode":"AM"},'
-            '{"id":"ch-2","name":"Ручное","frequencyHz":99000000,"mode":"WFM"}]}',
+            '{"id":"ch-1","name":"My manual","frequencyHz":125000000,"mode":"AM"},'
+            '{"id":"ch-2","name":"Manual","frequencyHz":99000000,"mode":"WFM"}]}',
       });
       final stored = ChannelsRepository();
       await stored.load();

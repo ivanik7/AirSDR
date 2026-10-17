@@ -56,7 +56,7 @@ void main() {
             {
               'id': 'user-0',
               'frequencyHz': 99500000,
-              'name': 'Старый пресет',
+              'name': 'Old preset',
               'mode': 'WFM',
               'category': 'FM',
               'enabled': false,
@@ -75,11 +75,11 @@ void main() {
       );
       await tester.tap(find.byKey(const ValueKey('tab-2')));
       await tester.pump();
-      expect(find.textContaining('1 сохранено'), findsOneWidget);
-      expect(find.text('Старый пресет'), findsOneWidget);
+      expect(find.textContaining('1 saved'), findsOneWidget);
+      expect(find.text('Old preset'), findsOneWidget);
       expect(find.byKey(const ValueKey('toggle-user-0')), findsNothing);
       expect(find.byIcon(Icons.bookmark), findsNothing);
-      expect(find.textContaining('КАНАЛЫ МОНИТОРИНГА'), findsNothing);
+      expect(find.textContaining('MONITORING CHANNELS'), findsNothing);
       await tester.tap(find.byKey(const ValueKey('apply-user-0')));
       await tester.pump();
       expect(radio.tunedFrequency, 99500000);
@@ -87,8 +87,8 @@ void main() {
       await tester.pump();
       await tester.drag(find.byType(ListView).last, const Offset(0, -1200));
       await tester.pump();
-      expect(find.text('ПОЗЖЕ'), findsNothing);
-      expect(find.text('Сканирование каналов'), findsNothing);
+      expect(find.text('LATER'), findsNothing);
+      expect(find.text('Channel scan'), findsNothing);
       expect(find.textContaining('rtl_tcp'), findsNothing);
       await tester.pumpWidget(const SizedBox());
       radio.dispose();
@@ -140,12 +140,12 @@ void main() {
       expect(find.byKey(const ValueKey('src:gain')), findsNothing);
       expect(find.byKey(const ValueKey('src:tunerAgc')), findsNothing);
       expect(find.byKey(const ValueKey('src:rtlAgc')), findsOneWidget);
-      expect(find.text('Прямая дискретизация'), findsOneWidget);
-      expect(find.text('Коррекция PPM'), findsOneWidget);
-      expect(find.text('Стерео'), findsNothing);
-      expect(find.textContaining('USB потери 2'), findsOneWidget);
+      expect(find.text('Direct sampling'), findsOneWidget);
+      expect(find.text('PPM correction'), findsOneWidget);
+      expect(find.text('Stereo'), findsNothing);
+      expect(find.textContaining('USB drops 2'), findsOneWidget);
       expect(tester.takeException(), isNull);
-      await tester.tap(find.text('АРУ RTL'));
+      await tester.tap(find.text('RTL AGC'));
       expect(radio.applied.last, ('rtlAgc', false));
       await tester.pumpWidget(const SizedBox());
       radio.dispose();
@@ -189,8 +189,8 @@ void main() {
       for (final id in ['bandwidth', 'lnaGain', 'vgaGain', 'amp']) {
         expect(find.byKey(ValueKey('src:$id')), findsOneWidget);
       }
-      expect(find.text('Авто'), findsOneWidget);
-      expect(find.text('Полоса RF-фильтра'), findsOneWidget);
+      expect(find.text('Auto'), findsOneWidget);
+      expect(find.text('RF filter bandwidth'), findsOneWidget);
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox());
       radio.dispose();
@@ -198,7 +198,7 @@ void main() {
         const [],
         device: const SdrDeviceInfo(
           id: 'demo:synth',
-          name: 'Генератор сигнала',
+          name: 'Signal generator',
           sampleRates: [2400000],
           gain: GainRange(min: 0, max: 0),
         ),
@@ -209,7 +209,7 @@ void main() {
         ),
       );
       expect(find.textContaining('No device-specific settings'), findsNothing);
-      expect(find.text('Генератор сигнала'), findsOneWidget);
+      expect(find.text('Signal generator'), findsOneWidget);
       empty.dispose();
     },
   );

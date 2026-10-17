@@ -39,7 +39,7 @@ class _WfmRadio extends DemoRadioController {
   DecoderBackend get decoderBackend => _backend;
 }
 
-const _tabLabels = ['Приём', 'Decoder', 'Пресеты', 'Настройки'];
+const _tabLabels = ['Receive', 'Decoder', 'Presets', 'Settings'];
 
 Future<void> _openDecoder(WidgetTester tester) async {
   await tester.tap(find.byKey(const ValueKey('tab-1')));
@@ -114,7 +114,7 @@ void main() {
     expect(find.byKey(const ValueKey('decoderPanel-voice')), findsOneWidget);
     expect(find.byType(RdsDetailsPanel), findsOneWidget);
     await tester.ensureVisible(find.byKey(const ValueKey('rdsRbds')));
-    expect(find.text('RBDS (США)'), findsOneWidget);
+    expect(find.text('RBDS (US)'), findsOneWidget);
     for (final mode in [
       DemodMode.am,
       DemodMode.usb,
@@ -157,7 +157,7 @@ void main() {
     radio.dispose();
   });
 
-  testWidgets('tabs are Приём, Decoder, Пресеты, Настройки in that order', (
+  testWidgets('tabs are Receive, Decoder, Presets, Settings in that order', (
     tester,
   ) async {
     final radio = DemoRadioController();

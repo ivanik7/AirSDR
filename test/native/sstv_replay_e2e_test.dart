@@ -11,7 +11,7 @@
 //      partial (`retune`) and no row of the old tune is drawn afterwards;
 //   2. after tuning back, the next pass of the (looping) recording decodes
 //      a complete frame with the expected VIS/mode/size and no padded rows;
-//   3. UI save: the gallery thumbnail opens the dialog, "Сохранить PNG"
+//   3. UI save: the gallery thumbnail opens the dialog, "Save PNG"
 //      writes through the real Linux PlatformSstvImageSaver, and the PNG
 //      on disk holds exactly the decoded rows. The PNG path is printed so
 //      tool/sstv_oracle can score it against the source image.
@@ -328,8 +328,8 @@ void main() {
     final text = tester
         .widget<SelectableText>(find.byKey(const ValueKey('sstvSaveResult')))
         .data!;
-    expect(text, startsWith('Сохранено: '));
-    final path = text.substring('Сохранено: '.length);
+    expect(text, startsWith('Saved: '));
+    final path = text.substring('Saved: '.length);
     expect(path, startsWith(dir.path));
     expect(path, endsWith('${f.fileStem}.png'));
     expect(f.fileStem, contains('-${_tunedHz ~/ 1000}'));

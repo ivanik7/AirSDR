@@ -69,7 +69,7 @@ void main() {
       find.descendant(of: mute, matching: find.byIcon(Icons.volume_off)),
       findsOneWidget,
     );
-    expect(tester.widget<IconButton>(mute).tooltip, 'Включить звук');
+    expect(tester.widget<IconButton>(mute).tooltip, 'Unmute');
 
     await tester.tap(mute);
     await tester.pump();
@@ -79,7 +79,7 @@ void main() {
       find.descendant(of: mute, matching: find.byIcon(Icons.volume_up)),
       findsOneWidget,
     );
-    expect(tester.widget<IconButton>(mute).tooltip, 'Выключить звук');
+    expect(tester.widget<IconButton>(mute).tooltip, 'Mute');
 
     await tester.tap(mute);
     await tester.pump();
@@ -95,7 +95,7 @@ void main() {
       final status = find.byKey(const ValueKey('legacyStats'));
       final retry = find.byKey(const ValueKey('legacyRetryUsb'));
 
-      expect(tester.widget<Text>(status).data, 'ожидание USB SDR');
+      expect(tester.widget<Text>(status).data, 'waiting for USB SDR');
       for (final state in [
         DeviceLinkState.waiting,
         DeviceLinkState.disconnected,
@@ -118,24 +118,24 @@ void main() {
 
       radio.set(DeviceLinkState.connecting);
       await tester.pump();
-      expect(tester.widget<Text>(status).data, 'подключение…');
+      expect(tester.widget<Text>(status).data, 'connecting…');
       expect(tester.widget<Text>(status).style!.color, LegacyColors.muted);
 
       radio.set(DeviceLinkState.disconnected);
       await tester.pump();
       expect(
         tester.widget<Text>(status).data,
-        'устройство отключено, ожидание',
+        'device disconnected, waiting',
       );
       expect(tester.getRect(status).right, lessThanOrEqualTo(344));
 
       radio.set(DeviceLinkState.stoppedByUser);
       await tester.pump();
-      expect(tester.widget<Text>(status).data, 'приём остановлен');
+      expect(tester.widget<Text>(status).data, 'reception stopped');
 
       radio.set(DeviceLinkState.permissionDenied);
       await tester.pump();
-      expect(tester.widget<Text>(status).data, 'нет разрешения USB');
+      expect(tester.widget<Text>(status).data, 'USB permission denied');
       expect(retry, findsNothing, reason: 'USB controls belong in Settings');
       await tester.tap(find.byKey(const ValueKey('tab-3')));
       await tester.pump();

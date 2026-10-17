@@ -88,8 +88,8 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('tab-1')));
       await tester.pump();
       expect(find.byKey(const ValueKey('legacyModeSelect')), findsNothing);
-      expect(find.text('Режим приёма'), findsNothing);
-      expect(find.text('Аудио'), findsNothing);
+      expect(find.text('Receive mode'), findsNothing);
+      expect(find.text('Audio'), findsNothing);
       await tester.tap(find.byKey(const ValueKey('decoderSelector')));
       await tester.pumpAndSettle();
       for (final mode in DemodMode.values) {

@@ -145,17 +145,17 @@ void main() {
     tester,
   ) async {
     await mount(tester);
-    expect(find.text('Ожидание VIS-заголовка…'), findsOneWidget);
-    expect(find.text('Изображение не получено'), findsOneWidget);
-    expect(find.textContaining('Галерея сеанса · 0/'), findsOneWidget);
+    expect(find.text('Waiting for VIS header…'), findsOneWidget);
+    expect(find.text('No image received'), findsOneWidget);
+    expect(find.textContaining('Session gallery · 0/'), findsOneWidget);
 
     final hz = radio.tunedFrequency.round();
     _frame(backend, hz, lines: 40, end: false);
     await tester.pump(const Duration(milliseconds: 150));
-    expect(find.text('Приём кадра Robot 12'), findsOneWidget);
+    expect(find.text('Receiving frame Robot 12'), findsOneWidget);
     expect(find.byKey(const ValueKey('sstvLive')), findsOneWidget);
-    expect(find.textContaining('строк 40/120'), findsOneWidget);
-    expect(find.textContaining('приём ·'), findsOneWidget);
+    expect(find.textContaining('lines 40/120'), findsOneWidget);
+    expect(find.textContaining('receiving ·'), findsOneWidget);
 
     for (var i = 40; i < 120; i++) {
       backend.push(DecoderResult.imageProgress, {
@@ -192,10 +192,10 @@ void main() {
       'reason': 'end',
     });
     await tester.pump(const Duration(milliseconds: 150));
-    expect(find.text('Ожидание VIS-заголовка…'), findsOneWidget);
-    expect(find.textContaining('строк 120/120 · полный'), findsOneWidget);
+    expect(find.text('Waiting for VIS header…'), findsOneWidget);
+    expect(find.textContaining('lines 120/120 · complete'), findsOneWidget);
     expect(find.byKey(const ValueKey('sstvThumb-1')), findsOneWidget);
-    expect(find.textContaining('Галерея сеанса · 1/'), findsOneWidget);
+    expect(find.textContaining('Session gallery · 1/'), findsOneWidget);
     await unmount(tester);
   });
 
@@ -204,27 +204,27 @@ void main() {
     await mount(tester);
     _frame(backend, radio.tunedFrequency.round(), lines: 30);
     await tester.pump(const Duration(milliseconds: 150));
-    expect(find.text('Robot 12 · частично'), findsOneWidget);
+    expect(find.text('Robot 12 · partial'), findsOneWidget);
     await tester.ensureVisible(find.byKey(const ValueKey('sstvThumb-1')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('sstvThumb-1')));
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('sstvDialog')), findsOneWidget);
     expect(find.byKey(const ValueKey('sstvEnlarged')), findsOneWidget);
-    expect(find.textContaining('сохраняются только принятые'), findsOneWidget);
+    expect(find.textContaining('only the received lines are saved'), findsOneWidget);
     await tester.ensureVisible(find.byKey(const ValueKey('sstvSave')));
     await tester.tap(find.byKey(const ValueKey('sstvSave')));
     await tester.pumpAndSettle();
     expect(saver.saved.single.receivedLines, 30);
     expect(
       find.text(
-        'Сохранено: /Pictures/AirSDR/SSTV-261011-100000-'
+        'Saved: /Pictures/AirSDR/SSTV-261011-100000-'
         '${radio.tunedFrequency.round() ~/ 1000}-partial.png',
       ),
       findsOneWidget,
     );
-    await tester.ensureVisible(find.text('Закрыть'));
-    await tester.tap(find.text('Закрыть'));
+    await tester.ensureVisible(find.text('Close'));
+    await tester.tap(find.text('Close'));
     await tester.pumpAndSettle();
     await tester.ensureVisible(find.byKey(const ValueKey('sstvClear')));
     await tester.tap(find.byKey(const ValueKey('sstvClear')));
@@ -239,7 +239,7 @@ void main() {
     tester,
   ) async {
     await mount(tester, mode: DemodMode.wfm);
-    expect(find.textContaining('Не готов: нужен режим'), findsOneWidget);
+    expect(find.textContaining('Not ready: mode required:'), findsOneWidget);
     expect(radio.mode, DemodMode.wfm);
     final mode = tester.widget<DropdownButton<Object>>(
       find.byKey(const ValueKey('decoderSetting-sstv-mode')),
@@ -252,7 +252,7 @@ void main() {
     await tester.pump();
     expect(radio.mode, DemodMode.lsb);
     expect(session.active, isTrue);
-    expect(find.text('Ожидание VIS-заголовка…'), findsOneWidget);
+    expect(find.text('Waiting for VIS header…'), findsOneWidget);
     await unmount(tester);
   });
 }

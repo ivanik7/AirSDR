@@ -89,7 +89,7 @@ The hardware session test uses the real FFI library, the Blog V4 and
 
 - The native backend accepts the UI's v1 settings.
 - USB→LSB through the demod control retunes the mode and reattaches.
-- WFM reports "Не готов".
+- WFM reports "Not ready".
 - Choosing USB again reattaches.
 - A ±1 kHz retune keeps the decoder attached.
 

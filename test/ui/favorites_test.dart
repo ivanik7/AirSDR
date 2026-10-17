@@ -82,7 +82,7 @@ void main() {
     // The deleted frequency is free again for a user preset.
     again.add(
       frequencyHz: 125000000,
-      name: 'Своя AIR',
+      name: 'Own AIR',
       mode: DemodMode.am,
       category: 'AIR',
     );
@@ -96,7 +96,7 @@ void main() {
     repo.toggle(repo.entries.first.id);
     repo.add(
       frequencyHz: 99500000,
-      name: 'Своё FM',
+      name: 'Own FM',
       mode: DemodMode.wfm,
       category: 'FM',
     );
@@ -104,14 +104,14 @@ void main() {
     final reopened = FavoritesRepository();
     await reopened.load();
     expect(reopened.entries.first.enabled, isFalse);
-    expect(reopened.entries.last.name, 'Своё FM');
+    expect(reopened.entries.last.name, 'Own FM');
     expect(reopened.filtered('FM').map((f) => f.frequencyHz), [
       100000000,
       99500000,
     ]);
     reopened.edit(
       reopened.entries.last.id,
-      name: 'Новая',
+      name: 'New',
       mode: DemodMode.am,
       category: 'AIR',
     );
@@ -157,14 +157,14 @@ void main() {
         'and the result is stable across reloads', () async {
       final saved = <Map<String, Object>>[
         // User reordered/interleaved: user presets between built-ins.
-        _entry('user-3', 99500000, 'Моя FM', 'WFM', 'FM', true),
+        _entry('user-3', 99500000, 'My FM', 'WFM', 'FM', true),
         for (final e in _oldPool)
           switch (e.$1) {
             // Renamed by the user -> kept as a user preset.
             'builtin-2' => _entry(
               e.$1,
               e.$2,
-              'Мой аэропорт',
+              'My airport',
               'AM',
               'AIR',
               true,
@@ -175,9 +175,9 @@ void main() {
             'builtin-9' => _entry(e.$1, e.$2, e.$3, e.$4, e.$5, true),
             _ => _entry(e.$1, e.$2, e.$3, e.$4, e.$5, e.$6),
           },
-        _entry('user-0', 145000000, 'Репитер', 'NFM', 'VHF', false),
+        _entry('user-0', 145000000, 'Repeater', 'NFM', 'VHF', false),
         // Same frequency as the new «ISM Band» default.
-        _entry('user-1', 433000000, 'Мой брелок', 'NFM', 'UHF', true),
+        _entry('user-1', 433000000, 'My key fob', 'NFM', 'UHF', true),
       ];
       final repo = await loadLegacy(saved, nextId: 4);
       final got = repo.entries
@@ -186,11 +186,11 @@ void main() {
       expect(got, [
         (100000000, 'FM Radio', DemodMode.wfm, true, true),
         (125000000, 'Air Traffic', DemodMode.am, true, true),
-        (99500000, 'Моя FM', DemodMode.wfm, true, false),
-        (118100000, 'Мой аэропорт', DemodMode.am, true, false),
+        (99500000, 'My FM', DemodMode.wfm, true, false),
+        (118100000, 'My airport', DemodMode.am, true, false),
         (156800000, 'Морской 16', DemodMode.am, false, false),
-        (145000000, 'Репитер', DemodMode.nfm, false, false),
-        (433000000, 'Мой брелок', DemodMode.nfm, true, false),
+        (145000000, 'Repeater', DemodMode.nfm, false, false),
+        (433000000, 'My key fob', DemodMode.nfm, true, false),
       ]);
       expect(
         repo.entries.where((f) => RegExp(r'^builtin-\d+$').hasMatch(f.id)),
@@ -215,7 +215,7 @@ void main() {
       // A new user preset does not reuse a converted id.
       final added = reopened.add(
         frequencyHz: 7100000,
-        name: '40 м',
+        name: '40 m',
         mode: DemodMode.lsb,
         category: 'VHF',
       );

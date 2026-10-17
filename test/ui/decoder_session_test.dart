@@ -312,7 +312,7 @@ void main() {
       expect(session.active, isTrue);
       radio.setSampleRate(192000);
       expect(session.active, isFalse);
-      expect(session.failureReason, contains('200 кГц'));
+      expect(session.failureReason, contains('200 kHz'));
       expect(backend.selectCalls.last.$1, isNull);
       radio.setSampleRate(2400000);
       expect(session.active, isTrue);

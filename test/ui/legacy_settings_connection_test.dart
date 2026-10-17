@@ -33,7 +33,7 @@ class _Radio extends DemoRadioController {
 
   void fail() {
     link = DeviceLinkState.failed;
-    error = 'Нет устройства';
+    error = 'No device';
     notifyListeners();
   }
 }
@@ -54,30 +54,30 @@ void main() {
       await tester.pump();
       await tester.tap(find.byKey(const ValueKey('tab-3')));
       await tester.pump();
-      expect(find.text('ПОДКЛЮЧЕНИЕ К SDR'), findsOneWidget);
-      expect(find.text('USB параметры'), findsNothing);
-      expect(find.text('Параметры устройства'), findsOneWidget);
-      expect(find.text('Громкость'), findsNothing);
-      expect(find.text('СОСТОЯНИЕ'), findsNothing);
+      expect(find.text('SDR CONNECTION'), findsOneWidget);
+      expect(find.text('USB options'), findsNothing);
+      expect(find.text('Device settings'), findsOneWidget);
+      expect(find.text('Volume'), findsNothing);
+      expect(find.text('STATE'), findsNothing);
       expect(find.text('droppedBuffers'), findsNothing);
       final start = find.byKey(const ValueKey('legacyStartStop'));
       expect(start, findsOneWidget);
       await tester.tap(start);
       await tester.pump();
       expect(radio.running, isTrue);
-      expect(find.text('Стоп'), findsOneWidget);
+      expect(find.text('Stop'), findsOneWidget);
       await tester.tap(start);
       await tester.pump();
       expect(radio.running, isFalse);
 
       await tester.scrollUntilVisible(
-        find.text('ПАРАМЕТРЫ ПРИЁМНИКА'),
+        find.text('RECEIVER OPTIONS'),
         120,
         scrollable: find.byType(Scrollable).first,
       );
       expect(
         tester.getTopLeft(start).dy,
-        lessThan(tester.getTopLeft(find.text('ПАРАМЕТРЫ ПРИЁМНИКА')).dy),
+        lessThan(tester.getTopLeft(find.text('RECEIVER OPTIONS')).dy),
       );
       expect(tester.takeException(), isNull);
 
@@ -98,7 +98,7 @@ void main() {
       radio.fail();
       await tester.pump();
       expect(find.byKey(const ValueKey('legacyRetryUsb')), findsOneWidget);
-      expect(find.text('Ошибка'), findsOneWidget);
+      expect(find.text('Error'), findsOneWidget);
       await tester.ensureVisible(find.byKey(const ValueKey('legacyRetryUsb')));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('legacyRetryUsb')));

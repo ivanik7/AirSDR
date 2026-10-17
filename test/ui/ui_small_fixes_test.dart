@@ -163,7 +163,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('tab-2')));
       await tester.pump();
-      expect(find.text('Применить'), findsNothing);
+      expect(find.text('Apply'), findsNothing);
       expect(find.byIcon(Icons.check), findsWidgets);
       await tester.pumpWidget(const SizedBox());
       radio.dispose();

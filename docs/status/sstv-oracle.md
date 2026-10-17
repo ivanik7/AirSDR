@@ -39,7 +39,7 @@
 `test/native/sstv_replay_e2e_test.dart` with `SDRCORE_HOST_LIBRARY=build/native-host/libsdrcore.so` and `SSTV_REPLAY_IQ=robot36_usb_240k.cu8`. The IQ comes from `sdrcore_sstv_replay make-iq corpus/Robot36_clean.wav robot36_usb_240k.cu8 --mode usb --rate 240000 --vfo 0`; its sha256 is a2c5248a…23ad. The test chain is: the native file source (paced at 240 kS/s, looping) → NativeRadioController → DecoderSession → SstvDecoderPanel. Result: **2/2 passed**.
 - **Retune reset.** After 40 rows, a +1 kHz retune closes the frame as `partial/retune` and it goes to the gallery. After tuning back, no stale rows are added and no frame starts without a VIS.
 - **Next loop.** The next pass is `Robot 36 vis=8 320x240 rows=240 padded=0 complete/end dropped=0`.
-- **UI save.** Thumbnail → dialog → «Сохранить PNG» goes through the real Linux `PlatformSstvImageSaver`. It produced `SSTV-261011-003739-14230.png` (158,967 B), whose pixels are bit-exact with the decoded frame.
+- **UI save.** Thumbnail → dialog → "Save PNG" goes through the real Linux `PlatformSstvImageSaver`. It produced `SSTV-261011-003739-14230.png` (158,967 B), whose pixels are bit-exact with the decoded frame.
 
 ## Blockers / gaps
 - **Not verified on Android.** The phone save through MediaStore belongs to the separate phone-QA card.

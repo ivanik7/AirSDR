@@ -69,7 +69,7 @@ void main() {
         radio.setMode(DemodMode.wfm);
         await Future<void>.delayed(const Duration(milliseconds: 300));
         expect(session.active, isFalse);
-        expect(session.failureReason, contains('Не готов'));
+        expect(session.failureReason, contains('Not ready'));
 
         session.setSetting('sstv', 'underlying', 'usb');
         await Future<void>.delayed(const Duration(milliseconds: 300));

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Squelch controls of the Decoder tab: Off / Manual / Auto.
-//  * Ручной — the SDR++ power squelch, slider = level (−100..0 dB).
-//  * Авто — the automatic squelch (app extension, auto_squelch.dart): noise squelch in NFM,
+//  * Manual — the SDR++ power squelch, slider = level (−100..0 dB).
+//  * Auto — the automatic squelch (app extension, auto_squelch.dart): noise squelch in NFM,
 //    level squelch in AM/SSB/DSB/CW; the slider becomes the threshold offset ("sensitivity")
 //    and the caption shows the live automatic threshold and open/closed state.
 // A mode without a detector disables its segment (no fake switches).
@@ -14,22 +14,22 @@ import 'theme.dart';
 String squelchStatusText(RadioController r) {
   switch (r.squelchType) {
     case SquelchType.off:
-      return 'Выкл.';
+      return 'Disabled';
     case SquelchType.manual:
-      return 'Ручной · порог ${r.squelchLevel.toStringAsFixed(0)} dB';
+      return 'Manual · threshold ${r.squelchLevel.toStringAsFixed(0)} dB';
     case SquelchType.auto:
       final noise = r.mode.params.autoSquelch == AutoSquelchKind.noise;
-      final kind = noise ? 'по шуму ЧМ' : 'по уровню';
+      final kind = noise ? 'noise (NFM)' : 'level';
       final s = r.autoSquelchStatus;
-      if (s == null) return 'Авто $kind · ждёт приём';
-      final state = s.open ? 'ОТКРЫТ' : 'закрыт';
+      if (s == null) return 'Auto $kind · waiting for signal';
+      final state = s.open ? 'OPEN' : 'closed';
       final th = s.thresholdDb;
-      if (th == null) return 'Авто $kind · $state · учит шумовой пол…';
+      if (th == null) return 'Auto $kind · $state · learning noise floor…';
       final m = s.metricDb;
       final mTxt = m == null ? '—' : m.toStringAsFixed(0);
       return noise
-          ? 'Авто $kind · $state · тишина $mTxt / порог ${th.toStringAsFixed(0)} dB'
-          : 'Авто $kind · $state · $mTxt / порог ${th.toStringAsFixed(0)} dB';
+          ? 'Auto $kind · $state · silence $mTxt / threshold ${th.toStringAsFixed(0)} dB'
+          : 'Auto $kind · $state · $mTxt / threshold ${th.toStringAsFixed(0)} dB';
   }
 }
 
@@ -55,7 +55,7 @@ class SquelchControls extends StatelessWidget {
         children: [
           Row(
             children: [
-              Text('Шумодав', style: plex(size: 14)),
+              Text('Squelch', style: plex(size: 14)),
               const SizedBox(width: 8),
               if (auto)
                 Icon(
@@ -76,17 +76,17 @@ class SquelchControls extends StatelessWidget {
             segments: [
               ButtonSegment(
                 value: SquelchType.off,
-                label: Text('Выкл', style: plex(size: 11)),
+                label: Text('Off', style: plex(size: 11)),
               ),
               ButtonSegment(
                 value: SquelchType.manual,
                 enabled: manualOk,
-                label: Text('Ручной', style: plex(size: 11)),
+                label: Text('Manual', style: plex(size: 11)),
               ),
               ButtonSegment(
                 value: SquelchType.auto,
                 enabled: autoOk,
-                label: Text('Авто', style: plex(size: 11)),
+                label: Text('Auto', style: plex(size: 11)),
               ),
             ],
             selected: <SquelchType>{type},
@@ -106,7 +106,7 @@ class SquelchControls extends StatelessWidget {
           ),
           if (type == SquelchType.manual)
             _slider(
-              'Порог',
+              'Threshold',
               r.squelchLevel,
               -100,
               0,
@@ -116,7 +116,7 @@ class SquelchControls extends StatelessWidget {
             ),
           if (auto)
             _slider(
-              'Смещение порога (+ строже)',
+              'Threshold offset (+ stricter)',
               r.autoSquelchOffset,
               RadioController.minAutoSquelchOffset,
               RadioController.maxAutoSquelchOffset,

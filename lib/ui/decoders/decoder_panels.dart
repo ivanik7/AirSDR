@@ -15,9 +15,9 @@ import '../legacy/theme.dart';
 import '../radio_controller.dart';
 
 const _demodOptionLabels = <String, String>{
-  'stereo': 'Стерео',
-  'lowPass': 'Фильтр НЧ',
-  'carrierAgc': 'АРУ несущей',
+  'stereo': 'Stereo',
+  'lowPass': 'Low-pass filter',
+  'carrierAgc': 'Carrier AGC',
 };
 
 /// Everything a decoder panel may need; each panel picks its own inputs.
@@ -96,7 +96,7 @@ class DecoderSelector extends StatelessWidget {
   @override
   Widget build(BuildContext context) => PopupMenuButton<String>(
     key: const ValueKey('decoderSelector'),
-    tooltip: 'Декодер',
+    tooltip: 'Decoder',
     initialValue: session.selectedId,
     onSelected: session.selectPreview,
     itemBuilder: (context) => [
@@ -109,7 +109,7 @@ class DecoderSelector extends StatelessWidget {
               Expanded(child: Text(d.label, style: plex(size: 14))),
               if (!session.isAvailable(d.id))
                 Text(
-                  'Недоступен',
+                  'Unavailable',
                   style: plex(size: 11, color: LegacyColors.muted),
                 ),
             ],
@@ -155,16 +155,16 @@ class VoiceDecoderPanel extends StatelessWidget {
       key: const ValueKey('decoderPanel-voice'),
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _heading('ДЕМОДУЛЯТОР · ${mode.label}'),
+        _heading('DEMODULATOR · ${mode.label}'),
         legacyCard(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
                 children: [
-                  Expanded(child: Text('Полоса канала', style: plex(size: 14))),
+                  Expanded(child: Text('Channel bandwidth', style: plex(size: 14))),
                   Text(
-                    '${(radio.bandwidth / 1000).toStringAsFixed(1)} кГц',
+                    '${(radio.bandwidth / 1000).toStringAsFixed(1)} kHz',
                     key: const ValueKey('decoderBandwidthValue'),
                     style: plex(
                       mono: true,
@@ -187,7 +187,7 @@ class VoiceDecoderPanel extends StatelessWidget {
                 onChanged: params.bandwidthLocked ? null : radio.setBandwidth,
               ),
               Text(
-                'Демодуляция · ${(params.minBandwidth / 1000).toStringAsFixed(1)}–${(params.maxBandwidth / 1000).toStringAsFixed(1)} кГц · не частота выборки IQ',
+                'Demodulation · ${(params.minBandwidth / 1000).toStringAsFixed(1)}–${(params.maxBandwidth / 1000).toStringAsFixed(1)} kHz · not the IQ sample rate',
                 style: plex(size: 11, color: LegacyColors.muted),
               ),
             ],
@@ -201,7 +201,7 @@ class VoiceDecoderPanel extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Параметры ${mode.label}', style: plex(size: 14)),
+                Text('${mode.label} settings', style: plex(size: 14)),
                 for (final entry in _demodOptionLabels.entries)
                   if (options[entry.key] is bool)
                     Material(
@@ -221,7 +221,7 @@ class VoiceDecoderPanel extends StatelessWidget {
         ] else if (mode == DemodMode.wfm) ...[
           const SizedBox(height: 8),
           Text(
-            'Стерео WFM недоступно в текущем нативном приёмнике (моно).',
+            'WFM stereo is unavailable in the current native receiver (mono).',
             style: plex(size: 12, color: LegacyColors.muted),
           ),
         ],
@@ -260,23 +260,23 @@ class WfmDecoderPanel extends StatelessWidget {
 /// Per-id icon/title/empty-state text for the data decoders
 /// (decoder_contract.dart `DecoderResult`). Keyed by [DecoderDescriptor.id].
 const Map<String, (IconData, String, String)> _placeholderMeta = {
-  'rtl_433': (Icons.sensors, 'rtl_433 · сообщения', 'Сообщений пока нет.'),
+  'rtl_433': (Icons.sensors, 'rtl_433 · messages', 'No messages yet.'),
   'adsb': (
     Icons.flight_outlined,
-    'ADS-B · самолёты',
-    'Самолётов в радиусе приёма пока нет.',
+    'ADS-B · aircraft',
+    'No aircraft within receive range yet.',
   ),
 };
 
 String _settingLabel(String key) => switch (key) {
-  'frequency_hz' => 'Частота',
-  'mode' => 'Режим',
+  'frequency_hz' => 'Frequency',
+  'mode' => 'Mode',
   _ => key,
 };
 
 String _settingValueLabel(String key, Object value) {
   if (key == 'frequency_hz' && value is num) {
-    return '${(value / 1e6).toStringAsFixed(3)} МГц';
+    return '${(value / 1e6).toStringAsFixed(3)} MHz';
   }
   return '$value';
 }
@@ -292,11 +292,11 @@ class Rtl433DecoderPanel extends StatelessWidget {
     final messages = session.messages;
     final available = session.isAvailable('rtl_433');
     final status = !available
-        ? 'Недоступен в текущей нативной сборке'
+        ? 'Unavailable in the current native build'
         : !session.radio.running
-        ? session.radio.lastError ?? 'Приём остановлен'
+        ? session.radio.lastError ?? 'Reception stopped'
         : session.failureReason ??
-              (session.active ? 'Декодирование активно' : 'Декодер не запущен');
+              (session.active ? 'Decoding active' : 'Decoder not running');
     return Column(
       key: const ValueKey('decoderPanel-rtl_433'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -305,11 +305,11 @@ class Rtl433DecoderPanel extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('rtl_433 · сообщения', style: plex(size: 14)),
+              Text('rtl_433 · messages', style: plex(size: 14)),
               const SizedBox(height: 6),
               Text(
                 session.active
-                    ? '$status · ${(session.radio.tunedFrequency / 1e6).toStringAsFixed(3)} МГц · ${session.decoderRateHz} отсч./с'
+                    ? '$status · ${(session.radio.tunedFrequency / 1e6).toStringAsFixed(3)} MHz · ${session.decoderRateHz} samples/s'
                     : status,
                 key: const ValueKey('rtl433Status'),
                 style: plex(
@@ -320,12 +320,12 @@ class Rtl433DecoderPanel extends StatelessWidget {
                 ),
               ),
               Text(
-                'IQ: ${session.inputRateHz} Гц · Потеряно событий: ${session.droppedEvents}',
+                'IQ: ${session.inputRateHz} Hz · Dropped events: ${session.droppedEvents}',
                 key: const ValueKey('rtl433RateDrops'),
                 style: plex(size: 11, color: LegacyColors.muted),
               ),
               Text(
-                'Частота задаётся обычной настройкой приёмника (VFO).',
+                'Frequency is set with the regular receiver tuning (VFO).',
                 style: plex(size: 11, color: LegacyColors.muted),
               ),
             ],
@@ -336,7 +336,7 @@ class Rtl433DecoderPanel extends StatelessWidget {
           children: [
             Expanded(
               child: Text(
-                'Сообщения · ${messages.length}',
+                'Messages · ${messages.length}',
                 style: plex(size: 14),
               ),
             ),
@@ -344,7 +344,7 @@ class Rtl433DecoderPanel extends StatelessWidget {
               key: const ValueKey('rtl433Clear'),
               onPressed: messages.isEmpty ? null : session.clearMessages,
               icon: const Icon(Icons.delete_outline, size: 18),
-              label: const Text('Очистить'),
+              label: const Text('Clear'),
             ),
           ],
         ),
@@ -353,7 +353,7 @@ class Rtl433DecoderPanel extends StatelessWidget {
           child: messages.isEmpty
               ? legacyCard(
                   child: Text(
-                    'Сообщений пока нет',
+                    'No messages yet',
                     style: plex(size: 12, color: LegacyColors.muted),
                   ),
                 )
@@ -417,7 +417,7 @@ class DecoderPlaceholderPanel extends StatelessWidget {
     final configurable = session.canConfigure(descriptor.id);
     final meta =
         _placeholderMeta[descriptor.id] ??
-        (Icons.extension_outlined, descriptor.label, 'Нет данных.');
+        (Icons.extension_outlined, descriptor.label, 'No data.');
     final settings = session.settingsFor(descriptor.id);
     return Column(
       key: ValueKey('decoderPanel-${descriptor.id}'),
@@ -442,8 +442,8 @@ class DecoderPlaceholderPanel extends StatelessWidget {
                     if (!available) ...[
                       const SizedBox(height: 6),
                       Text(
-                        'Декодер недоступен в текущей нативной сборке — выбор здесь '
-                        'только предпросмотр панели, запуск не выполняется.',
+                        'Decoder unavailable in the current native build — selection here is '
+                        'only a panel preview, it will not start.',
                         key: ValueKey('decoderUnavailable-${descriptor.id}'),
                         style: plex(size: 11, color: LegacyColors.danger),
                       ),
@@ -451,8 +451,8 @@ class DecoderPlaceholderPanel extends StatelessWidget {
                       const SizedBox(height: 6),
                       Text(
                         descriptor.exclusiveReceiver
-                            ? 'Только предпросмотр: безопасное переключение единственного приёмника пока не реализовано.'
-                            : 'Для настройки включите приём в совместимом режиме демодуляции.',
+                            ? 'Preview only: safe switching of the single receiver is not implemented yet.'
+                            : 'To configure, enable reception in a compatible demodulation mode.',
                         style: plex(size: 11, color: LegacyColors.muted),
                       ),
                     ],
@@ -472,8 +472,8 @@ class DecoderPlaceholderPanel extends StatelessWidget {
                 alignment: Alignment.topLeft,
                 child: Text(
                   descriptor.id == 'rtl_433'
-                      ? 'Журнал сообщений пуст'
-                      : 'Список самолётов пуст',
+                      ? 'Message log is empty'
+                      : 'Aircraft list is empty',
                   style: plex(size: 12, color: LegacyColors.muted),
                 ),
               ),
@@ -486,7 +486,7 @@ class DecoderPlaceholderPanel extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Параметры', style: plex(size: 14)),
+                Text('Settings', style: plex(size: 14)),
                 for (final spec in descriptor.settings)
                   Padding(
                     padding: const EdgeInsets.only(top: 6),
@@ -537,8 +537,8 @@ class DecoderPlaceholderPanel extends StatelessWidget {
         if (descriptor.exclusiveReceiver) ...[
           const SizedBox(height: 8),
           Text(
-            'Широкополосный декодер: запуск займёт единственный приёмник '
-            'целиком — обычный приём остановится на всё время работы.',
+            'Wideband decoder: starting it will take over the single receiver '
+            'entirely — normal reception stops while it runs.',
             style: plex(size: 11, color: LegacyColors.muted),
           ),
         ],

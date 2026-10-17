@@ -12,7 +12,7 @@ export '../decoders/decoder_contract.dart'
     show decoderIdForMode, demodModeFromDecoderId;
 import '../radio_controller.dart';
 
-const favoriteCategories = ['Все', 'FM', 'AIR', 'VHF', 'MAR', 'UHF'];
+const favoriteCategories = ['All', 'FM', 'AIR', 'VHF', 'MAR', 'UHF'];
 
 /// Sentinel for [Favorite.copyWith]'s `decoderId`: "leave the decoder
 /// selection (and its settings) exactly as it is", distinct from a real
@@ -184,7 +184,8 @@ const builtInFavorites = <Favorite>[
 ];
 
 /// The 12-entry archive pool of storage v1 (`builtin-<index>`): name, mode,
-/// category as shipped. Used only to migrate old saves.
+/// category as shipped. Used only to migrate old saves. The names stay in the
+/// original Russian on purpose: they must match v1 data byte for byte.
 const _legacyPool = <(String, DemodMode, String)>[
   ('Симплекс 2м', DemodMode.nfm, 'VHF'),
   ('PMR вызов', DemodMode.nfm, 'UHF'),
@@ -228,7 +229,7 @@ class FavoritesRepository extends ChangeNotifier {
   final Set<String> _seenDefaults = {for (final f in builtInFavorites) f.id};
   List<Favorite> get entries => List.unmodifiable(_entries);
   List<Favorite> filtered(String category) => List.unmodifiable(
-    _entries.where((f) => category == 'Все' || f.category == category),
+    _entries.where((f) => category == 'All' || f.category == category),
   );
   bool _changed = false;
   int _nextId = 0;
@@ -258,7 +259,7 @@ class FavoritesRepository extends ChangeNotifier {
         final category = m['category'] as String;
         final name = m['name'] as String;
         if (!favoriteCategories.contains(category) ||
-            category == 'Все' ||
+            category == 'All' ||
             hz <= 0 ||
             hz > 999999999999 ||
             parsed.any((e) => e.id == id || e.frequencyHz == hz)) {
@@ -460,7 +461,7 @@ class FavoritesRepository extends ChangeNotifier {
     if (name.trim().isEmpty || name.trim().length > 60) {
       throw ArgumentError.value(name, 'name');
     }
-    if (!favoriteCategories.contains(category) || category == 'Все') {
+    if (!favoriteCategories.contains(category) || category == 'All') {
       throw ArgumentError.value(category, 'category');
     }
   }

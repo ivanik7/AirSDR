@@ -92,7 +92,7 @@ void main() {
       expect(find.byType(DropdownButton<DemodMode>), findsNothing);
       expect(find.byType(DropdownButton<String>), findsOneWidget);
 
-      await tester.tap(find.text('Отмена'));
+      await tester.tap(find.text('Cancel'));
       await tester.pumpAndSettle();
       await tester.pumpWidget(const SizedBox());
       radio.dispose();
@@ -205,7 +205,7 @@ void main() {
     await tester.pump();
     await tester.tap(find.byKey(ValueKey('favoriteMenu-${plain.id}')));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Изменить').last);
+    await tester.tap(find.text('Edit').last);
     await tester.pumpAndSettle();
 
     final dropdown = tester.widget<DropdownButton<String>>(
@@ -213,7 +213,7 @@ void main() {
     );
     expect(dropdown.value, decoderIdForMode(DemodMode.wfm));
 
-    await tester.tap(find.text('Отмена'));
+    await tester.tap(find.text('Cancel'));
     await tester.pumpAndSettle();
     await tester.pumpWidget(const SizedBox());
     radio.dispose();

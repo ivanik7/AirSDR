@@ -43,7 +43,7 @@ class LegacyAppShell extends StatefulWidget {
 class _LegacyAppShellState extends State<LegacyAppShell> {
   /// Bottom tab order: Receive, Decoder, Presets, Settings.
   static const _receiveTab = 0;
-  static const _tabLabels = ['Приём', 'Decoder', 'Пресеты', 'Настройки'];
+  static const _tabLabels = ['Receive', 'Decoder', 'Presets', 'Settings'];
 
   late CenteredReceiver receiver;
   late SdrUiState spectrum;
