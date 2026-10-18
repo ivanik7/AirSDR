@@ -10,6 +10,7 @@
 #include "sdrcore_v3.h"
 
 #include "sstv.hpp"
+#include "../dsp/fftw_planner.hpp"
 
 #include <nlohmann/json.hpp>
 
@@ -149,13 +150,10 @@ uint64_t next_frame_id() {
 
 // FFTW's planner is process-global and not thread-safe against concurrent
 // plan creation/destruction (see PROVENANCE.md "FFTW3 planner thread-
-// safety"); fftwf_execute() itself needs no extra guard. One process-wide
-// mutex serializes every SstvDecoder<float> construction/destruction,
-// across however many handles/backends exist.
-std::mutex& fftw_planner_mutex() {
-  static std::mutex m;
-  return m;
-}
+// safety"); fftwf_execute() itself needs no extra guard. The process-wide
+// mutex in dsp/fftw_planner.hpp serializes every SstvDecoder<float>
+// construction/destruction, and is shared with the DMR FFT bandpass.
+using sdrcore::fftw_planner_mutex;
 
 // --- Reader<float>/Writer<unsigned char> glue ---------------------------
 // A minimal byte-buffer Reader/Writer pair, not csdr-plus's mmap-backed

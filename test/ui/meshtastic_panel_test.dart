@@ -192,4 +192,20 @@ void main() {
         'MediumFast');
     await _teardown(tester, radio, session);
   });
+
+  testWidgets('KZ_863 quick tune is labeled unverified and recenters at 344 dp',
+      (tester) async {
+    final (radio, session) = await _pump(tester, 344);
+    final kz = find.byKey(const ValueKey('meshtasticTune-KZ_863'));
+    expect(find.textContaining('KZ_863 · 866.875 MHz · Unverified frequency'),
+        findsOneWidget);
+    await tester.ensureVisible(kz);
+    await tester.tap(kz);
+    await tester.pump();
+    expect(radio.tunedFrequency, 866875000);
+    expect(radio.centerFrequency, radio.tunedFrequency);
+    expect(radio.vfoOffset, 0);
+    expect(tester.takeException(), isNull);
+    await _teardown(tester, radio, session);
+  });
 }

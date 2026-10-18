@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "dmr/channel.hpp"
+#include "dmr/channel_filter.hpp"
 #include <csdr/dcblock.hpp>
 #include <digiham/gfsk_demodulator.hpp>
 #include <digiham/rrc_filter.hpp>
@@ -13,6 +14,14 @@
 #include <vector>
 
 namespace {
+// Upstream csdr selector start-up latency in 48 kS/s IF samples, plus the
+// adapter's fixed input block (bounded exactly in dmr_channel_filter_test).
+constexpr uint64_t kMaxIfDeficit =
+    1200 + sdrcore::dmr::ChannelFilter::kBlockOutputSamples;
+bool nominal_if(uint64_t actual, uint64_t ideal) {
+  return actual <= ideal && actual + kMaxIfDeficit >= ideal;
+}
+
 struct Symbols : sdrcore::dmr::SymbolSink {
   std::vector<uint8_t> dibits;
   void on_symbols(const uint8_t* data, size_t n) override {
@@ -116,12 +125,14 @@ void rate_and_boundary(uint32_t rate) {
   whole.process(iq.data(), iq.size(), a);
   for (size_t offset = 0; offset < iq.size(); offset += 4096)
     sliced.process(iq.data() + offset, std::min<size_t>(4096, iq.size() - offset), b);
-  assert(whole.if_samples() == 24000);
+  assert(nominal_if(whole.if_samples(), 24000));
   assert(sliced.if_samples() == whole.if_samples());
   assert(a.dibits == b.dibits);
   std::fprintf(stderr, "DMR rate %u: IF=%llu symbols=%zu\n", rate,
       static_cast<unsigned long long>(whole.if_samples()), a.dibits.size());
-  assert(a.dibits.size() > 2300 && a.dibits.size() <= 2400);
+  // GFSK samplesPerSymbol=10: 4800 symbols/s from the 48 kS/s IF.
+  assert(a.dibits.size() * 10 <= whole.if_samples() &&
+         a.dibits.size() * 10 + 120 >= whole.if_samples());
   // A reset must discard all FIR, DC and demodulator history.
   sliced.reset();
   Symbols c;
@@ -149,7 +160,7 @@ void iq_four_level_decisions(uint32_t rate) {
   }
   for (size_t i = 0; i < n; i += 2048)
     channel.process(iq.data() + i, std::min<size_t>(2048, n - i), symbols);
-  assert(channel.if_samples() == groups * 120);
+  assert(nominal_if(channel.if_samples(), groups * 120));
   // Estimate fixed filter group delay and symbol sampler phase; compare
   // actual symbols, not merely a count or non-empty decoder output.
   size_t best = 0;

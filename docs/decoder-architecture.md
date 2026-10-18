@@ -33,9 +33,9 @@ entry and no second mode picker.
   optional decoder extension and have no decoder factory.
 - `dmr` is a voice mode in the same list but not a v3 demodulator:
   `voice` is true and `demodMode` is null. It is a native decoder-extension
-  engine on the baseband tap (docs/status/dmr.md §7, §10); session code tells
+  engine on the baseband tap (docs/status/dmr.md §7, §10, §14); session code tells
   demod rows apart by `demodMode != null`, never by `voice`. Its AMBE audio
-  is meant to replace demod audio natively; Dart only shows metadata.
+  replaces demod audio natively via the existing sink; Dart only shows metadata.
 - Data rows (`sstv`, `rtl_433`, `adsb`) are optional native decoder
   extension engines. Their availability comes only from
   `DecoderBackend.availableIds`; `rtl_433` is listed when the native
@@ -113,6 +113,35 @@ about once per second; `adsb` is now available in the native registry. See
 and generated-IQ comparison. `lib/ui/decoders/adsb_panel.dart` displays the
 live bounded snapshot, not raw frames. Host RF yielded no aircraft in a
 30-second check; this does not establish live reception.
+
+## Meshtastic (LoRa) path
+
+`meshtastic` uses an exact 1 MS/s complex-f32 tap of the tuned VFO (FIR
+decimation plus a fractional resampler, `docs/status/meshtastic-mode.md`).
+It feeds OE5DXL's author-site lorarx, the demodulator OpenWebRX+ runs,
+embedded without IO (`docs/status/meshtastic-phy.md`), started with the
+OpenWebRX+ `MeshtasticDemodulator` argv. Each lorarx JSON line goes to the
+native `MeshtasticParser` port, which does the header, firmware key/hash
+rules, AES-CTR and nanopb decoding (`docs/status/meshtastic.md`). The result
+is one `message` event per packet. Voice audio is zero-filled while the
+decoder is selected. Dart shows the packet log, text messages, node list
+and channel keys (`docs/status/meshtastic-ui.md`). Region quick-tune
+buttons (EU_868, US, RU, KZ_863) call `CenteredReceiver.tune`.
+Same-IQ parity with lorarx plus the OpenWebRX+ parser is
+`docs/status/meshtastic-parity.md`. The host live-air check, CPU numbers
+and the Kazakhstan regions are in `docs/status/meshtastic-live.md`. No
+packet has yet been received over the air.
+
+## MeshCore (LoRa) path
+
+`meshcore` reuses the same 1 MS/s tap and the same embedded lorarx, started
+with the OpenWebRX+ `MeshcoreDemodulator` argv (`-b <bw> -s 7 -s 8`).
+Because lorarx state is process-global, Meshtastic and MeshCore share one
+owner/callback (`native/src/decoder/lorarx_session.*`). The packet layer
+(`native/src/meshcore/`) follows MeshCore firmware, not OpenWebRX+ (which
+does not parse MeshCore packets). It verifies ADVERT Ed25519 signatures and
+checks the group-channel HMAC before AES decryption. Details, verification
+and gaps are in `docs/status/meshcore.md`.
 
 ## Pieces
 

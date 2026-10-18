@@ -192,15 +192,17 @@ No tuner control, no subprocess, no PCM/IQ through Dart.
    change needed; `sdrcore_decoder_v1.h` stays at revision 1.
 
 ## 8. Remaining gaps / not verified
-- Channel filtering is now a self-contained `ChannelFilter` with an explicit
-  48–300 kS/s complex baseband input and exact 48 kS/s complex IF output;
+- Channel filtering is a self-contained `ChannelFilter` with an explicit
+  48–300 kS/s complex baseband input and 48 kS/s complex IF output. It runs
+  OpenWebRX+'s csdr-plus selector modules (FirDecimate, FractionalDecimator,
+  FFT bandpass ±6250 Hz/320 Hz) byte-identical and matches them sample for
+  sample at 48k, 240k, 250k, 288k and 300k; deviations (VFO tap replaces the
+  Shift stage, fixed input blocks) are in `docs/status/dmr-symbol-verification.md`.
   `RrcPulseFilter` exposes 48 kS/s real in/out and the original digiham
-  Wide (DMR, 81 taps) and Narrow (NXDN, 161 taps) tables. The original
-  channel frontend delegates to both rather than duplicating their state.
-  Synthetic tone/stream-boundary and coefficient-parity tests pass at 48k,
-  240k, 250k, 288k and 300k baseband rates. The custom native selector
-  remains a documented approximation of OpenWebRX+'s FFT selector; a
-  same-recording oracle comparison is not yet available.
+  Wide (DMR, 81 taps) and Narrow (NXDN, 161 taps) tables. A same-recording
+  comparison against a running OpenWebRX+ instance is not yet available; the
+  full-chain comparison on identical synthetic IQ against the pristine
+  OpenWebRX+ modules is in section 13.
 - No over-the-air DMR test yet; no local DMR IQ recording found. Implementations need a capture
   (Blog V4 on the Linux host) or a synthetic vector generated from the sync/EMB tables.
 - Full talker-alias charset cases, nonzero GPS and embedded LC checksum failure
@@ -254,9 +256,8 @@ touches IQ or PCM.
   outside the allowed set are rejected before they reach native code.
 - **Readiness.** DMR uses the same 200–300 kS/s baseband branch as
   rtl_433. Below that rate the panel shows the existing not-ready reason. If
-  the native registry lacks `dmr`, which is true today because §9
-  registration is not done, the panel says it is unavailable and every
-  control is disabled.
+  the native registry lacks `dmr` (for example in an older installed build),
+  the panel says it is unavailable and every control is disabled.
 - **Events.** Only payloads with `schema=="dmr/1"`, `protocol=="DMR"` and an
   integer `slot` of 0 or 1 are accepted. Upstream keys are kept as-is.
   Missing keys stay null and are never shown as placeholders.
@@ -292,9 +293,8 @@ touches IQ or PCM.
   call, malformed/foreign events, the unavailable state, and the slot-tap
   mask at 344 dp and 690 dp. A mutation check confirmed that removing
   history retention, generation clear or expiry fails the matching test.
-- **Not verified.** No native `dmr` backend is registered on master, so no
-  real event has gone through `NativeDecoderBackend`. Live RTL-SDR/air and
-  Android hardware checks have not been done.
+- **Not verified.** Live over-the-air DMR and audible voice have not been
+  checked; the stored fixture exercises the native backend but not RF.
 
 ## 11. AMBE+2 voice output
 
@@ -337,11 +337,9 @@ mbelib + DigitalVoiceFilter + `csdr agc` on synthetic frames.
 Not verified / remaining: no open AMBE+2 speech encoder exists, so all test
 frames are synthetic parameter vectors (vocoder buzz, not speech). No
 over-the-air DMR voice was decoded. Audibility is unconfirmed;
-it still requires manual listening. The DMR backend (registry entry, 4FSK channel,
-events, `{"voice":false}` mapping) still has to own one
-`VoiceOutput` and return `provides_audio() == true`. That wiring is part of
-the backend integration. Once the backend is registered, the UI from
-§10 needs no volume control of its own.
+it still requires manual listening. The backend integration below owns one
+`VoiceOutput` and returns `provides_audio() == true` when mbelib is built and
+voice is enabled. The UI from §10 needs no volume control of its own.
 
 ## 12. Single-receiver channel input stage
 
@@ -356,7 +354,7 @@ RRC and GFSK(10) state. Neither the source sample rate nor tuner center is
 changed for DMR. The channel retains its ±6250 Hz filter and no-squelch
 behavior. This class remains abstract until the backend integration card
 attaches `Framing`/`VoiceOutput`, implements configuration/events and
-registers the `dmr` factory; the app still shows DMR as unavailable.
+registers the `dmr` factory (see §14).
 
 `sdrcore_dmr_channel_tap` sends synthetic CU8 through the real receiver
 at 2.4, 2.5 and 2.88 MS/s device rates (240, 250 and 240 kS/s taps), plus
@@ -366,3 +364,71 @@ checks deterministic reset/replay, detach, rate propagation, VFO changes
 and retune. Direct filter and symbol-decision tests are separate; the
 downstream oracle card owns reference fixture parity. Live DMR RF reception
 and voice output remain unverified.
+
+## 13. OpenWebRX+ full-chain oracle
+
+`tool/dmr_chain_oracle` feeds identical input (MMDVMHost-encoded synthetic
+DMR as dibits, and as 4FSK IQ at 240/250/288 kS/s with noise and offset)
+through the pristine OpenWebRX+ modules (csdr-plus, digiham-plus, softmbe,
+mbelib) and through `Channel` + `Framing` + `VoiceOutput`, and compares
+symbols (aligned SER), AMBE frames, per-slot metadata and voice PCM with
+documented thresholds. At 240 and 288 kS/s and on dibits (with and without
+injected errors) frames, metadata and voice PCM are identical; at 250 kS/s
+up to 8/102 noisy frames are decided differently (fractional resampler
+phase) while metadata and error rates match. The CTest
+`sdrcore_dmr_chain_fixture` checks the native chain against stored oracle
+outputs. Method, measurements, provenance and gaps:
+`docs/status/dmr-chain-oracle.md`.
+
+Android emulator smoke (sdr_api35, debug APK from this branch, no SDR): the
+Decoder tab lists DMR as "Unavailable"; selecting it shows the DMR panel
+with "Unavailable in the current native build", TS1/TS2 "No sync / No
+current call", and the timeslot/colour-code/voice filters; logcat shows no
+crash. DMR decode and DMR audio through the existing sink cannot be
+smoke-tested on a device in that upstream test; §14 registers the backend.
+
+## 14. Native backend integration
+
+`native/src/decoder/dmr.cpp` registers `dmr` as a nonexclusive baseband
+decoder on the existing ~250 kS/s tuned VFO tap. The `ChannelDecoder` forwards
+dibits to the GPL-3 digiham `Framing`, which forwards AMBE frames to the
+in-process mbelib `VoiceOutput`. The existing receiver substitutes its 48 kHz
+PCM before the normal volume/mute stage and existing audio sink. Nothing
+changes tuner frequency/rate; no subprocess, second USB claim or sample FFI.
+
+The flat `dmr/1` JSON config validates exactly the schema, slot mask 1–3,
+colour code -1..15 and boolean voice flag. A config switch resets channel,
+framing, buffered PCM and queued events. Each stream/tune reset emits one
+no-sync event per slot. Per-slot JSON preserves the upstream keys (`sync`,
+`type`, `source`, `target`, `talkeralias`, `lat`, `lon`) and adds the locally
+derived colour code, privacy indication and observed-frame duration. Unknown
+fields are absent. Voice status is `ok`, `muted` or `unavailable` (when
+`SDRCORE_ENABLE_MBELIB=OFF`). Internal staging is bounded at 64 events; the
+shared decoder FIFO still applies its 256-event bound and generation stamps.
+
+`sdrcore_dmr_backend` feeds the same MMDVMHost-generated recordings
+(`iq240_cn15`, `iq250_cn15`: 4FSK at C/N 15 dB, 240 and 250 kS/s) that the
+unmodified OpenWebRX+ chain decoded into `tests/data/dmr_chain/*.meta`
+through the registered `dmr` decoder. It rebuilds the oracle's metadata lines
+from the backend's JSON events. Result on the Linux host:
+
+| Recording   | Metadata transitions vs oracle | Truth IDs/alias/GPS | 48 kHz PCM | CPU (Debug build, 1 core) |
+|-------------|--------------------------------|---------------------|------------|---------------------------|
+| iq240_cn15  | 10/10 identical                | all decoded         | 97 320 frames (2.03 s) | 0.174 s for 4.8 s IQ (27.7x real time) |
+| iq250_cn15  | 10/10 identical                | all decoded         | 97 320 frames (2.03 s) | 0.175 s for 4.8 s IQ (27.4x real time) |
+
+`sdrcore_dmr_chain_fixture` additionally compares the 102 AMBE frames
+(measured 102/102 at 240k and 94/102 at 250k; limits 101 and 92) and the
+bit-exact 8 kHz PCM against that reference.
+ABI tests check discovery and selection without altering the VFO. With
+`SDRCORE_ENABLE_MBELIB=OFF` the backend test passes with no PCM and
+`libsdrcore.so` contains no `mbe_*` symbols.
+
+Android emulator (`sdr_api35`, debug APK from master f6f88fd): the Decoder tab
+lists DMR; selecting it shows the enabled DMR panel (12.5 kHz, TS1/TS2
+"No sync", timeslot/colour-code filters, Voice switch) with no crash. The
+emulator has no USB SDR, so no events were received there.
+
+Not verified: over-the-air DMR (no known local transmitter or recording) and
+audible voice (only the user can confirm sound). Synthetic vectors cannot
+stand in for either.

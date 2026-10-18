@@ -14,6 +14,8 @@ import 'adsb_snapshot.dart';
 import 'meshtastic_keys.dart';
 import 'meshtastic_packets.dart';
 import 'meshtastic_tuning.dart';
+import 'meshcore_keys.dart';
+import 'meshcore_packets.dart';
 import 'dmr_call.dart';
 import 'rds_station.dart';
 import 'sstv_image.dart';
@@ -106,6 +108,7 @@ class DecoderSession extends ChangeNotifier {
   /// Meshtastic packet log, text messages and node list; fed only by real
   /// native events of the selected `meshtastic` decoder.
   final MeshtasticLog meshtastic = MeshtasticLog();
+  final MeshcoreLog meshcore = MeshcoreLog();
   int _afterSequence = 0;
   int? _streamGeneration;
   int _droppedEvents = 0;
@@ -143,10 +146,17 @@ class DecoderSession extends ChangeNotifier {
     final output = rate ~/ factor;
     return output >= 200000 && output <= 300000 ? output : 0;
   }
+
   String? get meshtasticLimit => meshtasticInputLimit(
     meshtasticPreset(settingsFor('meshtastic')['preset'] as String),
-    inputRateHz, radio.vfoOffset.round(),
+    inputRateHz,
+    radio.vfoOffset.round(),
   );
+  String? get meshcoreLimit =>
+      inputRateHz < 1000000 ||
+          radio.vfoOffset.abs() + 500000 > radio.sampleRate / 2
+      ? 'Not ready: MeshCore requires a covered 1 MS/s IQ window'
+      : null;
 
   Set<String> get availableIds => <String>{
     for (final mode in DemodMode.values) decoderIdForMode(mode),
@@ -232,11 +242,15 @@ class DecoderSession extends ChangeNotifier {
       if (!_isDemod(_selectedId)) {
         _resetEvents();
         if ((_selectedId == 'meshtastic' && meshtasticLimit != null) ||
+            (_selectedId == 'meshcore' && meshcoreLimit != null) ||
             (rate != 0 && decoderRateHz == 0 && _needsBaseband(_selectedId)) ||
             (_selectedId == 'adsb' && !adsbInputReady)) {
           _attached = false;
           _stopPolling();
-          _failure = _selectedId == 'meshtastic' ? meshtasticLimit
+          _failure = _selectedId == 'meshtastic'
+              ? meshtasticLimit
+              : _selectedId == 'meshcore'
+              ? meshcoreLimit
               : _selectedId == 'adsb'
               ? 'not ready: set sample rate 2.4 MS/s'
               : 'IQ sample rate too low: choose at least 200 kHz';
@@ -288,6 +302,7 @@ class DecoderSession extends ChangeNotifier {
     _droppedEvents = 0;
     _messages.clear();
     meshtastic.clearPackets();
+    meshcore.clearPackets();
     _adsbSnapshot = null;
     _clearDmr(keepHistory: keepDmrHistory);
   }
@@ -343,8 +358,12 @@ class DecoderSession extends ChangeNotifier {
       return;
     }
     if ((_needsBaseband(id) && decoderRateHz == 0) ||
-        (id == 'meshtastic' && meshtasticLimit != null)) {
-      _failure = id == 'meshtastic' ? meshtasticLimit
+        (id == 'meshtastic' && meshtasticLimit != null) ||
+        (id == 'meshcore' && meshcoreLimit != null)) {
+      _failure = id == 'meshtastic'
+          ? meshtasticLimit
+          : id == 'meshcore'
+          ? meshcoreLimit
           : 'IQ sample rate too low: choose at least 200 kHz';
       backend.select(null, const <String, Object>{});
       return;
@@ -384,6 +403,7 @@ class DecoderSession extends ChangeNotifier {
           event.streamGeneration != _streamGeneration) {
         _messages.clear();
         meshtastic.clearPackets();
+        meshcore.clearPackets();
         _adsbSnapshot = null;
         _clearDmr();
         rds.clear();
@@ -464,6 +484,23 @@ class DecoderSession extends ChangeNotifier {
               : null;
           if (packet != null) {
             meshtastic.add(packet);
+            changed = true;
+          }
+          continue;
+        }
+        if (_selectedId == 'meshcore') {
+          final packet = active
+              ? MeshcorePacket.fromEvent(
+                  event.sequence,
+                  data,
+                  receivedAt: DateTime.now(),
+                  secrets: meshcoreKeySecrets(
+                    settingsFor('meshcore')['channels'],
+                  ),
+                )
+              : null;
+          if (packet != null) {
+            meshcore.add(packet);
             changed = true;
           }
           continue;
@@ -549,6 +586,11 @@ class DecoderSession extends ChangeNotifier {
   /// Clears the packet log and text messages; [nodes] also forgets nodes.
   void clearMeshtastic({bool nodes = false}) {
     nodes ? meshtastic.clear() : meshtastic.clearPackets();
+    notifyListeners();
+  }
+
+  void clearMeshcore({bool nodes = false}) {
+    nodes ? meshcore.clear() : meshcore.clearPackets();
     notifyListeners();
   }
 

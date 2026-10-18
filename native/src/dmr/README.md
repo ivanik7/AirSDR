@@ -3,9 +3,10 @@
 `native/src/dmr/channel_filter.{hpp,cpp}` isolates the complex 12.5-kHz
 channel selector and digiham pulse-shaping presets from the demodulator.
 `ChannelFilter::configure(rate)` accepts 48–300 kS/s VFO-centred complex
-samples and emits exactly 48 kS/s complex IF over time; constants expose
-the required minimum/maximum input, output and ±6250-Hz cutoffs. The actual
-input rate is passed to both FIR stages; 240k, 250k and 288k are tested.
+samples and emits 48 kS/s complex IF over time; constants expose
+the required minimum/maximum input, output and ±6250-Hz cutoffs. It runs
+OpenWebRX+'s own selector modules at the actual input rate; 48k, 240k,
+250k, 288k and 300k are tested sample-for-sample against them.
 `RrcPulseFilter` accepts/emits 48 kS/s real discriminator samples, selects
 upstream digiham Wide (81 taps, DMR) or Narrow (161 taps, NXDN) presets,
 and uses the original coefficients and gain. Both components reset stream
@@ -40,34 +41,42 @@ manual squelch closed and audio muted, checking rate propagation, 48-kS/s
 IF and 4800-symbol/s counts, reset/replay, detach and retune. Live RF and
 full framing/voice event output remain unverified here.
 
-Signal path: 127-tap Blackman FIR and integer decimation at the *actual* tap
-rate (e.g. 250k -> 50k), then 161-tap, 64-phase low-pass/resampler for a
-6250 Hz complex channel at exactly 48 kS/s. There is no squelch. The native
-adapter invokes the vendored csdr-plus `FmDemod` (`dphase/pi`), `DcBlock`
+Signal path (OpenWebRX+ f1e0d1ac `csdr/chain/selector.py`, pycsdr 041986e5
+module parameters, csdr-plus f26b520 code): `FirDecimate(d = floor(in/48k),
+transition 0.15*48k/in, cutoff 0.5*d/(in/48k), Hamming)` at the *actual* tap
+rate, then `FractionalDecimator(in/d/48k, 12 Lagrange points, no prefilter)`
+when that ratio is not 1 (e.g. 250k: d=5, 50k -> 48k), then
+`FftBandPassFilter(±6250/48k, transition 320/48k, Hamming)` in a
+`FilterModule`. Squelch is omitted (DMR forces it open). The native
+adapter then invokes the vendored csdr-plus `FmDemod` (`dphase/pi`), `DcBlock`
 (R=0.998), digiham-plus `WideRrcFilter` (the unchanged 81 coefficients and
 8.337797030 gain) and `GfskDemodulator(10)` (100-symbol level calibration,
-mid-third averaging and variance-based clock slip). The matched-rate test
-verifies 24,000 IF samples per 0.5 seconds at 240k, 250k and 288k tap rates.
+mid-third averaging and variance-based clock slip).
 
-Deviations from OpenWebRX+: its selector shifts, resamples, and bandpasses
-inside libcsdr/pycsdr; here the existing VFO tap already shifts/decimates,
-and a causal two-stage FIR/polyphase adapter does the final bandpass and
-resampling. This is not a sample-for-sample replica of the FFT/libsamplerate
-selector, and no same-recording oracle correlation has been measured yet
-(t_371d403a). The 64 fractional phases have <=1/64 stage-rate-sample phase
-quantization. Gfsk's calibration ring and the RRC delay are zero-initialized
+Deviations from OpenWebRX+: its selector starts with `Shift(-offset/in)` on
+the full SDR rate; here the receiver's existing VFO tap already shifts and
+integer-decimates, so the selector's input rate is the tap rate (e.g.
+240 kS/s instead of 2.4 MS/s) and the Shift stage is not repeated. The
+adapter releases input to the csdr modules in fixed blocks of
+`floor(in/48k) * 1024` samples (`kBlockOutputSamples`): csdr's
+`FractionalDecimator` renormalises its float read position once per
+`process()` call, so its output otherwise depends on caller chunking. This
+adds up to ~21 ms latency and makes output identical for any chunking.
+`sdrcore_dmr_channel_filter` drives the pinned csdr modules directly with the
+same block size and requires bit-identical output at all five rates.
+Gfsk's calibration ring and the RRC delay are zero-initialized
 rather than reading indeterminate upstream memory. The RRC coefficient array
 is copied on construction because upstream's temporary C++ compound literal
 otherwise dangles. The GFSK max-volume initial value is -FLT_MAX (not the
 upstream FLT_MIN) so all-negative windows calibrate correctly.
-The retained native 127/161-tap Blackman selector is not the upstream
-csdr-plus FFT bandpass/FractionalDecimator implementation; it must not be
-represented as an exact upstream algorithm. Direct tone/boundary tests cover
-the rate and pass/stop behaviour; air-recording oracle parity remains open.
+FFTW plan creation/destruction for the FFT bandpass is serialised with the
+SSTV decoder through `src/dsp/fftw_planner.hpp`. On Apple/Windows only,
+`compat/csdr_sincosf.h` is force-included into `fir.cpp` to supply the GNU
+`sincosf()` (sin/cos may differ from glibc by float rounding there).
+Air-recording oracle parity remains open.
 
 Vendor provenance: `native/third_party/openwebrx-dmr/` contains source from
 luarvique/csdr-plus and luarvique/digiham-plus, pinned in docs/status/dmr.md
-(digiham-plus beec7822). Retain the vendored license texts. The extra
-`csdr/fftfilter.{cpp,hpp}` files are unused exploratory copies, not needed
-in the build. Tests use synthetic baseband and direct discriminator-domain
+(digiham-plus beec7822) and `PROVENANCE-channel.md`. Retain the vendored
+license texts. Tests use synthetic baseband and direct discriminator-domain
 vectors; DMR framing, OTA decoding, Android hardware and voice are unverified.
