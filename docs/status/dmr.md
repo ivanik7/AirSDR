@@ -368,3 +368,25 @@ checks deterministic reset/replay, detach, rate propagation, VFO changes
 and retune. Direct filter and symbol-decision tests are separate; the
 downstream oracle card owns reference fixture parity. Live DMR RF reception
 and voice output remain unverified.
+
+## 13. OpenWebRX+ full-chain oracle
+
+`tool/dmr_chain_oracle` feeds identical input (MMDVMHost-encoded synthetic
+DMR as dibits, and as 4FSK IQ at 240/250/288 kS/s with noise and offset)
+through the pristine OpenWebRX+ modules (csdr-plus, digiham-plus, softmbe,
+mbelib) and through `Channel` + `Framing` + `VoiceOutput`, and compares
+symbols (aligned SER), AMBE frames, per-slot metadata and voice PCM with
+documented thresholds. At 240 and 288 kS/s and on dibits (with and without
+injected errors) frames, metadata and voice PCM are identical; at 250 kS/s
+up to 8/102 noisy frames are decided differently (fractional resampler
+phase) while metadata and error rates match. The CTest
+`sdrcore_dmr_chain_fixture` checks the native chain against stored oracle
+outputs. Method, measurements, provenance and gaps:
+`docs/status/dmr-chain-oracle.md`.
+
+Android emulator smoke (sdr_api35, debug APK from this branch, no SDR): the
+Decoder tab lists DMR as "Unavailable"; selecting it shows the DMR panel
+with "Unavailable in the current native build", TS1/TS2 "No sync / No
+current call", and the timeslot/colour-code/voice filters; logcat shows no
+crash. DMR decode and DMR audio through the existing sink cannot be
+smoke-tested on a device until the `dmr` backend is registered (t_bc6f9eeb).
