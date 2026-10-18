@@ -51,7 +51,7 @@ against MeshCore firmware `81dbae5` (MIT): `Packet::readFrom`,
 |---|---|
 | `ctest` (Release host build) | **46/46 passed** |
 | `sdrcore_meshcore_packet` (firmware-derived vectors; independent OpenSSL AES/HMAC/SHA-256/Ed25519) | passed; also under ASan+UBSan |
-| `sdrcore_meshcore_iq` same-IQ oracle | `loratx` SF8/CR8/62.5 kHz/sync 0x12 ACK → unmodified upstream `lorarx` CLI with the OpenWebRX+ argv **and** the app registry backend on the same file: identical payload, SF/CR/BW, ACK checksum |
+| `sdrcore_meshcore_iq` same-IQ oracle | `meshcore_vectors` (OpenSSL, firmware layout) emits a signed ADVERT, a Public-channel GRP_TXT and an ACK; `loratx` modulates them at 62.5 kHz/sync 0x12 into 1 MS/s IQ; the unmodified upstream `lorarx` CLI with the OpenWebRX+ argv **and** the app registry backend decode the same file. Two cases: SF8/CR8 centred, and SF7/CR5 shifted −5.5 kHz (the magnitude of the quick-tune grid offset; real offset is +5.5 kHz) with white noise. Both sides return all 3 packets CRC-valid with identical bytes and SF/CR/BW; native verifies the ADVERT signature (name, lat/lon) and authenticates/decrypts the GRP_TXT text; no extra packets on either side. Needs OpenSSL on the host (CMake warns and skips otherwise) |
 | `sdrcore_decoder_abi` | `meshcore` descriptor: baseband, 1 MS/s, message, non-exclusive |
 | Meshtastic regression (`meshtastic_phy`, `lorarx_parity`, `meshtastic_tap`) after the shared-owner refactor | passed |
 | `flutter analyze` | no issues |
@@ -60,33 +60,36 @@ against MeshCore firmware `81dbae5` (MIT): `Packet::readFrom`,
 | `flutter build apk --debug` | built, 166,114,925 B |
 | `flutter build apk --release --split-per-abi --target-platform android-arm64` | built, 22,223,115 B |
 
-Live air on the host Blog V4 through the app's v3 + decoder ABI
-(`sdrcore_host_meshtastic_live --decoder meshcore`, 869.618 MHz, 2.4 MS/s,
-gain 40 dB): 300 s, **0 packets**, 0 dropped samples/events, voice audio fully
-silent (0 non-silent frames; the no-decoder baseline had 2.86 M). No MeshCore
-node was heard. This does not show that over-the-air decoding works.
+Live air: a single 300 s run was made on the host Blog V4 before live
+over-the-air testing was forbidden (AGENTS.md, 2026-10-18). It went through the
+app's v3 + decoder ABI (`sdrcore_host_meshtastic_live --decoder meshcore`,
+869.618 MHz, 2.4 MS/s, gain 40 dB). Result: **0 packets**, 0 dropped
+samples/events, voice audio fully silent (0 non-silent frames; the no-decoder
+baseline had 2.86 M). No MeshCore node was heard, so this does not show that
+over-the-air decoding works. No further live runs will be made; verification is
+by generated IQ and the same-IQ oracle only.
 
 Host CPU (Ryzen 5700G VM): no decoder 6.87 CPU-s per 60 s (0.115 core);
 MeshCore 78.74 CPU-s per 300 s (0.262 core), so about +15 % of one core.
 
 ## Not verified / gaps
 
-- Over-the-air MeshCore reception: no packet was heard. A keyed node (for
-  example Ivan's Heltec on MeshCore firmware) is needed.
+- Over-the-air MeshCore reception: unverified. Live RF testing is forbidden by
+  project policy; a recorded real-node IQ file would be the way to cover it.
 - Firmware `Packet.cpp`/`Utils.cpp` were not compiled as a second oracle
   (they need Arduino and rweather/Crypto). Vectors reproduce the firmware
   layout and crypto independently through OpenSSL.
-- Same-IQ oracle covers ACK only at SF8/62.5 kHz. ADVERT/GRP_TXT over IQ
-  were not round-tripped (parser-level vectors only).
+- Same-IQ oracle uses only 62.5 kHz bandwidth and generated (not recorded)
+  IQ; 125/250/500 kHz are covered only by the shared Meshtastic PHY tests.
 - Android emulator behaviour and Android CPU: not checked. No phone was used.
 - APK size delta against a same-config master baseline: not measured.
   Debug was 165,809,817 B on the Meshtastic card versus 166,114,925 B here
   (+305 KB, different build times; indicative only).
 - Quick-tune lands on 869.6125 MHz, not 869.618. The normal tuning path
   snaps to the 12.5 kHz step grid (covered by `test/ui/meshcore_test.dart`).
-  That leaves a 5.5 kHz offset inside the 62.5 kHz LoRa channel. Whether
-  lorarx tolerates it over the air is unverified; the same-IQ oracle was
-  centred.
+  That leaves a 5.5 kHz offset inside the 62.5 kHz LoRa channel. The same-IQ
+  oracle's SF7 case reproduces that offset with noise and both upstream and
+  native decode all packets; behaviour with real crystal drift is unverified.
 - Regional MeshCore presets other than EU/UK narrow (for example for Kazakhstan)
   were not verified against the current MeshCore app config; only
   869.618 MHz is offered as quick-tune.

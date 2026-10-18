@@ -78,9 +78,18 @@ target_link_options(sdrcore_meshtastic_replay PRIVATE -Wl,--gc-sections)
 add_executable(sdrcore_meshcore_iq_oracle tests/meshcore_iq_oracle.cpp)
 target_include_directories(sdrcore_meshcore_iq_oracle PRIVATE third_party)
 target_compile_features(sdrcore_meshcore_iq_oracle PRIVATE cxx_std_17)
-add_test(NAME sdrcore_meshcore_iq
-    COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/meshcore_iq_oracle.sh
-        $<TARGET_FILE:loratx_oracle> $<TARGET_FILE:lorarx_oracle>
-        $<TARGET_FILE:sdrcore_meshtastic_replay>
-        $<TARGET_FILE:sdrcore_meshcore_iq_oracle>
-        ${CMAKE_CURRENT_BINARY_DIR}/meshcore_iq_oracle)
+# Packet generator uses OpenSSL (independent of the app's portable crypto).
+find_package(OpenSSL QUIET COMPONENTS Crypto)
+if(OpenSSL_FOUND)
+    add_executable(sdrcore_meshcore_vectors tests/meshcore_vectors.cpp)
+    target_link_libraries(sdrcore_meshcore_vectors PRIVATE OpenSSL::Crypto)
+    add_test(NAME sdrcore_meshcore_iq
+        COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/meshcore_iq_oracle.sh
+            $<TARGET_FILE:loratx_oracle> $<TARGET_FILE:lorarx_oracle>
+            $<TARGET_FILE:sdrcore_meshtastic_replay>
+            $<TARGET_FILE:sdrcore_meshcore_iq_oracle>
+            $<TARGET_FILE:sdrcore_meshcore_vectors>
+            ${CMAKE_CURRENT_BINARY_DIR}/meshcore_iq_oracle)
+else()
+    message(WARNING "OpenSSL Crypto not found: sdrcore_meshcore_iq oracle is not built")
+endif()

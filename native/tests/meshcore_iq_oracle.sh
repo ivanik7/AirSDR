@@ -1,15 +1,29 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: GPL-3.0-or-later
-# OpenWebRX+ MeshcoreDemodulator argv on exactly the same 1 MS/s IQ.
+# Same 1 MS/s IQ through the unmodified upstream lorarx CLI with the
+# OpenWebRX+ MeshcoreDemodulator argv and through the app registry backend.
+# Packets: signed ADVERT, Public GRP_TXT, ACK (native/tests/meshcore_vectors.cpp).
+# Cases: EU/UK narrow SF8/CR8 centred; SF7/CR5 shifted -5.5 kHz (the offset
+# left by the 12.5 kHz quick-tune grid at 869.618 MHz) with white noise.
 set -euo pipefail
 loratx=$1
 lorarx=$2
 native=$3
 compare=$4
-work=$5
+vectors=$5
+work=$6
 mkdir -p "$work"
-printf '%s\n' '0D0001020304' > "$work/ack.hex"
-"$loratx" -i "$work/ack.hex" -H -f f32 -r 1000000 -b 6 -s 8 -c 8 -N 12 -C -z 10 -o "$work/ack.f32" > /dev/null 2>&1
-"$lorarx" -i "$work/ack.f32" -r 1000000 -f f32 -v -N -Q -H 5 -W 50 -b 6 -s 7 -s 8 -j "$work/upstream.jsonl" > /dev/null
-"$native" "$work/ack.f32" '{"version":1,"settings":{"bandwidth":"6","channels":[]}}' 869618000 meshcore > "$work/native.jsonl"
-"$compare" "$work/upstream.jsonl" "$work/native.jsonl" "$work/ack.hex"
+"$vectors" > "$work/packets.hex"
+run_case() {
+  local name=$1 sf=$2 cr=$3
+  shift 3
+  "$loratx" -i "$work/packets.hex" -H -f f32 -r 1000000 -b 6 -s "$sf" -c "$cr" -N 12 -C -z 10 \
+    "$@" -o "$work/$name.f32" > /dev/null 2>&1
+  "$lorarx" -i "$work/$name.f32" -r 1000000 -f f32 -v -N -Q -H 5 -W 50 -b 6 -s 7 -s 8 \
+    -j "$work/$name.upstream.jsonl" > /dev/null
+  "$native" "$work/$name.f32" '{"version":1,"settings":{"bandwidth":"6","channels":[]}}' \
+    869612500 meshcore > "$work/$name.native.jsonl"
+  "$compare" "$work/$name.upstream.jsonl" "$work/$name.native.jsonl" "$work/packets.hex" "$sf" "$cr"
+}
+run_case eu_narrow 8 8
+run_case sf7_offset_noise 7 5 -S -5500 -w 0.3
