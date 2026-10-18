@@ -132,6 +132,17 @@ Same-IQ parity with lorarx plus the OpenWebRX+ parser is
 and the Kazakhstan regions are in `docs/status/meshtastic-live.md`. No
 packet has yet been received over the air.
 
+## MeshCore (LoRa) path
+
+`meshcore` reuses the same 1 MS/s tap and the same embedded lorarx, started
+with the OpenWebRX+ `MeshcoreDemodulator` argv (`-b <bw> -s 7 -s 8`).
+Because lorarx state is process-global, Meshtastic and MeshCore share one
+owner/callback (`native/src/decoder/lorarx_session.*`). The packet layer
+(`native/src/meshcore/`) follows MeshCore firmware, not OpenWebRX+ (which
+does not parse MeshCore packets). It verifies ADVERT Ed25519 signatures and
+checks the group-channel HMAC before AES decryption. Details, verification
+and gaps are in `docs/status/meshcore.md`.
+
 ## Pieces
 
 - `lib/ui/decoders/decoder_contract.dart` — shared Dart contract

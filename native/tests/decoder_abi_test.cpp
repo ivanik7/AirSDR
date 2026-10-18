@@ -105,12 +105,17 @@ int main() {
   assert(!contains("voice"));
 
   // Registry entries expose real availability, not preview status.
-  for (const char* id : {"sstv", "rtl_433", "adsb"}) {
+  for (const char* id : {"sstv", "rtl_433", "adsb", "meshtastic", "meshcore"}) {
     assert(contains(id));
     SdrDecoderDescriptor d = find(id);
     assert(d.available == 1);
   }
   const auto adsb = find("adsb");
+  const auto meshcore = find("meshcore");
+  assert(meshcore.input == SDR_DECODER_BASEBAND);
+  assert(meshcore.exclusive_receiver == 0);
+  assert(meshcore.required_rate_hz == 1000000);
+  assert(meshcore.result == SDR_DECODER_MESSAGE);
   assert(adsb.input == SDR_DECODER_RAW_IQ);
   assert(adsb.exclusive_receiver == 0);
   assert(adsb.required_rate_hz == 2400000);

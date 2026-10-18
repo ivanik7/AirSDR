@@ -11,7 +11,8 @@
 // Usage:
 //   sdrcore_host_meshtastic_live [--freq HZ] [--rate SPS] [--gain TENTHS]
 //       [--seconds N] [--preset LongFast] [--region EU_868]
-//       [--squelch off|manual] [--squelch-db DB] [--decoder meshtastic|none]
+//       [--squelch off|manual] [--squelch-db DB]
+//       [--decoder meshtastic|meshcore|none]
 // `--decoder none` runs the same session without selecting the decoder, as a
 // CPU baseline for the tap + decoder cost.
 //
@@ -56,7 +57,7 @@ int main(int argc, char** argv) {
   const char* region = "EU_868";
   uint32_t squelch = SDR_V3_SQUELCH_OFF;
   float squelch_db = -50;
-  int select_decoder = 1;
+  const char* decoder = "meshtastic";
   for (int i = 1; i + 1 < argc; i += 2) {
     const char* k = argv[i];
     const char* v = argv[i + 1];
@@ -69,7 +70,13 @@ int main(int argc, char** argv) {
     else if (!strcmp(k, "--squelch"))
       squelch = !strcmp(v, "manual") ? SDR_V3_SQUELCH_MANUAL : SDR_V3_SQUELCH_OFF;
     else if (!strcmp(k, "--squelch-db")) squelch_db = (float)atof(v);
-    else if (!strcmp(k, "--decoder")) select_decoder = strcmp(v, "none") != 0;
+    else if (!strcmp(k, "--decoder")) {
+      if (strcmp(v, "meshtastic") && strcmp(v, "meshcore") && strcmp(v, "none")) {
+        fprintf(stderr, "unknown decoder %s\n", v);
+        return 2;
+      }
+      decoder = v;
+    }
     else {
       fprintf(stderr, "unknown option %s\n", k);
       return 2;
@@ -126,22 +133,29 @@ int main(int argc, char** argv) {
     bad = fail("start", rc);
     goto out;
   }
+  const int select_decoder = strcmp(decoder, "none") != 0;
   if (select_decoder) {
     char config[256];
-    const int n = snprintf(config, sizeof config,
-                           "{\"version\":1,\"settings\":{\"preset\":\"%s\",\"region\":\"%s\","
-                           "\"channels\":[]}}",
-                           preset, region);
-    if ((rc = sdr_decoder_select(h, "meshtastic", 10, config, (uint32_t)n)) != SDR_OK) {
+    // MeshCore: OpenWebRX+ default bandwidth index 6 (62.5 kHz) and the
+    // built-in Public channel only; Meshtastic: preset/region as before.
+    const int n = !strcmp(decoder, "meshcore")
+        ? snprintf(config, sizeof config,
+                   "{\"version\":1,\"settings\":{\"bandwidth\":\"6\",\"channels\":[]}}")
+        : snprintf(config, sizeof config,
+                   "{\"version\":1,\"settings\":{\"preset\":\"%s\",\"region\":\"%s\","
+                   "\"channels\":[]}}",
+                   preset, region);
+    if ((rc = sdr_decoder_select(h, decoder, (uint32_t)strlen(decoder), config,
+                                 (uint32_t)n)) != SDR_OK) {
       bad = fail("decoder_select", rc);
       goto stop;
     }
   }
   printf("{\"event\":\"listening\",\"freq\":%" PRIu64 ",\"rate\":%u,\"gain_tenths_db\":%d,"
          "\"preset\":\"%s\",\"region\":\"%s\",\"squelch\":%u,\"seconds\":%.0f,"
-         "\"decoder\":%s}\n",
+         "\"decoder\":\"%s\"}\n",
          freq, rate, gain, preset, region, squelch, seconds,
-         select_decoder ? "true" : "false");
+         decoder);
   fflush(stdout);
   {
     static uint8_t payload[SDR_DECODER_MAX_PAYLOAD + 1];

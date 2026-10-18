@@ -74,3 +74,13 @@ target_link_libraries(sdrcore_meshtastic_replay PRIVATE
     sdrcore_rtl433 sdrcore_csdr_sstv sdrcore_dump1090 sdrcore_meshtastic sdrcore_meshcore
     sdrcore_lorarx sdrcore_rds m)
 target_link_options(sdrcore_meshtastic_replay PRIVATE -Wl,--gc-sections)
+
+add_executable(sdrcore_meshcore_iq_oracle tests/meshcore_iq_oracle.cpp)
+target_include_directories(sdrcore_meshcore_iq_oracle PRIVATE third_party)
+target_compile_features(sdrcore_meshcore_iq_oracle PRIVATE cxx_std_17)
+add_test(NAME sdrcore_meshcore_iq
+    COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/meshcore_iq_oracle.sh
+        $<TARGET_FILE:loratx_oracle> $<TARGET_FILE:lorarx_oracle>
+        $<TARGET_FILE:sdrcore_meshtastic_replay>
+        $<TARGET_FILE:sdrcore_meshcore_iq_oracle>
+        ${CMAKE_CURRENT_BINARY_DIR}/meshcore_iq_oracle)

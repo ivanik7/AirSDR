@@ -41,6 +41,7 @@ void main() {
         'rtl_433',
         'meshtastic',
         'adsb',
+        'meshcore',
       ]);
       expect(
         decoderCatalog.where((d) => d.demodMode != null).length,
