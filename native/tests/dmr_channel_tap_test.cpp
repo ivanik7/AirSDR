@@ -12,7 +12,10 @@
 
 namespace {
 constexpr double kPi = 3.14159265358979323846;
-bool nominal_if_count(uint64_t samples) { return samples >= 9600 && samples <= 9601; }
+// 200 ms at 48 kS/s, less the upstream csdr selector's start-up latency
+// (FirDecimate/FractionalDecimator/FFT-bandpass overhead plus the adapter's
+// fixed input block; dmr_channel_filter_test bounds it exactly).
+bool nominal_if_count(uint64_t samples) { return samples >= 8000 && samples <= 9600; }
 
 struct Symbols final : sdrcore::dmr::SymbolSink {
   std::vector<uint8_t> dibits;
@@ -90,9 +93,11 @@ void check_rate(uint32_t device_rate, uint32_t tap_rate) {
       static_cast<unsigned long long>(probe.tap.if_samples()),
       probe.symbols.dibits.size(), probe.blocks);
   assert(probe.tap.input_rate_hz() == tap_rate);
-  // A finite fractional-rate block can include one extra phase-boundary sample.
   assert(nominal_if_count(probe.tap.if_samples()));
-  assert(probe.symbols.dibits.size() > 900 && probe.symbols.dibits.size() <= 960);
+  // 4800 symbols/s: one dibit per 10 IF samples (GFSK samplesPerSymbol=10).
+  assert(probe.symbols.dibits.size() * 10 + 120 >= probe.tap.if_samples() &&
+         probe.symbols.dibits.size() * 10 <= probe.tap.if_samples() + 10);
+  assert(probe.symbols.dibits.size() > 780 && probe.symbols.dibits.size() <= 960);
   const auto first = probe.symbols.dibits;
   // Reset must clear the tap, the 48 kS/s IF, RRC, and symbol-clock history.
   rx->reset();
@@ -119,7 +124,7 @@ void change_rate_and_retune() {
   feed(*rx, iq(2500000));
   assert(probe.tap.input_rate_hz() == 250000);
   assert(nominal_if_count(probe.tap.if_samples()));
-  assert(probe.symbols.dibits.size() > 900);
+  assert(probe.symbols.dibits.size() > 780);
   const int before = probe.resets;
   changed.vfo_offset_hz = 1000;
   rx->configure(changed, display());

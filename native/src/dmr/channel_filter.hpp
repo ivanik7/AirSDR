@@ -9,9 +9,12 @@
 
 namespace sdrcore::dmr {
 
-// Complex channel selector, before the digiham discriminator/RRC/4FSK chain.
-// One VFO-centred baseband tap in, exactly 48 kS/s complex IF out. Neither
-// retunes the source nor applies a squelch. Confined to the DSP worker thread.
+// Complex channel selector, before the digiham discriminator/RRC/4FSK chain:
+// OpenWebRX+'s Selector (csdr-plus FirDecimate -> FractionalDecimator -> FFT
+// Bandpass ±6250 Hz, 320 Hz transition), without its Shift (the receiver's
+// VFO tap is already centred) and without squelch (DMR disables it).
+// One VFO-centred baseband tap in, 48 kS/s complex IF out. Never retunes
+// the source. Confined to the DSP worker thread.
 class ChannelFilter {
  public:
   static constexpr uint32_t kOutputRate = 48000;
@@ -19,17 +22,23 @@ class ChannelFilter {
   static constexpr uint32_t kMaxInputRate = 300000;
   static constexpr float kLowCutHz = -6250.0f;
   static constexpr float kHighCutHz = 6250.0f;
+  // Input is released to the csdr chain in blocks of floor(rate/48000) *
+  // kBlockOutputSamples samples, so output never depends on the caller's
+  // chunking (csdr's FractionalDecimator does). Adds <= ~21 ms latency.
+  static constexpr size_t kBlockOutputSamples = 1024;
 
   ChannelFilter();
   ~ChannelFilter();
   ChannelFilter(const ChannelFilter&) = delete;
   ChannelFilter& operator=(const ChannelFilter&) = delete;
   // Reconfiguration clears decimator, bandpass and fractional-rate history.
+  // Unconfigured filters (input_rate() == 0) ignore input.
   bool configure(uint32_t baseband_rate);
   uint32_t input_rate() const;
   void reset();
-  // Appends the IF samples produced by this block; output length varies with
-  // fractional rate, but the long-term rate is exactly kOutputRate.
+  // Appends the IF samples produced by this call; output length varies with
+  // block and FFT boundaries and the upstream start-up latency (<= ~1100 IF
+  // samples), but the long-term rate is exactly kOutputRate.
   void process(const std::complex<float>* iq, size_t n,
                std::vector<std::complex<float>>& output);
   uint64_t output_samples() const;

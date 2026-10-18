@@ -22,34 +22,42 @@ source is linked on both sides. Synthetic four-level FM IQ at the actual
 240/250/288 kS/s baseband rates checks centre decisions across 12-symbol runs
 with only fixed group delay/clock phase searched, and not just output counts.
 
-`native/tests/dmr_channel_filter_test.cpp` checks a half-second yields exactly
-24,000 complex IF samples at 48/240/250/288/300 kS/s; arbitrary chunk
-boundaries and reset reproduce the same output. Positive and negative 3/5 kHz
-tones pass; 9/13 kHz and input tones that would alias to 3 kHz after native
-integer decimation are rejected. The original digiham Wide (81 taps) and
+`native/tests/dmr_channel_filter_test.cpp` builds OpenWebRX+'s selector
+directly from the pinned csdr-plus modules (`FirDecimate`,
+`FractionalDecimator`, `FftBandPassFilter` in a `FilterModule`, with the
+selector.py/pycsdr parameters) and requires the native `ChannelFilter`, fed
+irregular 1..16384-sample chunks, to produce **bit-identical** IF at
+48/240/250/288/300 kS/s for a 4FSK-like signal with an adjacent-channel tone
+and noise. Whole-block versus chunked feeding and reset reproduce the same
+output; a half-second yields 23,430 IF samples (24,000 less the upstream
+start-up latency and the adapter's input block), and ten seconds shows no
+rate drift. Positive and negative 0/3/5/6 kHz tones pass; ±6.7/9/13 kHz and
+tones that would alias into the channel after integer decimation are
+rejected. The original digiham Wide (81 taps) and
 Narrow (161 taps) impulse outputs match the adapter exactly over chunk
 boundaries and resets; only Wide is selected for DMR. The receiver-level
 `sdrcore_dmr_channel_tap` test injects CU8 at 2.4, 2.5, 2.88 MS/s and
 576 kS/s: the native receiver supplies 240/250/240/288 kS/s respectively,
-then a 48 kS/s IF and >900 dibits in 200 ms despite analog squelch and mute.
+then a 48 kS/s IF and one dibit per 10 IF samples (851–894 dibits in the
+first 200 ms, after selector start-up) despite analog squelch and mute.
 
 ## Results
 
-On this Linux host, Debug CMake build succeeded; targeted CTest 3/3 passed.
-Direct `sdrcore_dmr_channel_test` reported 24,000 IF samples and
-2,399/2,400 symbols for a half-second at 48/240/250/288/300 kS/s.
-The full 42-test CTest run initially had one unrelated USB direct test fail
-(`sdrcore_host_usb_direct`, RTL-SDR configure error -7/-4); its isolated
-rerun passed 1/1, and a second complete CTest run passed **42/42**. The
-first full run was **41/42**, not silently counted as green.
-`flutter analyze` reported no issues; `flutter test --concurrency=1`
-finished at +540, 17 skipped; the locked `flutter build apk --debug`
-built `build/app/outputs/flutter-apk/app-debug.apk`.
+Upstream-selector parity (feat/dmr-upstream-channel-selector, Linux host,
+Debug with -O2 DSP sources): `sdrcore_dmr_channel_filter` reported
+`upstream=23430 native=23430 max|d|=0` at all five rates. Before the
+change the same test failed against the old Blackman selector (output
+lengths and samples differ), which is the RED half of this regression test.
+`sdrcore_dmr_channel_test` reported IF=23,430 and 2,342–2,343 symbols per
+half-second at 48/240/250/288/300 kS/s; four-level decision and
+direct-upstream symbol parity tests are unchanged and pass. Full gate
+results for the merge are in the task handoff.
 
 ## Upstream reference and deviations
 
-OpenWebRX+ (`luarvique/openwebrx` f1e0d1ac) uses a shift/FFT-based csdr
-channel selector, ±6250 Hz bandpass, no squelch and 48 kS/s IF followed by
+OpenWebRX+ (`luarvique/openwebrx` f1e0d1ac) uses a Shift -> FirDecimate ->
+FractionalDecimator -> FFT Bandpass csdr selector (±6250 Hz, 320 Hz
+transition), no squelch and 48 kS/s IF followed by
 FM demodulation, DC block, Wide RRC and digiham GFSK(10). The copied
 `digiham-plus` beec7822 GFSK implementation differs from the local reference
 only by zero-initialising its 100-symbol calibration ring and initialising
@@ -61,20 +69,26 @@ and starts its delay at zero rather than uninitialised memory. These changes
 make startup/reset deterministic; they can change early symbols versus an
 arbitrary upstream process's initial memory contents.
 
-The channel selector is **not** OpenWebRX+'s FFT selector: this port uses a
-127-tap Blackman anti-alias FIR with integer decimation at the receiver's
-actual native tap rate, then a 161-tap/64-phase Blackman selector/resampler.
-Its phase grid has at most 1/64 stage-rate sample quantisation; response,
-latency, and noise/interference rejection near ±6250 Hz may differ from the
-FFT chain. The tone tests establish coarse pass/stop and alias suppression,
-not spectral equivalence at the transition edge. The receiver's own VFO
-shift/decimation replaces OpenWebRX+'s initial shift; no second tuner, source
-retune, or analog squelch gate is inserted.
+The channel selector now runs OpenWebRX+'s own csdr-plus modules (byte-
+identical, `native/third_party/openwebrx-dmr/PROVENANCE-channel.md`). Two
+deviations remain. (1) The receiver's own VFO shift and integer decimation
+replace OpenWebRX+'s initial `Shift` on the full SDR rate, so the selector
+starts from the actual tap rate (e.g. 240 kS/s, not 2.4 MS/s); the native
+VFO decimator's filter therefore precedes csdr's. No second tuner, source
+retune, or analog squelch gate is inserted. (2) Input enters the csdr
+modules in fixed blocks of `floor(rate/48k) * 1024` samples. csdr's
+`FractionalDecimator` keeps its read position as a float renormalised per
+call, so in OpenWebRX+ its output depends on pycsdr buffer sizes (measured
+here: up to 0.86 absolute sample difference at 250 kS/s between block sizes).
+Fixed blocks make native output deterministic for any caller chunking, at a
+cost of up to ~21 ms latency. Integer-ratio rates (48k, 240k) are unaffected
+by block size.
 
 **Missing reference fixture:** no matching OpenWebRX+ IF/IQ recording with
-known symbol output, nor reproducible pristine OpenWebRX+ FFT-selector output
-for the *same* input, is available in this tree. No bit-error rate or
-sample-by-sample selector correlation is claimed. The direct-source test
-cannot substitute for that independent oracle. Live DMR air reception,
+known symbol output is available in this tree. Selector parity is against
+the pinned upstream modules driven by an independent test harness, not
+against a running OpenWebRX+ instance (pycsdr buffer sizes there are
+runtime-dependent, see deviation 2). No bit-error rate on real signals is
+claimed. Live DMR air reception,
 framing-through-a-registered-backend and audible decoded voice remain
 unverified; see `docs/status/dmr.md` for downstream integration status.

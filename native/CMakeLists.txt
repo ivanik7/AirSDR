@@ -42,23 +42,41 @@ target_link_libraries(sdrcore_meshtastic PUBLIC sdrcore_meshtastic_pb)
 # Meshtastic LoRa PHY: embedded OE5DXL lorarx (defines sdrcore_lorarx).
 include(third_party/lorarx.cmake)
 
-# DMR channel front end (OpenWebRX+/digiham FmDemod -> DcBlock ->
-# WideRrcFilter -> GfskDemodulator). Framing/voice and decoder registration
+# DMR channel front end: OpenWebRX+ selector (csdr-plus FirDecimate ->
+# FractionalDecimator -> FFT Bandpass) -> FmDemod -> DcBlock ->
+# WideRrcFilter -> GfskDemodulator. Framing/voice and decoder registration
 # are separate cards; only linked sources enter Android/Linux binaries.
 set(DMR_VENDOR ${CMAKE_CURRENT_SOURCE_DIR}/third_party/openwebrx-dmr)
-add_library(sdrcore_dmr_channel STATIC
-    src/dmr/channel.cpp
-    src/dmr/channel_tap.cpp
-    src/dmr/channel_filter.cpp
+set(DMR_CHANNEL_VENDOR_SOURCES
+    ${DMR_VENDOR}/csdr/filter.cpp
+    ${DMR_VENDOR}/csdr/fir.cpp
+    ${DMR_VENDOR}/csdr/window.cpp
+    ${DMR_VENDOR}/csdr/firdecimate.cpp
+    ${DMR_VENDOR}/csdr/fractionaldecimator.cpp
+    ${DMR_VENDOR}/csdr/fftfilter.cpp
     ${DMR_VENDOR}/csdr/fmdemod.cpp
     ${DMR_VENDOR}/csdr/dcblock.cpp
     ${DMR_VENDOR}/digiham/rrc_filter.cpp
     ${DMR_VENDOR}/digiham/gfsk_demodulator.cpp)
+add_library(sdrcore_dmr_channel STATIC
+    src/dmr/channel.cpp
+    src/dmr/channel_tap.cpp
+    src/dmr/channel_filter.cpp
+    ${DMR_CHANNEL_VENDOR_SOURCES})
+# Up to 300 kS/s of per-sample FIR work on the DSP worker: never -O0, even in
+# the Flutter debug bundles (same policy as receiver.cpp).
+set_source_files_properties(${DMR_CHANNEL_VENDOR_SOURCES} src/dmr/channel_filter.cpp
+    PROPERTIES COMPILE_OPTIONS "$<$<CONFIG:Debug>:-O2>")
+if(APPLE OR WIN32)
+    # Upstream fir.cpp calls the GNU sincosf(); see the compat header.
+    set_property(SOURCE ${DMR_VENDOR}/csdr/fir.cpp APPEND PROPERTY COMPILE_OPTIONS
+        -include ${DMR_VENDOR}/compat/csdr_sincosf.h)
+endif()
 set_target_properties(sdrcore_dmr_channel PROPERTIES POSITION_INDEPENDENT_CODE ON)
 target_compile_features(sdrcore_dmr_channel PUBLIC cxx_std_17)
 target_include_directories(sdrcore_dmr_channel PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR}/include ${DMR_VENDOR})
-target_link_libraries(sdrcore_dmr_channel PUBLIC sdrcore_dmr_csdr_base)
+target_link_libraries(sdrcore_dmr_channel PUBLIC sdrcore_dmr_csdr_base sdrcore_fftw3f)
 
 # rtl_433 upstream sources are embedded, not run as a subprocess. Preserve
 # upstream source verbatim; link only the engine/API and protocol decoders.

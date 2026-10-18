@@ -192,15 +192,15 @@ No tuner control, no subprocess, no PCM/IQ through Dart.
    change needed; `sdrcore_decoder_v1.h` stays at revision 1.
 
 ## 8. Remaining gaps / not verified
-- Channel filtering is now a self-contained `ChannelFilter` with an explicit
-  48–300 kS/s complex baseband input and exact 48 kS/s complex IF output;
+- Channel filtering is a self-contained `ChannelFilter` with an explicit
+  48–300 kS/s complex baseband input and 48 kS/s complex IF output. It runs
+  OpenWebRX+'s csdr-plus selector modules (FirDecimate, FractionalDecimator,
+  FFT bandpass ±6250 Hz/320 Hz) byte-identical and matches them sample for
+  sample at 48k, 240k, 250k, 288k and 300k; deviations (VFO tap replaces the
+  Shift stage, fixed input blocks) are in `docs/status/dmr-symbol-verification.md`.
   `RrcPulseFilter` exposes 48 kS/s real in/out and the original digiham
-  Wide (DMR, 81 taps) and Narrow (NXDN, 161 taps) tables. The original
-  channel frontend delegates to both rather than duplicating their state.
-  Synthetic tone/stream-boundary and coefficient-parity tests pass at 48k,
-  240k, 250k, 288k and 300k baseband rates. The custom native selector
-  remains a documented approximation of OpenWebRX+'s FFT selector; a
-  same-recording oracle comparison is not yet available.
+  Wide (DMR, 81 taps) and Narrow (NXDN, 161 taps) tables. A same-recording
+  comparison against a running OpenWebRX+ instance is not yet available.
 - No over-the-air DMR test yet; no local DMR IQ recording found. Implementations need a capture
   (Blog V4 on the Linux host) or a synthetic vector generated from the sync/EMB tables.
 - Full talker-alias charset cases, nonzero GPS and embedded LC checksum failure
