@@ -406,10 +406,29 @@ fields are absent. Voice status is `ok`, `muted` or `unavailable` (when
 `SDRCORE_ENABLE_MBELIB=OFF`). Internal staging is bounded at 64 events; the
 shared decoder FIFO still applies its 256-event bound and generation stamps.
 
-The backend test sends the same MMDVMHost-generated noisy 240 kS/s 4FSK fixture
-used by the pristine OpenWebRX+ oracle through this registered decoder,
-checks source/target metadata and reset, while `sdrcore_dmr_chain_fixture`
-compares 102 AMBE frames, metadata and 8 kHz PCM to that reference. ABI tests
-check discovery and selection without altering the VFO. This is not an
-over-the-air recording or an audibility check; neither can be inferred from
-synthetic vectors.
+`sdrcore_dmr_backend` feeds the same MMDVMHost-generated recordings
+(`iq240_cn15`, `iq250_cn15`: 4FSK at C/N 15 dB, 240 and 250 kS/s) that the
+unmodified OpenWebRX+ chain decoded into `tests/data/dmr_chain/*.meta`
+through the registered `dmr` decoder. It rebuilds the oracle's metadata lines
+from the backend's JSON events. Result on the Linux host:
+
+| Recording   | Metadata transitions vs oracle | Truth IDs/alias/GPS | 48 kHz PCM | CPU (Debug build, 1 core) |
+|-------------|--------------------------------|---------------------|------------|---------------------------|
+| iq240_cn15  | 10/10 identical                | all decoded         | 97 320 frames (2.03 s) | 0.174 s for 4.8 s IQ (27.7x real time) |
+| iq250_cn15  | 10/10 identical                | all decoded         | 97 320 frames (2.03 s) | 0.175 s for 4.8 s IQ (27.4x real time) |
+
+`sdrcore_dmr_chain_fixture` additionally compares the 102 AMBE frames
+(measured 102/102 at 240k and 94/102 at 250k; limits 101 and 92) and the
+bit-exact 8 kHz PCM against that reference.
+ABI tests check discovery and selection without altering the VFO. With
+`SDRCORE_ENABLE_MBELIB=OFF` the backend test passes with no PCM and
+`libsdrcore.so` contains no `mbe_*` symbols.
+
+Android emulator (`sdr_api35`, debug APK from master f6f88fd): the Decoder tab
+lists DMR; selecting it shows the enabled DMR panel (12.5 kHz, TS1/TS2
+"No sync", timeslot/colour-code filters, Voice switch) with no crash. The
+emulator has no USB SDR, so no events were received there.
+
+Not verified: over-the-air DMR (no known local transmitter or recording) and
+audible voice (only the user can confirm sound). Synthetic vectors cannot
+stand in for either.
