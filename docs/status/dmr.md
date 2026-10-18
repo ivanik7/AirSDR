@@ -256,9 +256,8 @@ touches IQ or PCM.
   outside the allowed set are rejected before they reach native code.
 - **Readiness.** DMR uses the same 200–300 kS/s baseband branch as
   rtl_433. Below that rate the panel shows the existing not-ready reason. If
-  the native registry lacks `dmr`, which is true today because §9
-  registration is not done, the panel says it is unavailable and every
-  control is disabled.
+  the native registry lacks `dmr` (for example in an older installed build),
+  the panel says it is unavailable and every control is disabled.
 - **Events.** Only payloads with `schema=="dmr/1"`, `protocol=="DMR"` and an
   integer `slot` of 0 or 1 are accepted. Upstream keys are kept as-is.
   Missing keys stay null and are never shown as placeholders.
@@ -294,9 +293,8 @@ touches IQ or PCM.
   call, malformed/foreign events, the unavailable state, and the slot-tap
   mask at 344 dp and 690 dp. A mutation check confirmed that removing
   history retention, generation clear or expiry fails the matching test.
-- **Not verified.** No native `dmr` backend is registered on master, so no
-  real event has gone through `NativeDecoderBackend`. Live RTL-SDR/air and
-  Android hardware checks have not been done.
+- **Not verified.** Live over-the-air DMR and audible voice have not been
+  checked; the stored fixture exercises the native backend but not RF.
 
 ## 11. AMBE+2 voice output
 
@@ -339,11 +337,9 @@ mbelib + DigitalVoiceFilter + `csdr agc` on synthetic frames.
 Not verified / remaining: no open AMBE+2 speech encoder exists, so all test
 frames are synthetic parameter vectors (vocoder buzz, not speech). No
 over-the-air DMR voice was decoded. Audibility is unconfirmed;
-it still requires manual listening. The DMR backend (registry entry, 4FSK channel,
-events, `{"voice":false}` mapping) still has to own one
-`VoiceOutput` and return `provides_audio() == true`. That wiring is part of
-the backend integration. Once the backend is registered, the UI from
-§10 needs no volume control of its own.
+it still requires manual listening. The backend integration below owns one
+`VoiceOutput` and returns `provides_audio() == true` when mbelib is built and
+voice is enabled. The UI from §10 needs no volume control of its own.
 
 ## 12. Single-receiver channel input stage
 
@@ -358,7 +354,7 @@ RRC and GFSK(10) state. Neither the source sample rate nor tuner center is
 changed for DMR. The channel retains its ±6250 Hz filter and no-squelch
 behavior. This class remains abstract until the backend integration card
 attaches `Framing`/`VoiceOutput`, implements configuration/events and
-registers the `dmr` factory; the app still shows DMR as unavailable.
+registers the `dmr` factory (see §14).
 
 `sdrcore_dmr_channel_tap` sends synthetic CU8 through the real receiver
 at 2.4, 2.5 and 2.88 MS/s device rates (240, 250 and 240 kS/s taps), plus
@@ -389,4 +385,31 @@ Decoder tab lists DMR as "Unavailable"; selecting it shows the DMR panel
 with "Unavailable in the current native build", TS1/TS2 "No sync / No
 current call", and the timeslot/colour-code/voice filters; logcat shows no
 crash. DMR decode and DMR audio through the existing sink cannot be
-smoke-tested on a device until the `dmr` backend is registered (t_bc6f9eeb).
+smoke-tested on a device in that upstream test; §14 registers the backend.
+
+## 14. Native backend integration
+
+`native/src/decoder/dmr.cpp` registers `dmr` as a nonexclusive baseband
+decoder on the existing ~250 kS/s tuned VFO tap. The `ChannelDecoder` forwards
+dibits to the GPL-3 digiham `Framing`, which forwards AMBE frames to the
+in-process mbelib `VoiceOutput`. The existing receiver substitutes its 48 kHz
+PCM before the normal volume/mute stage and existing audio sink. Nothing
+changes tuner frequency/rate; no subprocess, second USB claim or sample FFI.
+
+The flat `dmr/1` JSON config validates exactly the schema, slot mask 1–3,
+colour code -1..15 and boolean voice flag. A config switch resets channel,
+framing, buffered PCM and queued events. Each stream/tune reset emits one
+no-sync event per slot. Per-slot JSON preserves the upstream keys (`sync`,
+`type`, `source`, `target`, `talkeralias`, `lat`, `lon`) and adds the locally
+derived colour code, privacy indication and observed-frame duration. Unknown
+fields are absent. Voice status is `ok`, `muted` or `unavailable` (when
+`SDRCORE_ENABLE_MBELIB=OFF`). Internal staging is bounded at 64 events; the
+shared decoder FIFO still applies its 256-event bound and generation stamps.
+
+The backend test sends the same MMDVMHost-generated noisy 240 kS/s 4FSK fixture
+used by the pristine OpenWebRX+ oracle through this registered decoder,
+checks source/target metadata and reset, while `sdrcore_dmr_chain_fixture`
+compares 102 AMBE frames, metadata and 8 kHz PCM to that reference. ABI tests
+check discovery and selection without altering the VFO. This is not an
+over-the-air recording or an audibility check; neither can be inferred from
+synthetic vectors.

@@ -33,9 +33,9 @@ entry and no second mode picker.
   optional decoder extension and have no decoder factory.
 - `dmr` is a voice mode in the same list but not a v3 demodulator:
   `voice` is true and `demodMode` is null. It is a native decoder-extension
-  engine on the baseband tap (docs/status/dmr.md §7, §10); session code tells
+  engine on the baseband tap (docs/status/dmr.md §7, §10, §14); session code tells
   demod rows apart by `demodMode != null`, never by `voice`. Its AMBE audio
-  is meant to replace demod audio natively; Dart only shows metadata.
+  replaces demod audio natively via the existing sink; Dart only shows metadata.
 - Data rows (`sstv`, `rtl_433`, `adsb`) are optional native decoder
   extension engines. Their availability comes only from
   `DecoderBackend.availableIds`; `rtl_433` is listed when the native

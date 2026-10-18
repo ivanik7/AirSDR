@@ -28,6 +28,20 @@ target_link_libraries(sdrcore_dmr_chain_fixture_test PRIVATE
     sdrcore_dmr_channel sdrcore_dmr_framing sdrcore_dmr_voice Threads::Threads m)
 add_test(NAME sdrcore_dmr_chain_fixture COMMAND sdrcore_dmr_chain_fixture_test)
 
+add_executable(sdrcore_dmr_backend_test tests/dmr_backend_test.cpp src/decoder/dmr.cpp)
+target_include_directories(sdrcore_dmr_backend_test PRIVATE include src tests third_party)
+target_compile_definitions(sdrcore_dmr_backend_test PRIVATE
+    DMR_CHAIN_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/data/dmr_chain")
+target_compile_options(sdrcore_dmr_backend_test PRIVATE -UNDEBUG -O2)
+target_link_libraries(sdrcore_dmr_backend_test PRIVATE
+    sdrcore_dmr_channel sdrcore_dmr_framing sdrcore_dmr_voice Threads::Threads m)
+add_test(NAME sdrcore_dmr_backend COMMAND sdrcore_dmr_backend_test)
+
+add_executable(sdrcore_dmr_backend_abi_test tests/dmr_backend_abi_test.cpp)
+target_link_libraries(sdrcore_dmr_backend_abi_test PRIVATE sdrcore)
+target_compile_options(sdrcore_dmr_backend_abi_test PRIVATE -UNDEBUG)
+add_test(NAME sdrcore_dmr_backend_abi COMMAND sdrcore_dmr_backend_abi_test)
+
 # Host-only replay/corpus tool for tool/dmr_voice_oracle (not a CTest).
 add_executable(dmr_voice_replay tests/dmr_voice_replay.cpp)
 target_include_directories(dmr_voice_replay PRIVATE tests
