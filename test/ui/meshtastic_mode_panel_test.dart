@@ -24,7 +24,11 @@ void main() {
     expect(find.byKey(const ValueKey('decoderPanel-meshtastic')),
         findsOneWidget);
     expect(find.textContaining('Decoder unavailable'), findsOneWidget);
-    expect(find.textContaining('Unverified frequency'), findsOneWidget);
+    // EU_868/US are cross-checked; RU and KZ_863 are firmware-derived only.
+    expect(find.textContaining('Unverified frequency'), findsNWidgets(2));
+    expect(find.textContaining('RU · 869.075 MHz · Unverified'), findsOneWidget);
+    expect(find.textContaining('KZ_863 · 866.875 MHz · Unverified'),
+        findsOneWidget);
     await tester.ensureVisible(find.byKey(const ValueKey('meshtasticTune-EU_868')));
     await tester.pump();
     await tester.tap(find.byKey(const ValueKey('meshtasticTune-EU_868')));

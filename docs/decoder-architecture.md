@@ -114,6 +114,24 @@ and generated-IQ comparison. `lib/ui/decoders/adsb_panel.dart` displays the
 live bounded snapshot, not raw frames. Host RF yielded no aircraft in a
 30-second check; this does not establish live reception.
 
+## Meshtastic (LoRa) path
+
+`meshtastic` uses an exact 1 MS/s complex-f32 tap of the tuned VFO (FIR
+decimation plus a fractional resampler, `docs/status/meshtastic-mode.md`).
+It feeds OE5DXL's author-site lorarx, the demodulator OpenWebRX+ runs,
+embedded without IO (`docs/status/meshtastic-phy.md`), started with the
+OpenWebRX+ `MeshtasticDemodulator` argv. Each lorarx JSON line goes to the
+native `MeshtasticParser` port, which does the header, firmware key/hash
+rules, AES-CTR and nanopb decoding (`docs/status/meshtastic.md`). The result
+is one `message` event per packet. Voice audio is zero-filled while the
+decoder is selected. Dart shows the packet log, text messages, node list
+and channel keys (`docs/status/meshtastic-ui.md`). Region quick-tune
+buttons (EU_868, US, RU, KZ_863) call `CenteredReceiver.tune`.
+Same-IQ parity with lorarx plus the OpenWebRX+ parser is
+`docs/status/meshtastic-parity.md`. The host live-air check, CPU numbers
+and the Kazakhstan regions are in `docs/status/meshtastic-live.md`. No
+packet has yet been received over the air.
+
 ## Pieces
 
 - `lib/ui/decoders/decoder_contract.dart` — shared Dart contract

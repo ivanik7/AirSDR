@@ -36,6 +36,25 @@ void main() {
     expect(other.frequencyHz, isNot(us.frequencyHz));
   });
 
+  test('Kazakhstan regions follow firmware v2.8.1 RDEF(KZ_433/KZ_863)', () {
+    final preset = meshtasticPreset('LongFast');
+    final kz863 = meshtasticRegion('KZ_863');
+    expect(kz863.startHz, 863000000);
+    expect(kz863.endHz, 868000000);
+    final c863 = meshtasticChannelFrequency(kz863, preset);
+    // 20 slots of 250 kHz; djb2("LongFast") % 20 + 1 = 16.
+    expect(c863.slot, 16);
+    expect(c863.frequencyHz, 866875000);
+    expect(c863.verified, isFalse);
+    final c433 = meshtasticChannelFrequency(meshtasticRegion('KZ_433'), preset);
+    // round(1.7 MHz / 250 kHz) = 7 slots; hash slot 6.
+    expect(c433.slot, 6);
+    expect(c433.frequencyHz, 434450000);
+    expect(c433.verified, isFalse);
+    expect(kz863.presets, contains('ShortTurbo'));
+    expect(kz863.presets, isNot(contains('LiteFast')));
+  });
+
   test('override slots and preset restrictions are not silently changed', () {
     final narrow = meshtasticChannelFrequency(
         meshtasticRegion('EU_N_868'), meshtasticPreset('NarrowSlow'));

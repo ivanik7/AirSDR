@@ -39,7 +39,10 @@ and US 906.875 MHz are also in the OpenWebRX+ bands. RU 869.075 MHz is
 calculated from the firmware but not independently checked against the Meshtastic
 published documentation, so its quick-tune button says **Unverified frequency**.
 Other model-computed region/preset frequencies carry the same unverified flag.
-Quick tunes for EU_868, US and RU call `CenteredReceiver.tune` (device range,
+KZ_433 and KZ_863 (firmware v2.8.1 `RDEF`, `PROFILE_STD`) were added later;
+KZ_863 LongFast is slot 16, 866.875 MHz, also labelled unverified
+(`docs/status/meshtastic-live.md`).
+Quick tunes for EU_868, US, RU and KZ_863 call `CenteredReceiver.tune` (device range,
 step snapping, band selection and recenter); the UI reports a snapped value
 rather than claiming the exact firmware center if the grid changes it.
 

@@ -69,6 +69,10 @@ const meshtasticRegions = <MeshtasticRegion>[
   MeshtasticRegion('JP', 920500000, 923500000, presets: _standardPresets),
   MeshtasticRegion('ANZ', 915000000, 928000000, presets: _standardPresets),
   MeshtasticRegion('RU', 868700000, 869200000, presets: _standardPresets),
+  // Kazakhstan (firmware issue #7204): KZ_433 433.075-434.775 MHz LPD and
+  // KZ_863 863-868 MHz, both PROFILE_STD.
+  MeshtasticRegion('KZ_433', 433075000, 434775000, presets: _standardPresets),
+  MeshtasticRegion('KZ_863', 863000000, 868000000, presets: _standardPresets),
 ];
 
 MeshtasticPreset meshtasticPreset(String name) => meshtasticPresets
