@@ -32,7 +32,7 @@ void main() {
     expect(api, isNotNull);
   }, skip: skipReason);
 
-  test('real host library exposes the embedded ADS-B backend', () {
+  test('real host library exposes all embedded decoder backends', () {
     if (skipReason != null) return;
     final lib = DynamicLibrary.open(libraryPath!);
     // sdr_version must still be resolvable (v3 unaffected).
@@ -43,7 +43,12 @@ void main() {
     final decoder = FfiNativeDecoderApi.tryOpen(lib);
     expect(decoder, isNotNull);
     final descriptors = decoder!.descriptors();
-    expect(descriptors.map((d) => d.id), ['sstv', 'rtl_433', 'adsb']);
+    expect(descriptors.map((d) => d.id), [
+      'sstv',
+      'rtl_433',
+      'adsb',
+      'meshtastic',
+    ]);
     expect(descriptors[1].available, isTrue);
     expect(descriptors[1].input, 3);
     expect(descriptors[1].exclusiveReceiver, isFalse);
@@ -51,6 +56,10 @@ void main() {
     expect(descriptors[2].available, isTrue);
     expect(descriptors[2].input, 4);
     expect(descriptors[2].requiredRateHz, 2400000);
+    expect(descriptors[3].available, isTrue);
+    expect(descriptors[3].input, 3);
+    expect(descriptors[3].exclusiveReceiver, isFalse);
+    expect(descriptors[3].requiredRateHz, 1000000);
   }, skip: skipReason);
 
   test('tryOpen returns null against the current process (no sdr_decoder_* symbols)', () {
