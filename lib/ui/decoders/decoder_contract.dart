@@ -159,8 +159,9 @@ final decoderCatalog = <DecoderDescriptor>[
     result: DecoderResult.message,
     settings: const [], // v1 {"version":1,"settings":{}}; tuning is the VFO.
   ),
-  // The native registry advertises this 1 MS/s IQ mode, but selection stays
-  // unavailable until the upstream lorarx PHY/backend supplies its factory.
+  // 1 MS/s IQ mode: embedded upstream lorarx PHY + native packet layer.
+  // Native configure() rejects presets outside the OpenWebRX+ chain
+  // (LongSlow SF12, Tiny 15.6 kHz; see meshtastic_tuning.dart).
   DecoderDescriptor(
     id: 'meshtastic',
     label: 'Meshtastic',

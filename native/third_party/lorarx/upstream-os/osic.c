@@ -42,20 +42,6 @@
 static int osic_argc, argc_delivered;
 static char **osic_argv;
 
-#ifdef SDRCORE_LORARX_EMBED
-/* Embedded in the app: console diagnostics are discarded; JSON uses a callback. */
-void osic_flush(void) {}
-void osic_WrLn(void) {}
-void osic_WerrLn(void) {}
-void osic_WrStr(char s[], uint32_t s_len) { (void)s; (void)s_len; }
-void osic_WrStrLn(char s[], uint32_t s_len) { (void)s; (void)s_len; }
-void osic_WerrStr(char s[], uint32_t s_len) { (void)s; (void)s_len; }
-void osic_WerrStrLn(char s[], uint32_t s_len) { (void)s; (void)s_len; }
-void osic_WrUINT32(uint32_t x, uint32_t witdh) { (void)x; (void)witdh; }
-void osic_WrINT32(int32_t x, uint32_t witdh) { (void)x; (void)witdh; }
-void osic_WrFixed(float x, int32_t place, uint32_t witdh) { (void)x; (void)place; (void)witdh; }
-void osic_WrHex(uint32_t n, uint32_t f) { (void)n; (void)f; }
-#else
 void osic_flush(void)
 {
 	fflush(stdout);
@@ -128,7 +114,6 @@ void osic_WrHex(uint32_t n, uint32_t f)
 	fprintf(stdout, "%*X", (int)f, (uint32_t)n);
 	fflush(stdout);
 }
-#endif
 
 int osic_getptsname(int fd, char *name, int len)
 {
@@ -423,13 +408,10 @@ double osic_Random(void)
 void X2C_BEGIN(int *argc, char *argv[],
 	       int gc_auto, int32_t gc_threshold, int32_t heap_limit)
 {
-#ifndef SDRCORE_LORARX_EMBED
 	if (osic_argc != 0)
 		return;
-#endif
 	osic_argc = *argc;
 	osic_argv = argv;
-	argc_delivered = 0;
 }
 
 void X2C_PCOPY(void **ppcpy, size_t size)

@@ -53,7 +53,8 @@ class Decoder {
   // backend that does not accept the currently applied mode (SDR_UNSUPPORTED)
   // and leaves the previous decoder untouched. Default: any mode.
   virtual bool accepts_mode(uint32_t /*sdr_v3_mode*/) const { return true; }
-  // Input::audio backends only. Applied tuned frequency (center_frequency_hz
+  // Every input kind (baseband backends use it only to stamp frame
+  // metadata, e.g. Meshtastic "freq"). Applied tuned frequency (center_frequency_hz
   // + vfo_offset_hz) and SdrV3Mode. The receiver calls this immediately
   // before EVERY reset() it issues (attach, tuned-frequency/LO change, mode
   // change, sample-rate change, stream reset/retune), so the backend can

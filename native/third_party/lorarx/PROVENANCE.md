@@ -10,7 +10,31 @@
 - Licence: GPL-2.0-or-later (author `Licenses/README`: GPL v2 "or, at your
   option, any later version"; `Licenses/Exceptions`: no exclusions). This is
   compatible with the project's GPL-3.0.
-- No build is wired yet. These files are vendored verbatim and unmodified.
+- The sha256 list below is for the verbatim upstream bytes. `lorarx.c` and
+  `loraprotocols.c` carry local, `#ifdef SDRCORE_LORARX_EMBED`-only edits (see
+  "Embedded build"); with that macro undefined they preprocess to the upstream
+  code, and the oracle build below is built that way. `git diff 5c1e3a0 --
+  native/third_party/lorarx` shows every local change.
+
+## Embedded build (sdrcore_lorarx, `native/third_party/lorarx.cmake`)
+
+- `-DSDRCORE_LORARX_EMBED` compiles out upstream `main()`, the IQ file read,
+  the JSON pipe write and the SIGPIPE handler, and adds `lorarx_embed.h`:
+  `start(argv)` = `main()` up to opening the IQ input plus its first demod
+  pass; `block(4096 frames)` = one turn of the read/demod loop on pushed
+  complex-f32 samples; `clear()` frees everything and zeroes every file-scope
+  variable (fresh-process state); each JSON line goes to
+  `lorarx_embed_emit()`. Upstream `Error()`/`X2C_ABORT()` unwind with
+  `longjmp` to the entry point instead of exiting the app.
+- `embed/` (`osi.h`, `osic.h`, `udp.h`, `mlib.h`, `lorarx_os.c`) replaces
+  `upstream-os/` for this build. It opens no file, pipe, socket or tty and
+  prints nothing; the pure helpers (`X2C_TRUNC*`, `X2C_LSH`, `X2C_IN`,
+  dynamic arrays, `osi_NextArg`) are copied unchanged from upstream
+  `osic.c`. Only libc/libm remain external (`tool/lorarx_cross_check.sh`,
+  NDK arm64/armv7/x86_64).
+- Parity evidence: `native/tests/lorarx_parity.sh` (ctest
+  `sdrcore_lorarx_parity`) runs the embedded build and the unmodified oracle on
+  20 loratx fixtures and requires byte-identical JSON.
 
 ## Layout
 
@@ -18,8 +42,8 @@
   `loraprotocols.c/.h`, `aprsstr.c/.h`, `X2C.h`) plus `loratx.c`, the
   upstream synthetic-IQ generator, kept for PHY fixtures.
 - `upstream-os/`: the upstream OS/IO layer (`osi`, `osic`, `udp`, `tcp.h`,
-  `mlib.h`). It is used only to build the unmodified reference (oracle)
-  binary. An embedded build must replace it with an in-process shim.
+  `mlib.h`), verbatim. It is used only to build the unmodified reference
+  (oracle) `lorarx`/`loratx`; the embedded build uses `embed/` instead.
 - `Licenses/`: the author's licence README, Exceptions and GPL-2.0 text.
 
 ## sha256 (verbatim upstream bytes)

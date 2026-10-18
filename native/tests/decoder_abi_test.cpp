@@ -120,7 +120,7 @@ int main() {
   assert(mesh.required_rate_hz == 1000000);
   assert(mesh.result == SDR_DECODER_MESSAGE);
   assert(mesh.exclusive_receiver == 0);
-  assert(mesh.available == 0); // PHY factory belongs to a later task.
+  assert(mesh.available == 1); // Embedded lorarx PHY + MeshtasticParser.
   // SSTV is an audio-tap decoder valid for USB, LSB or NFM: no single
   // required mode in the descriptor; accepts_mode() gates selection.
   {

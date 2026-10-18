@@ -1,11 +1,10 @@
-# Meshtastic receiver mode (pre-PHY)
+# Meshtastic receiver mode
 
-This card adds the single-receiver mode contract, not a working LoRa decoder.
-The `meshtastic` registry descriptor is a 1,000,000 complex-S/s baseband tap,
-independent of voice demodulation, with message events and `available=0` until
-the upstream-compatible PHY/backend card supplies its factory. The UI preview
-explicitly says unavailable; it never claims packets were received. Selecting
-a future non-audio decoder uses the existing worker's audio zero-fill policy.
+This card added the single-receiver mode contract. The `meshtastic` registry
+descriptor is a 1,000,000 complex-S/s baseband tap, independent of voice
+demodulation, with message events. Its factory is the embedded lorarx PHY
+(`docs/status/meshtastic-phy.md`), so the descriptor reports `available=1`.
+Selecting a non-audio decoder uses the existing worker's audio zero-fill policy.
 
 ## Tuned IQ path
 
@@ -64,9 +63,9 @@ and `docs/status/meshtastic.md` for the separate packet layer.
 
 - Native `sdrcore_meshtastic_tap` exercises DC translation, 2.4/2/1.024/1
   MS/s inputs, below-rate and edge-window rejection, manual squelch/hang/flush,
-  and retune. `sdrcore_decoder_abi` checks descriptor + unavailable selection.
+  and retune. `sdrcore_decoder_abi` checks the descriptor (`available=1`).
 - Flutter model tests check firmware tuples, region hashes/slots and explicit
   rate limits; panel widget test exercises quick-tune at 344 dp.
-- This phase has no lorarx PHY/backend, over-the-air decoding, packet UI,
-  native sample-stream oracle against OpenWebRX+, CPU measurement at 1 MS/s,
-  or device/emulator reception evidence. Those belong to subsequent cards.
+- The PHY/backend and its evidence are in `docs/status/meshtastic-phy.md`.
+  Still open: native sample-stream oracle against a running OpenWebRX+,
+  CPU measurement at 1 MS/s on Android, and over-the-air reception evidence.

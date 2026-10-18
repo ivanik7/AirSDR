@@ -27,10 +27,14 @@
 #ifdef SDRCORE_LORARX_EMBED
 #include "lorarx_embed.h"
 #include <setjmp.h>
+/* Embedded in sdrcore: every upstream abort/exit path unwinds to the entry
+   point instead of terminating the host app (see lorarx_embed.h). */
 static jmp_buf embed_abort;
 static const float *embed_iq;
 static size_t embed_frames;
 static int embed_pass(const float *iq, size_t frames);
+#undef X2C_ABORT
+#define X2C_ABORT() longjmp(embed_abort, 1)
 #endif
 
 /* iq downsample, shift, (auto)notch lora demodulator with axudp, json out and packet radio, aprs, lorawan,
@@ -2543,9 +2547,11 @@ union _3 {
 static char inreform(struct Complex b[], uint32_t b_len, uint32_t * wp)
 {
 #ifdef SDRCORE_LORARX_EMBED
+   /* Same block as the file path below: isize*8192 bytes, i.e. 4096 complex
+      f32 frames, copied into the same ring at the same write pointer. */
    size_t n;
-   if (isize!=4UL || embed_frames!=8192UL || embed_iq==0) return 0;
-   for (n=0; n<8192UL; ++n) {
+   if (isize!=4UL || embed_frames!=LORARX_EMBED_BLOCK_FRAMES || embed_iq==0) return 0;
+   for (n=0; n<LORARX_EMBED_BLOCK_FRAMES; ++n) {
       b[*wp].Re = embed_iq[n*2UL];
       b[*wp].Im = embed_iq[n*2UL+1UL];
       *wp = (*wp+1UL)&8191UL;
@@ -3124,7 +3130,8 @@ int lorarx_embed_start(int argc, char **argv)
    iqfd = osi_OpenRead(iqfn, 1024ul);
    if (iqfd<0L) Error("open iq file", 13ul);
 #else
-   loraprotocols_jpipename[0] = 1; /* enable JSON callback without opening a path */
+   /* No IQ file is opened. A -j path is still required to enable JSON, as
+      upstream; sendjson() hands the line to lorarx_embed_emit() instead. */
    embed_iq = 0;
    embed_frames = 0;
    /* main() runs one demodulator pass before its first read. */
@@ -3138,7 +3145,7 @@ static int embed_pass(const float *iq, size_t frames)
 {
    uint32_t tmp0;
    if (iq) {
-      if (frames!=8192UL) return 0;
+      if (frames!=LORARX_EMBED_BLOCK_FRAMES) return 0;
       embed_iq = iq;
       embed_frames = frames;
       if (!readsampsfir()) return 0;
@@ -3257,6 +3264,15 @@ int lorarx_embed_block(const float *iq, size_t frames)
    return embed_pass(iq, frames);
 }
 
+void lorarx_embed_abort(void)
+{
+   longjmp(embed_abort, 1);
+}
+
+/* Frees every allocation and restores every file-scope variable of lorarx.c
+   and the mutable loraprotocols globals to the zero state of a freshly
+   started process, so that start() after clear() behaves exactly like a new
+   `lorarx` invocation. */
 void lorarx_embed_clear(void)
 {
    pDEM dem;
@@ -3284,10 +3300,24 @@ void lorarx_embed_clear(void)
    X2C_DYNDEALLOCATE((char **)&pfirtab); pfirtab = 0;
    X2C_DYNDEALLOCATE((char **)&ptmpfir); ptmpfir = 0;
    for (k=0; k<13; ++k) { X2C_DYNDEALLOCATE((char **)&fftbufs[k]); fftbufs[k]=0; }
-   iqwrite = 0; firwp = 0; sampc = 0; phasereg = 0;
-   sendjudpdcd = 0; nocrcfec = 0; nofec = 0; notexitonbrokenpipe = 0;
-   loraprotocols_jpipename[0] = 0;
-   loraprotocols_hamview = 0;
+   memset(iqfn, 0, sizeof iqfn);
+   outdechirped = 0; outfiltered = 0; iqfd = 0;
+   firlen = 0; globfilt = 0; iqwrite = 0; binsview = 0; isize = 0;
+   notexitonbrokenpipe = 0; u8signed = 0; sendjudpdcd = 0; nocrcfec = 0; nofec = 0;
+   memset(iqbuf, 0, sizeof iqbuf);
+   memset(DDS, 0, sizeof DDS);
+   cfglevel = 0.0f; globallevelcor = 0.0f; globdrate = 0.0f;
+   memset(SINTAB, 0, sizeof SINTAB);
+   pknoisemed = 0.0f; pknoiseup = 0.0f; pknoisedown = 0.0f; notchthres = 0.0f;
+   downsample = 0.0f; notchcnt = 0; autonotch = 0; samprate = 0; firwp = 0;
+   sampc = 0; shiftstep = 0; birdpos = 0; phasereg = 0;
+   noisblanker = 0; complexfir = 0;
+   i = 0; j = 0; alldone = 0; allcol = 0; pd = 0; w = 0.0f; nf = 0.0f; nfp = 0.0f;
+   loraprotocols_hexformat = 0; loraprotocols_bwnum = 0;
+   loraprotocols_udpsock = 0;
+   memset(loraprotocols_jpipename, 0, sizeof loraprotocols_jpipename);
+   loraprotocols_hamview = 0; loraprotocols_verb = 0; loraprotocols_verb2 = 0;
+   loraprotocols_newline = 0; loraprotocols_quietcrc = 0; loraprotocols_jmhz = 0.0f;
    embed_iq = 0; embed_frames = 0;
 }
 #endif

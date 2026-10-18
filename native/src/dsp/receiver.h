@@ -53,8 +53,9 @@ class Receiver {
   // while the squelch is open (or off) and decoder->accepts_mode(mode).
   // Reset on tuned-frequency (center+offset) change, mode change, sample-rate
   // change, attach, retune() and stream reset; NOT on a bandwidth change.
-  // Before every decoder reset() the receiver calls decoder->set_tuning()
-  // with the applied tuned frequency and mode (see decoder.hpp).
+  // Before every decoder reset() (any input kind) the receiver calls
+  // decoder->set_tuning() with the applied tuned frequency and mode
+  // (see decoder.hpp).
   // Returns the tap rate: 24000 for audio (0 when not attached).
   virtual uint32_t set_decoder(sdrcore::decoder::Decoder* decoder,
                                sdrcore::decoder::Input input =

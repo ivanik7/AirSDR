@@ -560,6 +560,7 @@ class ReceiverImpl final : public Receiver {
     if (decoder_ && (decoder_input_ == sdrcore::decoder::Input::baseband ||
                      decoder_input_ == sdrcore::decoder::Input::raw_iq) && decoder_tune_change) {
       configure_decoder_branch();
+      decoder_->set_tuning(tuned_frequency_hz(controls_), controls_.mode);
       decoder_->reset();
     }
     // Input::audio tap reset rule (receiver.h): tuned-frequency, mode or
@@ -631,7 +632,10 @@ class ReceiverImpl final : public Receiver {
       }
     } else {
       configure_decoder_branch();
-      if (decoder_) decoder_->reset();
+      if (decoder_) {
+        decoder_->set_tuning(tuned_frequency_hz(controls_), controls_.mode);
+        decoder_->reset();
+      }
     }
     return decoder_rate_hz();
   }
@@ -658,6 +662,7 @@ class ReceiverImpl final : public Receiver {
       audio_tap_deemphasis_.reset();
       audio_tap_limiter_.reset();
     } else if (decoder_) {
+      decoder_->set_tuning(tuned_frequency_hz(controls_), controls_.mode);
       decoder_->reset();
     }
     first_.reset();
@@ -689,6 +694,7 @@ class ReceiverImpl final : public Receiver {
       audio_tap_deemphasis_.reset();
       audio_tap_limiter_.reset();
     } else if (decoder_) {
+      decoder_->set_tuning(tuned_frequency_hz(controls_), controls_.mode);
       decoder_->reset();
     }
     fft_count_ = 0;

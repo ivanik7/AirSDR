@@ -39,17 +39,8 @@ target_include_directories(sdrcore_meshtastic PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR}/third_party)
 target_link_libraries(sdrcore_meshtastic PUBLIC sdrcore_meshtastic_pb)
 
-# dxlAPRS lorarx PHY runs inside the DSP worker. Only its push-IQ and JSON
-# callback branches are used; no executable, file or socket is opened.
-set(LORARX_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/third_party/lorarx)
-add_library(sdrcore_lorarx STATIC
-    ${LORARX_ROOT}/lorarx.c ${LORARX_ROOT}/loraprotocols.c
-    ${LORARX_ROOT}/aprsstr.c ${LORARX_ROOT}/upstream-os/osi.c
-    ${LORARX_ROOT}/upstream-os/osic.c ${LORARX_ROOT}/upstream-os/udp.c)
-set_target_properties(sdrcore_lorarx PROPERTIES POSITION_INDEPENDENT_CODE ON)
-target_compile_definitions(sdrcore_lorarx PRIVATE SDRCORE_LORARX_EMBED _GNU_SOURCE)
-target_compile_options(sdrcore_lorarx PRIVATE -O2 -w)
-target_include_directories(sdrcore_lorarx PRIVATE ${LORARX_ROOT} ${LORARX_ROOT}/upstream-os)
+# Meshtastic LoRa PHY: embedded OE5DXL lorarx (defines sdrcore_lorarx).
+include(third_party/lorarx.cmake)
 
 # DMR channel front end (OpenWebRX+/digiham FmDemod -> DcBlock ->
 # WideRrcFilter -> GfskDemodulator). Framing/voice and decoder registration
@@ -155,7 +146,6 @@ set_target_properties(sdrcore PROPERTIES
     CXX_VISIBILITY_PRESET hidden
     VISIBILITY_INLINES_HIDDEN YES)
 target_include_directories(sdrcore PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
-target_include_directories(sdrcore PRIVATE ${LORARX_ROOT})
 
 # Symbol-level DMR framing is independent of the signal-chain integration.
 if(NOT ANDROID AND PROJECT_IS_TOP_LEVEL)
@@ -265,7 +255,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND PROJECT_IS_TOP_LEVEL)
     target_link_libraries(sdrcore_rtl433_engine_test PRIVATE sdrcore_csdr_sstv sdrcore_dump1090 sdrcore_meshtastic sdrcore_lorarx)
     # third_party: the SSTV adapter linked in via registry.cpp uses the
     # vendored nlohmann/json.hpp (normally reached through sdrcore_redsea).
-    target_include_directories(sdrcore_rtl433_engine_test PRIVATE include third_party ${LORARX_ROOT})
+    target_include_directories(sdrcore_rtl433_engine_test PRIVATE include third_party)
     target_compile_features(sdrcore_rtl433_engine_test PRIVATE cxx_std_17)
     target_compile_options(sdrcore_rtl433_engine_test PRIVATE -UNDEBUG)
     target_link_options(sdrcore_rtl433_engine_test PRIVATE -Wl,--gc-sections)
@@ -275,7 +265,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND PROJECT_IS_TOP_LEVEL)
         tests/rtl433_tap_oracle.cpp src/dsp/receiver.cpp
         src/decoder/rtl433.cpp src/decoder/sstv.cpp src/decoder/adsb.cpp
         src/decoder/meshtastic.cpp src/decoder/registry.cpp)
-    target_include_directories(sdrcore_rtl433_tap_oracle PRIVATE include third_party ${LORARX_ROOT})
+    target_include_directories(sdrcore_rtl433_tap_oracle PRIVATE include third_party)
     target_compile_features(sdrcore_rtl433_tap_oracle PRIVATE cxx_std_17)
     target_compile_options(sdrcore_rtl433_tap_oracle PRIVATE -O2)
     target_link_libraries(sdrcore_rtl433_tap_oracle PRIVATE sdrcore_rtl433 sdrcore_csdr_sstv sdrcore_dump1090 sdrcore_meshtastic sdrcore_lorarx m)
@@ -433,6 +423,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND PROJECT_IS_TOP_LEVEL)
     include(tests/sstv_tests.cmake)
     include(tests/audio_tap_tests.cmake)
     include(tests/dmr_voice_tests.cmake)
+    include(tests/lorarx_tests.cmake)
 endif()
 
 # Standalone macOS/Windows CTest: link the actual shared library and run the

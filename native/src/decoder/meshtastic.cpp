@@ -1,34 +1,56 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Thin single-owner adapter for OE5DXL's process-global lorarx demodulator.
+// Meshtastic data decoder: the embedded OE5DXL lorarx LoRa PHY (vendored in
+// native/third_party/lorarx, built with SDRCORE_LORARX_EMBED) followed by the
+// native OpenWebRX+ MeshtasticParser port (src/meshtastic).
+//
+// lorarx is driven with exactly the OpenWebRX+ MeshtasticDemodulator command
+// (csdr/module/lora.py) on the receiver's 1 MS/s complex-f32 tap:
+//   lorarx -i /dev/stdin -r 1000000 -f f32 -v -N -Q -H 5 -W 50 -b <bw>
+//          -s 7 -s 8 -s 9 -s 10 -s 11 -j /dev/stdout
+// Every JSON line it would write to -j is parsed like owrx/meshtastic.py does
+// (base64 payload + PHY metadata) and becomes one `message` event.
+//
+// lorarx keeps all state in process globals, so at most one instance can
+// demodulate per process. A backend claims the PHY in configure(); a backend
+// that has lost the claim (sdr_decoder_select configures the replacement
+// before it destroys the previous decoder) stays inert and emits nothing
+// instead of corrupting the new owner's state.
 #include "decoder.hpp"
-#include "meshtastic/meshtastic.h"
 #include "lorarx_embed.h"
+#include "meshtastic/meshtastic.h"
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
 #include <array>
-#include <atomic>
 #include <chrono>
 #include <cmath>
-#include <cstring>
+#include <cstdint>
 #include <deque>
-#include <limits>
+#include <mutex>
 #include <string>
 #include <vector>
 
 namespace sdrcore::decoder {
 namespace {
-std::atomic<bool> occupied{false};
-constexpr size_t kBlock = 8192;
+constexpr size_t kBlock = LORARX_EMBED_BLOCK_FRAMES;
 constexpr size_t kEvents = 256;
+constexpr uint32_t kRate = 1000000;
 
+class MeshtasticBackend;
+// Guards every lorarx call; lorarx_embed_emit() runs inside block() under it.
+std::mutex g_phy_mutex;
+MeshtasticBackend* g_owner = nullptr;
+
+// OpenWebRX+ LoraBandwidthInput index for each supported preset bandwidth
+// (0:7.8 .. 6:62.5 7:125 8:250 9:500 kHz). SF12 (LongSlow) and the 15.6 kHz
+// Tiny presets are outside the OpenWebRX+ SF 7..11 / standard-BW chain.
 int bandwidth_index(const std::string& preset) {
   if (preset == "NarrowFast" || preset == "NarrowSlow") return 6;
   if (preset == "LongMod" || preset == "LiteFast" || preset == "LiteSlow") return 7;
   if (preset == "LongFast" || preset == "MediumSlow" || preset == "MediumFast" ||
       preset == "ShortSlow" || preset == "ShortFast") return 8;
   if (preset == "ShortTurbo" || preset == "LongTurbo" || preset == "MediumTurbo") return 9;
-  return -1;  // SF12 / 15.6 kHz / 2.4 GHz are not in the supported receive mode.
+  return -1;
 }
 
 int64_t now_ms() {
@@ -40,74 +62,146 @@ int64_t steady_ms() {
              std::chrono::steady_clock::now().time_since_epoch()).count();
 }
 
-class MeshtasticBackend;
-MeshtasticBackend* active = nullptr;  // lorarx's state is global; occupied enforces one owner.
+// Strict RFC 4648 base64 (lorarx always pads to a multiple of four).
+bool base64_decode(const std::string& in, std::vector<uint8_t>& out) {
+  auto value = [](char ch) -> int {
+    if (ch >= 'A' && ch <= 'Z') return ch - 'A';
+    if (ch >= 'a' && ch <= 'z') return ch - 'a' + 26;
+    if (ch >= '0' && ch <= '9') return ch - '0' + 52;
+    if (ch == '+') return 62;
+    if (ch == '/') return 63;
+    return -1;
+  };
+  if (in.size() % 4 != 0) return false;
+  out.clear();
+  uint32_t bits = 0;
+  int nbits = 0;
+  size_t pad = 0;
+  for (size_t n = 0; n < in.size(); ++n) {
+    if (in[n] == '=') {
+      if (n + 2 < in.size()) return false;
+      ++pad;
+      continue;
+    }
+    if (pad) return false;
+    const int v = value(in[n]);
+    if (v < 0) return false;
+    bits = (bits << 6) | static_cast<uint32_t>(v);
+    nbits += 6;
+    if (nbits >= 8) {
+      nbits -= 8;
+      out.push_back(static_cast<uint8_t>(bits >> nbits));
+    }
+  }
+  return pad <= 2;
+}
+
+void read_int(const nlohmann::json& row, const char* key, int& out) {
+  const auto it = row.find(key);
+  if (it != row.end() && it->is_number_integer()) out = it->get<int>();
+}
+void read_double(const nlohmann::json& row, const char* key, double& out) {
+  const auto it = row.find(key);
+  if (it != row.end() && it->is_number()) out = it->get<double>();
+}
 
 class MeshtasticBackend final : public Decoder {
  public:
   ~MeshtasticBackend() override {
-    lorarx_embed_clear();
-    active = nullptr;
-    occupied.store(false, std::memory_order_release);
+    std::lock_guard<std::mutex> lock(g_phy_mutex);
+    if (g_owner == this) {
+      lorarx_embed_clear();
+      g_owner = nullptr;
+    }
   }
+
+  // {"version":1,"settings":{"preset":..,"region":..,"channels":[{name,psk}]}}
+  // (lib/ui/decoders/decoder_session.dart). `region` drives Dart quick-tune
+  // only. Keys are never logged or echoed.
   bool configure(std::string_view text) override {
     auto doc = nlohmann::json::parse(text, nullptr, false);
-    if (doc.is_discarded() || !doc.is_object() || doc.value("version", 0) != 1 ||
-        !doc.contains("settings") || !doc["settings"].is_object()) return false;
-    auto& settings = doc["settings"];
-    if (!settings.contains("preset") || !settings["preset"].is_string() ||
-        !settings.contains("channels") || !settings["channels"].is_array() ||
-        settings["channels"].size() > 8) return false;
+    if (doc.is_discarded() || !doc.is_object()) return false;
+    const auto version = doc.find("version");
+    const auto settings = doc.find("settings");
+    if (version == doc.end() || !version->is_number_integer() || *version != 1 ||
+        settings == doc.end() || !settings->is_object()) return false;
     meshtastic::ParserConfig config;
-    config.preset = settings["preset"].get<std::string>();
+    const auto preset = settings->find("preset");
+    if (preset != settings->end()) {
+      if (!preset->is_string()) return false;
+      config.preset = preset->get<std::string>();
+    }
     const int bw = bandwidth_index(config.preset);
     if (bw < 0) return false;
-    for (const auto& channel : settings["channels"]) {
-      if (!channel.is_object() || !channel.contains("name") ||
-          !channel["name"].is_string() || !channel.contains("psk") ||
-          !channel["psk"].is_string()) return false;
-      meshtastic::ChannelConfig entry{channel["name"].get<std::string>(),
-                                      channel["psk"].get<std::string>()};
-      if (entry.name.size() > 11 ||
-          !std::all_of(entry.name.begin(), entry.name.end(),
-                       [](unsigned char ch) { return ch >= 32 && ch <= 126; })) return false;
-      config.channels.push_back(std::move(entry));
+    const auto channels = settings->find("channels");
+    if (channels != settings->end()) {
+      if (!channels->is_array() || channels->size() > 8) return false;
+      for (const auto& channel : *channels) {
+        if (!channel.is_object()) return false;
+        const auto name = channel.find("name");
+        const auto psk = channel.find("psk");
+        if ((name != channel.end() && !name->is_string()) ||
+            psk == channel.end() || !psk->is_string()) return false;
+        meshtastic::ChannelConfig entry{
+            name == channel.end() ? std::string() : name->get<std::string>(),
+            psk->get<std::string>()};
+        if (entry.name.size() > 11 ||
+            !std::all_of(entry.name.begin(), entry.name.end(),
+                         [](unsigned char ch) { return ch >= 32 && ch <= 126; }))
+          return false;
+        config.channels.push_back(std::move(entry));
+      }
     }
     if (!parser_.configure(config)) return false;
     bw_ = bw;
+    {
+      std::lock_guard<std::mutex> lock(g_phy_mutex);
+      g_owner = this;
+    }
     reset();
     return ready_;
   }
+
+  // Stream discontinuity: restart lorarx from a clean process state, exactly
+  // like OpenWebRX+ restarting the demodulator chain, and forget duplicates.
   void reset() override {
     parser_.reset();
     frames_ = 0;
     pending_.clear();
+    std::lock_guard<std::mutex> lock(g_phy_mutex);
     ready_ = false;
+    if (g_owner != this || bw_ < 0) return;
     lorarx_embed_clear();
-    if (bw_ < 0) return;
-    // Same options and SF bank as OpenWebRX+ MeshtasticDemodulator. No -c:
-    // explicit headers carry their own coding rate, CRC and packet length.
-    std::string bw = std::to_string(bw_);
-    std::vector<std::string> args = {"lorarx", "-i", "/dev/stdin", "-r", "1000000",
-      "-f", "f32", "-v", "-N", "-Q", "-H", "5", "-W", "50", "-b", bw,
-      "-s", "7", "-s", "8", "-s", "9", "-s", "10", "-s", "11"};
+    const std::string bw = std::to_string(bw_);
+    std::vector<std::string> args = {
+        "lorarx", "-i", "/dev/stdin", "-r", "1000000", "-f", "f32", "-v", "-N",
+        "-Q", "-H", "5", "-W", "50", "-b", bw, "-s", "7", "-s", "8", "-s", "9",
+        "-s", "10", "-s", "11", "-j", "/dev/stdout"};
     std::vector<char*> argv;
     for (auto& arg : args) argv.push_back(arg.data());
-    active = this;
-    ready_ = lorarx_embed_start(static_cast<int>(argv.size()), argv.data()) != 0;
+    argv.push_back(nullptr);
+    ready_ = lorarx_embed_start(static_cast<int>(args.size()), argv.data()) != 0;
   }
+
   void set_tuning(uint64_t frequency, uint32_t) override { frequency_ = frequency; }
+
   void process(const float* iq, size_t frames, uint32_t rate) override {
-    if (!ready_ || !iq || rate != 1000000) return;
+    if (!ready_ || !iq || rate != kRate) return;
     for (size_t n = 0; n < frames; ++n) {
-      buffer_[2 * frames_] = std::isfinite(iq[2 * n]) ? iq[2 * n] : 0.0f;
-      buffer_[2 * frames_ + 1] = std::isfinite(iq[2 * n + 1]) ? iq[2 * n + 1] : 0.0f;
+      const float re = iq[2 * n], im = iq[2 * n + 1];
+      buffer_[2 * frames_] = std::isfinite(re) ? re : 0.0f;
+      buffer_[2 * frames_ + 1] = std::isfinite(im) ? im : 0.0f;
       if (++frames_ == kBlock) {
-        if (!lorarx_embed_block(buffer_.data(), kBlock)) ready_ = false;
         frames_ = 0;
+        std::lock_guard<std::mutex> lock(g_phy_mutex);
+        if (g_owner != this || !lorarx_embed_block(buffer_.data(), kBlock)) {
+          ready_ = false;
+          return;
+        }
       }
     }
   }
+
   bool take_event(Event& out) override {
     if (pending_.empty()) return false;
     out = std::move(pending_.front());
@@ -119,51 +213,46 @@ class MeshtasticBackend final : public Decoder {
     dropped_ = 0;
     return count;
   }
+
+  // One lorarx JSON line (owrx/meshtastic.py MeshtasticParser.parse): lines
+  // that do not parse, or carry no base64 payload, are ignored.
   void emit(const char* json, size_t length) {
-    if (length > 1000) return;
     auto row = nlohmann::json::parse(std::string_view(json, length), nullptr, false);
-    if (row.is_discarded() || !row.is_object() || !row.contains("payload") ||
-        !row["payload"].is_string()) return;
-    const std::string encoded = row["payload"].get<std::string>();
-    if (encoded.size() > 344 || encoded.size() % 4 != 0) return;
-    static constexpr char alphabet[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    if (row.is_discarded() || !row.is_object()) return;
+    const auto payload = row.find("payload");
+    if (payload == row.end() || !payload->is_string()) return;
     std::vector<uint8_t> bytes;
-    uint32_t bits = 0;
-    int nbits = 0;
-    for (char ch : encoded) {
-      if (ch == '=') break;
-      const char* pos = std::strchr(alphabet, ch);
-      if (!pos) return;
-      bits = (bits << 6) | static_cast<uint32_t>(pos - alphabet);
-      nbits += 6;
-      if (nbits >= 8) {
-        nbits -= 8;
-        bytes.push_back(static_cast<uint8_t>(bits >> nbits));
-      }
-    }
-    if (bytes.size() > meshtastic::kMaxLoraPayload) return;
+    if (!base64_decode(payload->get<std::string>(), bytes) ||
+        bytes.size() > meshtastic::kMaxLoraPayload) return;
     meshtastic::PhyMeta meta;
     meta.timestamp_ms = now_ms();
     meta.monotonic_ms = steady_ms();
     meta.frequency_hz = frequency_;
-    meta.crc = row.value("crc", -1);
-    if (row.contains("bw") && row["bw"].is_number()) meta.bw_khz = row["bw"].get<double>() / 1000.0;
-    if (row.contains("sf") && row["sf"].is_number_integer()) meta.sf = row["sf"].get<int>();
-    if (row.contains("cr") && row["cr"].is_number_integer()) meta.cr = row["cr"].get<int>();
-    if (row.contains("invers") && row["invers"].is_number_integer()) meta.inverted = row["invers"].get<int>();
-    if (row.contains("preamb") && row["preamb"].is_number_integer()) meta.preamble = row["preamb"].get<int>();
-    if (row.contains("duration") && row["duration"].is_number_integer()) meta.duration_ms = row["duration"].get<int>();
-    if (row.contains("level") && row["level"].is_number()) meta.level_db = row["level"].get<double>();
-    if (row.contains("snr") && row["snr"].is_number()) meta.snr_db = row["snr"].get<double>();
-    if (row.contains("nfloor") && row["nfloor"].is_number()) meta.noise_floor_db = row["nfloor"].get<double>();
-    if (row.contains("pknfloor") && row["pknfloor"].is_number()) meta.peak_noise_floor_db = row["pknfloor"].get<double>();
-    if (row.contains("afc") && row["afc"].is_number_integer()) meta.afc_hz = row["afc"].get<int>();
-    if (row.contains("fec") && row["fec"].is_number_integer()) meta.fec = row["fec"].get<int>();
+    meta.crc = -1;
+    read_int(row, "crc", meta.crc);
+    double bw_hz = NAN;
+    read_double(row, "bw", bw_hz);
+    if (std::isfinite(bw_hz)) meta.bw_khz = bw_hz / 1000.0;  // lorarx reports Hz
+    read_int(row, "sf", meta.sf);
+    read_int(row, "cr", meta.cr);
+    read_int(row, "invers", meta.inverted);
+    read_int(row, "preamb", meta.preamble);
+    read_int(row, "duration", meta.duration_ms);
+    read_double(row, "level", meta.level_db);
+    read_double(row, "snr", meta.snr_db);
+    read_double(row, "nfloor", meta.noise_floor_db);
+    read_double(row, "pknfloor", meta.peak_noise_floor_db);
+    read_int(row, "afc", meta.afc_hz);
+    read_int(row, "fec", meta.fec);
     auto parsed = parser_.parse(bytes.data(), bytes.size(), meta);
     if (!parsed || parsed->size() > 65536) return;
-    if (pending_.size() == kEvents) { pending_.pop_front(); ++dropped_; }
+    if (pending_.size() == kEvents) {
+      pending_.pop_front();
+      ++dropped_;
+    }
     pending_.push_back(Event{Result::message, {parsed->begin(), parsed->end()}});
   }
+
  private:
   meshtastic::PacketParser parser_;
   int bw_ = -1;
@@ -175,13 +264,14 @@ class MeshtasticBackend final : public Decoder {
   uint64_t dropped_ = 0;
 };
 }  // namespace
+
 std::unique_ptr<Decoder> create_meshtastic() {
-  bool expected = false;
-  if (!occupied.compare_exchange_strong(expected, true, std::memory_order_acq_rel)) return nullptr;
   return std::make_unique<MeshtasticBackend>();
 }
 }  // namespace sdrcore::decoder
 
+// Called by lorarx only inside lorarx_embed_block(), i.e. with g_phy_mutex
+// held by the owning backend's process().
 extern "C" void lorarx_embed_emit(const char* json, size_t length) {
-  if (sdrcore::decoder::active) sdrcore::decoder::active->emit(json, length);
+  if (sdrcore::decoder::g_owner) sdrcore::decoder::g_owner->emit(json, length);
 }
