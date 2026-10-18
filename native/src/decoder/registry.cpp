@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Static data-decoder registry. rtl_433 and SSTV (csdr-plus SstvDecoder) are
-// embedded in-process, alongside dump1090 ADS-B. Voice demodulators belong
-// to v3, not this list.
+// Static decoder registry. DMR voice uses the tuned baseband tap;
+// analog voice demodulators remain in v3.
 #include "decoder.hpp"
 
 namespace sdrcore::decoder {
@@ -10,6 +9,7 @@ std::unique_ptr<Decoder> create_sstv();
 std::unique_ptr<Decoder> create_adsb();
 std::unique_ptr<Decoder> create_meshtastic();
 std::unique_ptr<Decoder> create_meshcore();
+std::unique_ptr<Decoder> create_dmr();
 
 const std::vector<Registration>& registry() {
   // Metadata mirrors the Dart decoder catalog.
@@ -70,6 +70,11 @@ const std::vector<Registration>& registry() {
               /*result=*/Result::message,
           },
           /*create=*/create_meshcore,
+      },
+      Registration{
+          Descriptor{"dmr", Input::baseband, false, 0xFFFFFFFFu, 0,
+                     Result::message},
+          create_dmr,
       },
   };
   return kRegistry;

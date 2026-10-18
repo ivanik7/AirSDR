@@ -133,6 +133,7 @@ add_library(sdrcore SHARED
     src/decoder/meshtastic.cpp
     src/decoder/meshcore.cpp
     src/decoder/lorarx_session.cpp
+    src/decoder/dmr.cpp
     src/decoder/decoder_abi.cpp
 )
 if(ANDROID)
@@ -293,8 +294,8 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND PROJECT_IS_TOP_LEVEL)
     target_sources(sdrcore_rtl433_engine_test PRIVATE
         src/decoder/rtl433.cpp src/decoder/sstv.cpp src/decoder/adsb.cpp
         src/decoder/meshtastic.cpp src/decoder/meshcore.cpp
-        src/decoder/lorarx_session.cpp src/decoder/registry.cpp)
-    target_link_libraries(sdrcore_rtl433_engine_test PRIVATE sdrcore_csdr_sstv sdrcore_dump1090 sdrcore_meshtastic sdrcore_meshcore sdrcore_lorarx)
+        src/decoder/lorarx_session.cpp src/decoder/dmr.cpp src/decoder/registry.cpp)
+    target_link_libraries(sdrcore_rtl433_engine_test PRIVATE sdrcore_csdr_sstv sdrcore_dump1090 sdrcore_meshtastic sdrcore_meshcore sdrcore_lorarx sdrcore_dmr_channel sdrcore_dmr_framing sdrcore_dmr_voice)
     # third_party: the SSTV adapter linked in via registry.cpp uses the
     # vendored nlohmann/json.hpp (normally reached through sdrcore_redsea).
     target_include_directories(sdrcore_rtl433_engine_test PRIVATE include third_party)
@@ -307,11 +308,11 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND PROJECT_IS_TOP_LEVEL)
         tests/rtl433_tap_oracle.cpp src/dsp/receiver.cpp
         src/decoder/rtl433.cpp src/decoder/sstv.cpp src/decoder/adsb.cpp
         src/decoder/meshtastic.cpp src/decoder/meshcore.cpp
-        src/decoder/lorarx_session.cpp src/decoder/registry.cpp)
+        src/decoder/lorarx_session.cpp src/decoder/dmr.cpp src/decoder/registry.cpp)
     target_include_directories(sdrcore_rtl433_tap_oracle PRIVATE include third_party)
     target_compile_features(sdrcore_rtl433_tap_oracle PRIVATE cxx_std_17)
     target_compile_options(sdrcore_rtl433_tap_oracle PRIVATE -O2)
-    target_link_libraries(sdrcore_rtl433_tap_oracle PRIVATE sdrcore_rtl433 sdrcore_csdr_sstv sdrcore_dump1090 sdrcore_meshtastic sdrcore_meshcore sdrcore_lorarx m)
+    target_link_libraries(sdrcore_rtl433_tap_oracle PRIVATE sdrcore_rtl433 sdrcore_csdr_sstv sdrcore_dump1090 sdrcore_meshtastic sdrcore_meshcore sdrcore_lorarx sdrcore_dmr_channel sdrcore_dmr_framing sdrcore_dmr_voice m)
     target_link_libraries(sdrcore_rtl433_tap_oracle PRIVATE sdrcore_rds)
     target_link_options(sdrcore_rtl433_tap_oracle PRIVATE -Wl,--gc-sections)
     add_executable(sdrcore_abi_test tests/abi_test.c)
