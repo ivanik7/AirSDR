@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 
+import '../../native/native_radio_controller.dart';
 import '../auto_levels.dart';
 import '../bands/bands.dart';
 import '../device_dropdown.dart';
@@ -12,7 +15,7 @@ import 'centered_receiver.dart';
 import 'step_grid.dart';
 import 'theme.dart';
 
-class SettingsScreen extends StatelessWidget {
+class SettingsScreen extends StatefulWidget {
   const SettingsScreen({
     super.key,
     required this.controller,
@@ -30,14 +33,109 @@ class SettingsScreen extends StatelessWidget {
   final BandsRepository? bands;
 
   @override
+  State<SettingsScreen> createState() => _SettingsScreenState();
+}
+
+class _SettingsScreenState extends State<SettingsScreen> {
+  late final TextEditingController _host;
+  late final TextEditingController _port;
+  bool _networkDraft = false;
+  String? _hostError, _portError;
+
+  @override
+  void initState() {
+    super.initState();
+    final native = widget.controller;
+    _networkDraft = native is NativeRadioController && native.networkSelected;
+    _host = TextEditingController(
+      text: native is NativeRadioController
+          ? native.savedNetworkHost
+          : '127.0.0.1',
+    );
+    _port = TextEditingController(
+      text: native is NativeRadioController
+          ? '${native.savedNetworkPort}'
+          : '1234',
+    );
+  }
+
+  @override
+  void dispose() {
+    _host.dispose();
+    _port.dispose();
+    super.dispose();
+  }
+
+  Future<bool> _applyEndpoint(NativeRadioController native) async {
+    final host = _host.text.trim();
+    final portText = _port.text.trim();
+    final port = RegExp(r'^[0-9]+$').hasMatch(portText)
+        ? int.tryParse(portText)
+        : null;
+    setState(() {
+      _hostError =
+          host.isEmpty ||
+              host.contains(RegExp(r'\s')) ||
+              utf8.encode(host).length > 255
+          ? 'Enter a host or IP address'
+          : null;
+      _portError = port == null || port < 1 || port > 65535
+          ? 'Enter a port from 1 to 65535'
+          : null;
+    });
+    if (_hostError != null || _portError != null) return false;
+    if (!native.networkSelected ||
+        native.networkSource?.host != host ||
+        native.networkSource?.port != port) {
+      await native.selectNetworkSource(host, port!);
+    }
+    return true;
+  }
+
+  Future<void> _selectSource(NativeRadioController native, bool network) async {
+    if (native.running) return;
+    setState(() {
+      _networkDraft = network;
+      _hostError = null;
+      _portError = null;
+    });
+    if (network) {
+      await _applyEndpoint(native);
+    } else {
+      await native.selectUsbSource();
+    }
+  }
+
+  Future<void> _toggleReception(RadioController radio) async {
+    if (radio.running) {
+      await radio.stop();
+    } else {
+      if (_networkDraft &&
+          radio is NativeRadioController &&
+          !await _applyEndpoint(radio)) {
+        return;
+      }
+      await widget.receiver.start();
+    }
+  }
+
+  @override
   Widget build(BuildContext context) => ListenableBuilder(
-    listenable: Listenable.merge([controller, ?spectrum]),
+    listenable: Listenable.merge([widget.controller, ?widget.spectrum]),
     builder: (context, _) {
-      final r = controller;
+      final r = widget.controller;
+      final native = r is NativeRadioController ? r : null;
+      final network = native != null && _networkDraft;
       final d = r.selectedDevice;
       final g = d?.gain;
       return ListView(
-        padding: const EdgeInsets.fromLTRB(14, 12, 14, 18),
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+        padding: EdgeInsets.fromLTRB(
+          14,
+          12,
+          14,
+          18 + MediaQuery.viewInsetsOf(context).bottom,
+        ),
         children: [
           Text(
             'Receiver settings',
@@ -49,31 +147,149 @@ class SettingsScreen extends StatelessWidget {
           ),
           const SizedBox(height: 14),
           _section('SDR CONNECTION'),
-          _row(
-            'Select device',
-            'Auto-connect when an SDR is detected',
-            trailing: SizedBox(
-              width: 150,
-              child: DropdownButton<SdrDeviceInfo>(
-                key: const ValueKey('legacyDevice'),
-                isExpanded: true,
-                value: dropdownDeviceValue(r),
-                hint: const Text('Not found'),
-                items: [
-                  for (final device in r.devices)
-                    DropdownMenuItem(
-                      value: device,
-                      child: Text(device.name, overflow: TextOverflow.ellipsis),
+          if (native != null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 7),
+              child: legacyCard(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text('Source', style: plex(size: 14)),
+                    Text(
+                      'Choose local USB or an rtl_tcp server',
+                      style: plex(size: 11, color: LegacyColors.muted),
                     ),
-                ],
-                onChanged: r.running
-                    ? null
-                    : (device) {
-                        if (device != null) r.selectDevice(device);
-                      },
+                    DropdownButton<bool>(
+                      key: const ValueKey('networkSource'),
+                      isExpanded: true,
+                      value: network,
+                      items: const [
+                        DropdownMenuItem(
+                          value: false,
+                          child: Text('Local USB SDR'),
+                        ),
+                        DropdownMenuItem(
+                          value: true,
+                          child: Text('Network (rtl_tcp)'),
+                        ),
+                      ],
+                      onChanged: r.running
+                          ? null
+                          : (v) {
+                              if (v != null) _selectSource(native, v);
+                            },
+                    ),
+                  ],
+                ),
               ),
             ),
-          ),
+          if (network) ...[
+            Padding(
+              padding: const EdgeInsets.only(bottom: 7),
+              child: legacyCard(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    TextField(
+                      key: const ValueKey('networkHostField'),
+                      controller: _host,
+                      enabled: !r.running,
+                      textInputAction: TextInputAction.next,
+                      decoration: InputDecoration(
+                        labelText: 'Host or IP address',
+                        hintText: '127.0.0.1',
+                        errorText: _hostError,
+                      ),
+                      onChanged: (_) {
+                        if (_hostError != null) {
+                          setState(() => _hostError = null);
+                        }
+                      },
+                    ),
+                    TextField(
+                      key: const ValueKey('networkPortField'),
+                      controller: _port,
+                      enabled: !r.running,
+                      keyboardType: TextInputType.number,
+                      textInputAction: TextInputAction.done,
+                      decoration: InputDecoration(
+                        labelText: 'TCP port',
+                        hintText: '1234',
+                        errorText: _portError,
+                      ),
+                      onChanged: (_) {
+                        if (_portError != null) {
+                          setState(() => _portError = null);
+                        }
+                      },
+                      onSubmitted: (_) {
+                        if (!r.running) {
+                          _applyEndpoint(native);
+                        }
+                      },
+                    ),
+                    const SizedBox(height: 8),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: TextButton(
+                        key: const ValueKey('networkApply'),
+                        onPressed: r.running
+                            ? null
+                            : () => _applyEndpoint(native),
+                        child: const Text('Apply endpoint'),
+                      ),
+                    ),
+                    Text(
+                      r.running
+                          ? 'Stop reception to change the server'
+                          : 'Apply to save; Start connects to this endpoint.',
+                      style: plex(size: 11, color: LegacyColors.muted),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            _row('Connection', switch (r.linkState) {
+              DeviceLinkState.connecting => 'Connecting to rtl_tcp…',
+              DeviceLinkState.receiving => 'Connected to rtl_tcp',
+              DeviceLinkState.failed =>
+                'Connection failed · check the server and retry',
+              DeviceLinkState.disconnected =>
+                'Disconnected · check the server and retry',
+              DeviceLinkState.stoppedByUser =>
+                'Stopped · tap Start to reconnect',
+              _ => 'Disconnected · tap Start to connect',
+            }),
+          ],
+          if (!network)
+            _row(
+              'Select device',
+              'Auto-connect when an SDR is detected',
+              trailing: SizedBox(
+                width: 150,
+                child: DropdownButton<SdrDeviceInfo>(
+                  key: const ValueKey('legacyDevice'),
+                  isExpanded: true,
+                  value: dropdownDeviceValue(r),
+                  hint: const Text('Not found'),
+                  items: [
+                    for (final device in r.devices)
+                      DropdownMenuItem(
+                        value: device,
+                        child: Text(
+                          device.name,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                  ],
+                  onChanged: r.running
+                      ? null
+                      : (device) {
+                          if (device != null) r.selectDevice(device);
+                        },
+                ),
+              ),
+            ),
           _row(
             'Reception',
             r.running
@@ -81,28 +297,30 @@ class SettingsScreen extends StatelessWidget {
                 : 'Stopped',
             trailing: FilledButton.icon(
               key: const ValueKey('legacyStartStop'),
-              onPressed: () => r.running ? r.stop() : receiver.start(),
+              onPressed: () => _toggleReception(r),
               icon: Icon(r.running ? Icons.stop : Icons.play_arrow),
               label: Text(r.running ? 'Stop' : 'Start'),
             ),
           ),
-          _row(
-            'Device',
-            d?.name ?? 'Not found',
-            trailing: IconButton(
-              tooltip: 'Refresh devices',
-              onPressed: r.running ? null : r.refreshDevices,
-              icon: const Icon(Icons.refresh),
+          if (!network)
+            _row(
+              'Device',
+              d?.name ?? 'Not found',
+              trailing: IconButton(
+                tooltip: 'Refresh devices',
+                onPressed: r.running ? null : r.refreshDevices,
+                icon: const Icon(Icons.refresh),
+              ),
             ),
-          ),
-          _row(
-            'Device settings',
-            'Source-specific options',
-            trailing: TextButton(
-              onPressed: () => showSourceSettingsSheet(context, r),
-              child: const Text('Open'),
+          if (!network)
+            _row(
+              'Device settings',
+              'Source-specific options',
+              trailing: TextButton(
+                onPressed: () => showSourceSettingsSheet(context, r),
+                child: const Text('Open'),
+              ),
             ),
-          ),
           if (d != null)
             _row(
               'Sample rate',
@@ -130,13 +348,22 @@ class SettingsScreen extends StatelessWidget {
             ),
           if (!r.running &&
               (r.linkState == DeviceLinkState.permissionDenied ||
-                  r.linkState == DeviceLinkState.failed))
+                  r.linkState == DeviceLinkState.failed ||
+                  r.linkState == DeviceLinkState.disconnected))
             _row(
-              'USB connection',
-              'No access to the device',
+              network ? 'Network connection' : 'USB connection',
+              network
+                  ? 'Check host, port and server, then retry'
+                  : 'No access to the device',
               trailing: TextButton(
-                key: const ValueKey('legacyRetryUsb'),
-                onPressed: r.retryDevice,
+                key: ValueKey(network ? 'networkRetry' : 'legacyRetryUsb'),
+                onPressed: network
+                    ? () async {
+                        if (await _applyEndpoint(native)) {
+                          await r.retryDevice();
+                        }
+                      }
+                    : r.retryDevice,
                 child: const Text('Retry'),
               ),
             ),
@@ -159,7 +386,7 @@ class SettingsScreen extends StatelessWidget {
             ),
           ),
           _section('RECEIVER OPTIONS'),
-          if (bands case final b?)
+          if (widget.bands case final b?)
             ListenableBuilder(
               listenable: b,
               builder: (context, _) => _row(
@@ -172,14 +399,15 @@ class SettingsScreen extends StatelessWidget {
                 ),
               ),
             ),
-          _row(
-            'Receiver AGC',
-            'Automatic gain',
-            trailing: Switch(
-              value: r.agc,
-              onChanged: d?.hasAgc == true ? r.setAgc : null,
+          if (!network)
+            _row(
+              'Receiver AGC',
+              'Automatic gain',
+              trailing: Switch(
+                value: r.agc,
+                onChanged: d?.hasAgc == true ? r.setAgc : null,
+              ),
             ),
-          ),
           _slider(
             'RF gain',
             r.gain,
@@ -188,7 +416,7 @@ class SettingsScreen extends StatelessWidget {
             g == null || r.agc ? null : r.setGain,
             '${r.gain.toStringAsFixed(1)} ${g?.unit ?? 'dB'}',
           ),
-          if (spectrum case final s?) ..._waterfallLevels(s),
+          if (widget.spectrum case final s?) ..._waterfallLevels(s),
         ],
       );
     },
@@ -206,7 +434,7 @@ class SettingsScreen extends StatelessWidget {
         builder: (context, scrollController) => SafeArea(
           top: false,
           child: ListenableBuilder(
-            listenable: controller,
+            listenable: widget.controller,
             builder: (context, _) => ListView(
               controller: scrollController,
               padding: const EdgeInsets.fromLTRB(14, 8, 14, 18),
@@ -222,7 +450,7 @@ class SettingsScreen extends StatelessWidget {
                     ),
                   ],
                 ),
-                for (final entry in controller.stats.entries)
+                for (final entry in widget.controller.stats.entries)
                   _row(entry.key, '${entry.value}'),
               ],
             ),

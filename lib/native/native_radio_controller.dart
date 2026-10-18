@@ -2,6 +2,7 @@
 // One v3 handle, one VFO and one audio stream. The UI polls only bounded
 // snapshots and latest-only, screen-width FFT rows; samples never reach Dart.
 import 'dart:async';
+import 'dart:convert';
 import 'dart:ffi';
 import 'dart:io';
 
@@ -157,10 +158,17 @@ class NativeRadioController extends RadioController {
       _bandwidth = _mode.params.clampBandwidth(
         _bandwidthByMode[_mode.id] ?? _mode.params.defaultBandwidth,
       );
+      _bandwidth = _limitBandwidth(_bandwidth);
       _squelch = SquelchType.fromKey(settings.squelchKey);
       _squelchLevel = settings.squelchLevelDb;
       _autoOffset = settings.autoOffsetDb;
       _stereo = settings.stereo;
+      _savedNetworkHost = settings.networkHost;
+      _savedNetworkPort = settings.networkPort;
+      if (settings.networkSelected) {
+        _selected = NativeDevice.rtlTcp(_savedNetworkHost, _savedNetworkPort);
+        _link = DeviceLinkState.idle;
+      }
       // _muted is never restored: every session starts muted.
     }
     _sub = source.changes.listen((_) => unawaited(refreshDevices()));
@@ -192,6 +200,8 @@ class NativeRadioController extends RadioController {
   final StreamController<FftRow> _rows = StreamController<FftRow>.broadcast();
   bool _disposed = false, _running = false, _userStopped = false;
   String? _failedId;
+  String _savedNetworkHost = '127.0.0.1';
+  int _savedNetworkPort = 1234;
   DeviceLinkState _link = DeviceLinkState.waiting;
   bool _networkLinkEstablished = false;
   String? _lastError;
@@ -213,6 +223,9 @@ class NativeRadioController extends RadioController {
 
   double _center = 100000000, _offset = 0, _rate = 2400000, _gain = 20;
   double _bandwidth = DemodMode.wfm.params.defaultBandwidth;
+  // ABI v3 requires bandwidth <= sample_rate / 2. In particular, the
+  // 250 kS/s rtl_tcp rate cannot fit the 150 kHz WFM default unchanged.
+  double _limitBandwidth(double value) => value > _rate / 2 ? _rate / 2 : value;
   // Last bandwidth used in each mode (DemodMode.id -> Hz), restored by
   // setMode instead of always resetting to the mode default.
   Map<int, double> _bandwidthByMode = <int, double>{};
@@ -273,6 +286,9 @@ class NativeRadioController extends RadioController {
         squelchLevelDb: _squelchLevel,
         autoOffsetDb: _autoOffset,
         stereo: _stereo,
+        networkSelected: networkSelected,
+        networkHost: _savedNetworkHost,
+        networkPort: _savedNetworkPort,
         legacyRtlGainIndex: _legacyRtlGainIndex,
         legacyRtlDeviceName: _legacyRtlDeviceName,
       ),
@@ -307,12 +323,13 @@ class NativeRadioController extends RadioController {
 
   /// The selected network (rtl_tcp) device, or null when a USB device (or
   /// nothing) is selected.
-  NativeDevice? get networkSource => _selected?.isNetwork == true
-      ? _selected
-      : null;
+  NativeDevice? get networkSource =>
+      _selected?.isNetwork == true ? _selected : null;
 
   /// True while a network (rtl_tcp) source is the active selection.
   bool get networkSelected => networkSource != null;
+  String get savedNetworkHost => _savedNetworkHost;
+  int get savedNetworkPort => _savedNetworkPort;
   @override
   Future<void> refreshDevices() => _queue(() async {
     List<NativeDevice> devices;
@@ -327,16 +344,19 @@ class NativeRadioController extends RadioController {
     final added = next.difference(old).isNotEmpty;
     _known = devices;
     final networkSelected = _selected?.isNetwork == true;
-    if (_opened != null && !_opened!.isNetwork && !next.contains(_opened!.info.id)) {
+    if (_opened != null &&
+        !_opened!.isNetwork &&
+        !next.contains(_opened!.info.id)) {
       await _release();
       _failure('Device disconnected', disconnected: true);
     }
-    if (!networkSelected && _selected != null && !next.contains(_selected!.info.id)) {
+    if (!networkSelected &&
+        _selected != null &&
+        !next.contains(_selected!.info.id)) {
       _selected = null;
     }
     if (!networkSelected) _selected ??= _known.firstOrNull;
     if (added) {
-      _userStopped = false;
       _failedId = null;
     }
     if (_selected == null && _link == DeviceLinkState.waiting) _notify();
@@ -365,9 +385,11 @@ class NativeRadioController extends RadioController {
     if (!match.info.sampleRates.contains(_rate)) {
       _rate = match.info.sampleRates.firstOrNull ?? _rate;
     }
+    _bandwidth = _limitBandwidth(_bandwidth);
     _gain = _gain.clamp(match.info.gain.min, match.info.gain.max).toDouble();
     _agc = false;
     _failedId = null;
+    _lastError = null;
     _notify();
   });
 
@@ -378,7 +400,11 @@ class NativeRadioController extends RadioController {
   /// stopped first) and does NOT auto-start; the caller must call [start] or
   /// [retryDevice] to connect.
   Future<void> selectNetworkSource(String host, int port) {
-    if (host.isEmpty) {
+    final normalizedHost = host.trim();
+    if (normalizedHost.isEmpty ||
+        normalizedHost.codeUnits.contains(0) ||
+        normalizedHost.contains(RegExp(r'\s')) ||
+        utf8.encode(normalizedHost).length > 255) {
       throw ArgumentError.value(host, 'host', 'Host must not be empty');
     }
     if (port < 1 || port > 65535) {
@@ -386,13 +412,16 @@ class NativeRadioController extends RadioController {
     }
     return _queue(() async {
       await _release();
-      final device = NativeDevice.rtlTcp(host, port);
+      final device = NativeDevice.rtlTcp(normalizedHost, port);
       _selected = device;
+      _savedNetworkHost = normalizedHost;
+      _savedNetworkPort = port;
       if (!device.info.sampleRates.contains(_rate)) {
         _rate = device.info.sampleRates.contains(2400000)
             ? 2400000
             : (device.info.sampleRates.firstOrNull ?? _rate);
       }
+      _bandwidth = _limitBandwidth(_bandwidth);
       _gain = _gain
           .clamp(device.info.gain.min, device.info.gain.max)
           .toDouble();
@@ -400,6 +429,8 @@ class NativeRadioController extends RadioController {
       _failedId = null;
       _link = DeviceLinkState.idle;
       _networkLinkEstablished = false;
+      _lastError = null;
+      _scheduleSave();
       _notify();
     });
   }
@@ -411,6 +442,8 @@ class NativeRadioController extends RadioController {
     await _release();
     _selected = _known.firstOrNull;
     _failedId = null;
+    _lastError = null;
+    _scheduleSave();
     _notify();
   });
 
@@ -430,6 +463,7 @@ class NativeRadioController extends RadioController {
     }
     return _link;
   }
+
   @override
   Future<void> start() => _queue(() async {
     _userStopped = false;
@@ -545,7 +579,6 @@ class NativeRadioController extends RadioController {
       _failure('Native start failed: $e');
     }
   }
-
 
   @override
   Future<void> stop() {
@@ -852,6 +885,7 @@ class NativeRadioController extends RadioController {
     _bandwidth = mode.params.clampBandwidth(
       _bandwidthByMode[mode.id] ?? mode.params.defaultBandwidth,
     );
+    _bandwidth = _limitBandwidth(_bandwidth);
     if (!autoSquelchAvailable && _squelch == SquelchType.auto) {
       _squelch = SquelchType.off;
     }
@@ -865,7 +899,7 @@ class NativeRadioController extends RadioController {
   double get bandwidth => _bandwidth;
   @override
   void setBandwidth(double hz) {
-    final value = _mode.params.clampBandwidth(hz);
+    final value = _limitBandwidth(_mode.params.clampBandwidth(hz));
     if (value == _bandwidth) return;
     _bandwidth = value;
     _bandwidthByMode[_mode.id] = value;
@@ -884,6 +918,7 @@ class NativeRadioController extends RadioController {
       return;
     }
     _rate = hz;
+    _bandwidth = _limitBandwidth(_bandwidth);
     _viewBandwidth = _viewBandwidth.clamp(1, hz).toDouble();
     _applyControls();
     _applyDisplay();
@@ -1083,7 +1118,7 @@ class NativeRadioController extends RadioController {
     final opened = _opened;
     if (opened != null || h != null) {
       unawaited(() async {
-        if (opened != null) await source.close(opened);
+        if (opened != null && !opened.isNetwork) await source.close(opened);
         if (h != null) await afterStop?.call();
       }());
     }

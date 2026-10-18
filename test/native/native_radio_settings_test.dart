@@ -60,6 +60,50 @@ void main() {
     expect(loaded.stereo, isTrue);
   });
 
+  test(
+    'network endpoint and source survive save, offline restart and USB switch',
+    () {
+      final defaults = NativeRadioSettings.defaults();
+      expect(defaults.networkSelected, isFalse);
+      expect(defaults.networkHost, '127.0.0.1');
+      expect(defaults.networkPort, 1234);
+      saveNativeRadioSettingsSync(
+        dir(),
+        defaults.copyWith(
+          networkSelected: true,
+          networkHost: '::1',
+          networkPort: 8765,
+        ),
+      );
+      final offline = loadNativeRadioSettings(dir());
+      expect(offline.networkSelected, isTrue);
+      expect(offline.networkHost, '::1');
+      expect(offline.networkPort, 8765);
+      saveNativeRadioSettingsSync(
+        dir(),
+        offline.copyWith(networkSelected: false),
+      );
+      final usb = loadNativeRadioSettings(dir());
+      expect(usb.networkSelected, isFalse);
+      expect(usb.networkHost, '::1');
+      expect(usb.networkPort, 8765);
+    },
+  );
+
+  test('invalid saved endpoint falls back to safe defaults', () {
+    File('${dir()}/$nativeRadioSettingsFileName').writeAsStringSync(
+      jsonEncode({
+        'networkSelected': true,
+        'networkHost': '   ',
+        'networkPort': 65536,
+      }),
+    );
+    final settings = loadNativeRadioSettings(dir());
+    expect(settings.networkSelected, isFalse);
+    expect(settings.networkHost, '127.0.0.1');
+    expect(settings.networkPort, 1234);
+  });
+
   test('stereo defaults to false when absent from the file', () {
     File('${dir()}/$nativeRadioSettingsFileName')
         .writeAsStringSync(jsonEncode({'version': 1, 'modeId': 1}));
