@@ -106,6 +106,18 @@ so repository assets (such as `assets/fonts`) cannot become release uploads.
 `python3 test/ci/release_workflow_test.py` exercises partial-build conditions
 and both real shell steps with fake artifacts and a recording `gh` command.
 
+Both jobs download the artifacts in two steps. `actions/download-artifact`
+unpacks every artifact that is a zip, which includes the Windows app zip
+uploaded with `archive: false`; that one is therefore fetched separately
+with `skip-decompress: true`, while the APKs, the DMG and the zipped Linux
+package artifacts use the default extraction. The publish step passes each
+platform job's result in `BUILD_RESULTS`: if a platform job succeeded but
+any of its files is missing from `dist`, `tool/stable-asset-names.sh` fails
+and nothing is published; a platform whose job failed is skipped with a
+warning. `python3 test/ci/release_download_test.py` replays the uploaded
+artifacts through both jobs' download steps and checks that every built
+platform, including the Windows zip with its contents, is published.
+
 Both publish the files under version-free names from
 `tool/stable-asset-names.sh`, which the README links to:
 
