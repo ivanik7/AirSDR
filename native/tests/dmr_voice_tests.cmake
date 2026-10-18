@@ -16,6 +16,18 @@ target_link_libraries(sdrcore_dmr_framing_voice_test PRIVATE
     sdrcore_dmr_framing sdrcore_dmr_voice Threads::Threads m)
 add_test(NAME sdrcore_dmr_framing_voice COMMAND sdrcore_dmr_framing_voice_test)
 
+# Channel -> Framing -> VoiceOutput against stored pristine OpenWebRX+ outputs
+# (tool/dmr_chain_oracle, fixture in tests/data/dmr_chain).
+add_executable(sdrcore_dmr_chain_fixture_test tests/dmr_chain_fixture_test.cpp)
+target_include_directories(sdrcore_dmr_chain_fixture_test PRIVATE tests
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party/openwebrx-dmr)
+target_compile_definitions(sdrcore_dmr_chain_fixture_test PRIVATE
+    DMR_CHAIN_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/data/dmr_chain")
+target_compile_options(sdrcore_dmr_chain_fixture_test PRIVATE -O2)
+target_link_libraries(sdrcore_dmr_chain_fixture_test PRIVATE
+    sdrcore_dmr_channel sdrcore_dmr_framing sdrcore_dmr_voice Threads::Threads m)
+add_test(NAME sdrcore_dmr_chain_fixture COMMAND sdrcore_dmr_chain_fixture_test)
+
 # Host-only replay/corpus tool for tool/dmr_voice_oracle (not a CTest).
 add_executable(dmr_voice_replay tests/dmr_voice_replay.cpp)
 target_include_directories(dmr_voice_replay PRIVATE tests

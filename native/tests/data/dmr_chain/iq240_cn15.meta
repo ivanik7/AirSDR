@@ -1,0 +1,10 @@
+M 0 data - - - - - -
+M 0 data group 2345678 91 - - -
+M 0 voice group 2345678 91 - - -
+M 0 voice group 2345678 91 SDR-ORACLE - -
+M 0 voice group 2345678 91 SDR-ORACLE 51.503250 -0.125002
+M 0 data - - - - - -
+M 1 data - - - - - -
+M 1 data direct 1234567 7654321 - - -
+M 1 voice direct 1234567 7654321 - - -
+M 1 data - - - - - -

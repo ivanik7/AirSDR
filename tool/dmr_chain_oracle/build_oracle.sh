@@ -62,10 +62,11 @@ for s in "${srcs[@]}"; do
   esac
   objs+=("$o")
 done
+fftw=${FFTW_PREFIX:-$csdr_build/../prefix}
 g++ -std=c++17 -O2 -DDMR_PRISTINE "$here/chain.cpp" "${objs[@]}" \
-  -I"$digiham/include" -I"$digiham/src/lib" -I"$dmr" -I"$work/inc" \
-  -I"${FFTW_PREFIX:-$csdr_build/../prefix}/include" \
-  "$csdr_build/src/lib/libcsdr++.so" -Wl,-rpath,"$csdr_build/src/lib" -licuuc \
+  -I"$digiham/include" -I"$digiham/src/lib" -I"$dmr" -I"$work/inc" -I"$fftw/include" \
+  "$csdr_build/src/lib/libcsdr++.so" -Wl,-rpath,"$csdr_build/src/lib" \
+  -L"$fftw/lib" -lfftw3f -Wl,-rpath,"$fftw/lib" -licuuc \
   -o "$work/owrx_chain"
 
 # Pristine MMDVMHost DMR encoder classes. Log.h needs nlohmann/json only for
@@ -85,6 +86,7 @@ g++ -std=c++17 -O2 -I"$root/native/tests" "$here/modulate.cpp" -o "$work/dmr_mod
 
 # Native side: the app's static DMR libraries from native/.
 cmake -S "$here" -B "$work/native" -DCMAKE_BUILD_TYPE=Release >/dev/null
-cmake --build "$work/native" -j3 --target native_chain >/dev/null
+cmake --build "$work/native" -j3 --target native_chain dmr_voice_replay >/dev/null
 ln -sf "$work/native/native_chain" "$work/native_chain"
-echo "oracle: $work/{owrx_chain,native_chain,dmr_tx_encode,dmr_modulate}"
+ln -sf "$work/native/dmr_voice_replay" "$work/dmr_voice_replay"
+echo "oracle: $work/{owrx_chain,native_chain,dmr_tx_encode,dmr_modulate,dmr_voice_replay}"

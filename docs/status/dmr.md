@@ -200,7 +200,9 @@ No tuner control, no subprocess, no PCM/IQ through Dart.
   Shift stage, fixed input blocks) are in `docs/status/dmr-symbol-verification.md`.
   `RrcPulseFilter` exposes 48 kS/s real in/out and the original digiham
   Wide (DMR, 81 taps) and Narrow (NXDN, 161 taps) tables. A same-recording
-  comparison against a running OpenWebRX+ instance is not yet available.
+  comparison against a running OpenWebRX+ instance is not yet available; the
+  full-chain comparison on identical synthetic IQ against the pristine
+  OpenWebRX+ modules is in section 13.
 - No over-the-air DMR test yet; no local DMR IQ recording found. Implementations need a capture
   (Blog V4 on the Linux host) or a synthetic vector generated from the sync/EMB tables.
 - Full talker-alias charset cases, nonzero GPS and embedded LC checksum failure

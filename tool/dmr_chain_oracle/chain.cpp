@@ -13,6 +13,11 @@
 // Writes OUT_PREFIX.sym (decided symbols; iq mode only), OUT_PREFIX.ambe
 // (9-byte frames in order) and OUT_PREFIX.meta (one line per metadata event:
 // "M slot sync type source target alias lat lon", '-' for absent).
+//
+// csdr's FftFilter plans with FFTW_MEASURE on x86, so the chosen FFT
+// algorithm (and the last float bits of the selector output) can change from
+// run to run. If DMR_FFTW_WISDOM names a file, it is imported before any plan
+// is made and exported at exit, which pins the plans for repeatable runs.
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -24,10 +29,21 @@
 #include <string>
 #include <vector>
 
+#include <fftw3.h>
+
 namespace {
 std::vector<char> read_stdin() {
   return std::vector<char>(std::istreambuf_iterator<char>{std::cin}, {});
 }
+struct Wisdom {
+  const char* path = std::getenv("DMR_FFTW_WISDOM");
+  Wisdom() {
+    if (path != nullptr) fftwf_import_wisdom_from_filename(path);
+  }
+  ~Wisdom() {
+    if (path != nullptr) fftwf_export_wisdom_to_filename(path);
+  }
+};
 struct Outputs {
   std::ofstream sym, ambe, meta;
   explicit Outputs(const std::string& prefix, bool symbols)
@@ -123,6 +139,7 @@ int main(int argc, char** argv) {
   Outputs out(argv[argc - 1], iq);
   const auto input = read_stdin();
   using C = Csdr::complex<float>;
+  Wisdom wisdom;
 
   // DMR decoder (DigihamChain tail), always present.
   Link<unsigned char> symbols, frames;
@@ -258,6 +275,7 @@ int main(int argc, char** argv) {
   } sink;
   sink.framing = &framing;
   sink.sym = &out.sym;
+  Wisdom wisdom;
   sdrcore::dmr::Channel channel;
   if (!channel.configure(static_cast<uint32_t>(std::atoi(argv[2])))) return 3;
   const auto* samples = reinterpret_cast<const std::complex<float>*>(input.data());
