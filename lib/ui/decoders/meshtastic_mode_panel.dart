@@ -264,7 +264,7 @@ class _MeshtasticModePanelState extends State<MeshtasticModePanel> {
             spacing: 6,
             runSpacing: 6,
             children: [
-              for (final code in ['EU_868', 'US', 'RU'])
+              for (final code in ['EU_868', 'US', 'RU', 'KZ_863'])
                 Builder(
                   builder: (context) {
                     final r = meshtasticRegion(code);

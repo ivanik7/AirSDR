@@ -379,6 +379,9 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND PROJECT_IS_TOP_LEVEL)
         sdrcore_host_rtl_gain PROPERTIES RESOURCE_LOCK sdr_usb_device)
     add_executable(sdrcore_host_rx_diag tests/host_rx_diag.c)
     target_link_libraries(sdrcore_host_rx_diag PRIVATE sdrcore)
+    # Manual live-air Meshtastic check through the app's v3 + decoder path.
+    add_executable(sdrcore_host_meshtastic_live tests/host_meshtastic_live.c)
+    target_link_libraries(sdrcore_host_meshtastic_live PRIVATE sdrcore)
     # Manual real-hardware diagnostic (needs an attached RTL-SDR); not a ctest.
     add_executable(sdrcore_host_retune_latency tests/host_retune_latency.c)
     target_link_libraries(sdrcore_host_retune_latency PRIVATE sdrcore)

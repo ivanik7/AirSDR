@@ -179,7 +179,7 @@ final decoderCatalog = <DecoderDescriptor>[
       ]),
       DecoderSetting('region', 'EU_868', allowed: [
         'US', 'EU_433', 'EU_868', 'EU_866', 'EU_N_868', 'CN', 'JP',
-        'ANZ', 'RU',
+        'ANZ', 'RU', 'KZ_433', 'KZ_863',
       ]),
       // Ordered `{name, psk}` channel keys tried by the native packet layer
       // (docs/status/meshtastic.md). User data: never logged or displayed.
