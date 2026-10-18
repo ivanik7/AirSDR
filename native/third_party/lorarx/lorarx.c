@@ -24,6 +24,14 @@
 #include "loraprotocols.h"
 #endif
 #include <signal.h>
+#ifdef SDRCORE_LORARX_EMBED
+#include "lorarx_embed.h"
+#include <setjmp.h>
+static jmp_buf embed_abort;
+static const float *embed_iq;
+static size_t embed_frames;
+static int embed_pass(const float *iq, size_t frames);
+#endif
 
 /* iq downsample, shift, (auto)notch lora demodulator with axudp, json out and packet radio, aprs, lorawan,
                 fanet viewer */
@@ -399,12 +407,17 @@ static pFIRTAB pfirtab;
 
 static void Error(char text[], uint32_t text_len)
 {
+#ifdef SDRCORE_LORARX_EMBED
+   (void)text; (void)text_len;
+   longjmp(embed_abort, 1);
+#else
    X2C_PCOPY((void **)&text,text_len);
    osi_Werr("lorarx:", 8ul);
    osi_Werr(text, text_len);
    osi_Werr(" error abort\012", 14ul);
    X2C_ABORT();
    X2C_PFREE(text);
+#endif
 } /* end Error() */
 
 
@@ -2529,6 +2542,18 @@ union _3 {
 
 static char inreform(struct Complex b[], uint32_t b_len, uint32_t * wp)
 {
+#ifdef SDRCORE_LORARX_EMBED
+   size_t n;
+   if (isize!=4UL || embed_frames!=8192UL || embed_iq==0) return 0;
+   for (n=0; n<8192UL; ++n) {
+      b[*wp].Re = embed_iq[n*2UL];
+      b[*wp].Im = embed_iq[n*2UL+1UL];
+      *wp = (*wp+1UL)&8191UL;
+   }
+   embed_iq = 0;
+   embed_frames = 0;
+   return 1;
+#else
    uint32_t rs;
    uint32_t bs;
    uint32_t i0;
@@ -2591,6 +2616,7 @@ static char inreform(struct Complex b[], uint32_t b_len, uint32_t * wp)
       } while (i0<rs);
    }
    return 1;
+#endif
 } /* end inreform() */
 
 
@@ -3003,6 +3029,7 @@ static char nextchirp(struct FFRAME * frame)
    return 0;
 } /* end nextchirp() */
 
+#ifndef SDRCORE_LORARX_EMBED
 static void jsonpipebroken(int32_t);
 
 
@@ -3012,6 +3039,7 @@ static void jsonpipebroken(int32_t signum)
    osic_WrINT32((uint32_t)signum, 0UL);
    osi_WrStrLn("!", 2ul);
 } /* end jsonpipebroken() */
+#endif
 
 static uint32_t i;
 
@@ -3030,11 +3058,19 @@ static float nf;
 static float nfp;
 
 
+#ifndef SDRCORE_LORARX_EMBED
 X2C_STACK_LIMIT(8000000l)
 extern int main(int argc, char **argv)
+#else
+int lorarx_embed_start(int argc, char **argv)
+#endif
 {
    size_t tmp[1];
    uint32_t tmp0;
+#ifdef SDRCORE_LORARX_EMBED
+   lorarx_embed_clear();
+   if (setjmp(embed_abort)) { lorarx_embed_clear(); return 0; }
+#endif
    X2C_BEGIN(&argc,argv,1,20000000l,32000000l);
    if (sizeof(NIBBBLOCK)!=12) X2C_ASSERT(0);
    if (sizeof(NIBBS)!=523) X2C_ASSERT(0);
@@ -3042,7 +3078,9 @@ extern int main(int argc, char **argv)
    aprsstr_BEGIN();
    osi_BEGIN();
    Parms();
+#ifndef SDRCORE_LORARX_EMBED
    if (loraprotocols_jpipename[0UL]) signal(SIGPIPE, jsonpipebroken);
+#endif
    w = 3.1415926535f;
    for (i = 0UL; i<=24UL; i++) {
       SINTAB[i] = (float)sin((double)w);
@@ -3082,8 +3120,30 @@ extern int main(int argc, char **argv)
       X2C_DYNALLOCATE((char **) &fftbufs[i],sizeof(struct Complex),(tmp[0] = (uint32_t)(1UL<<i),tmp),1u);
       if (fftbufs[i]==0) Error("out of memory", 14ul);
    } /* end for */
+#ifndef SDRCORE_LORARX_EMBED
    iqfd = osi_OpenRead(iqfn, 1024ul);
    if (iqfd<0L) Error("open iq file", 13ul);
+#else
+   loraprotocols_jpipename[0] = 1; /* enable JSON callback without opening a path */
+   embed_iq = 0;
+   embed_frames = 0;
+   /* main() runs one demodulator pass before its first read. */
+   return embed_pass(0, 0);
+}
+
+/* One iteration of main()'s loop, rotated so that the read comes first:
+   main = pass, read1, pass, read2, pass, ...; here start = pass and every
+   block = readN, pass. The JSON for a block is emitted before this returns. */
+static int embed_pass(const float *iq, size_t frames)
+{
+   uint32_t tmp0;
+   if (iq) {
+      if (frames!=8192UL) return 0;
+      embed_iq = iq;
+      embed_frames = frames;
+      if (!readsampsfir()) return 0;
+   }
+#endif
    do {
       i = 0UL;
       do {
@@ -3171,10 +3231,63 @@ extern int main(int argc, char **argv)
             }
          }
       }
-   } while (readsampsfir());
+   } while (
+#ifndef SDRCORE_LORARX_EMBED
+       readsampsfir()
+#else
+       0
+#endif
+   );
+#ifdef SDRCORE_LORARX_EMBED
+   return 1;
+#else
    if (outdechirped>=0L) osic_Close(outdechirped);
    X2C_EXIT();
    return 0;
+#endif
 }
 
+#ifndef SDRCORE_LORARX_EMBED
 X2C_MAIN_DEFINITION
+#else
+int lorarx_embed_block(const float *iq, size_t frames)
+{
+   if (!iq) return 0;
+   if (setjmp(embed_abort)) { lorarx_embed_clear(); return 0; }
+   return embed_pass(iq, frames);
+}
+
+void lorarx_embed_clear(void)
+{
+   pDEM dem;
+   pNOTCH notch;
+   uint32_t k;
+   while (dems) {
+      dem = dems;
+      dems = dem->next;
+      free(dem);
+   }
+   while (pnotches) {
+      notch = pnotches;
+      pnotches = notch->next;
+      free(notch);
+   }
+   while (loraprotocols_jdests0) {
+      loraprotocols_pJDESTS dest = loraprotocols_jdests0;
+      loraprotocols_jdests0 = dest->next;
+      free(dest);
+   }
+   X2C_DYNDEALLOCATE((char **)&pfir); pfir = 0;
+   X2C_DYNDEALLOCATE((char **)&pfixfir); pfixfir = 0;
+   X2C_DYNDEALLOCATE((char **)&pbirdbuf); pbirdbuf = 0;
+   X2C_DYNDEALLOCATE((char **)&pbirdhist); pbirdhist = 0;
+   X2C_DYNDEALLOCATE((char **)&pfirtab); pfirtab = 0;
+   X2C_DYNDEALLOCATE((char **)&ptmpfir); ptmpfir = 0;
+   for (k=0; k<13; ++k) { X2C_DYNDEALLOCATE((char **)&fftbufs[k]); fftbufs[k]=0; }
+   iqwrite = 0; firwp = 0; sampc = 0; phasereg = 0;
+   sendjudpdcd = 0; nocrcfec = 0; nofec = 0; notexitonbrokenpipe = 0;
+   loraprotocols_jpipename[0] = 0;
+   loraprotocols_hamview = 0;
+   embed_iq = 0; embed_frames = 0;
+}
+#endif

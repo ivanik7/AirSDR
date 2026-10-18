@@ -8,6 +8,7 @@ namespace sdrcore::decoder {
 std::unique_ptr<Decoder> create_rtl433();
 std::unique_ptr<Decoder> create_sstv();
 std::unique_ptr<Decoder> create_adsb();
+std::unique_ptr<Decoder> create_meshtastic();
 
 const std::vector<Registration>& registry() {
   // Metadata mirrors the Dart decoder catalog.
@@ -56,8 +57,7 @@ const std::vector<Registration>& registry() {
               /*required_rate_hz=*/1000000,
               /*result=*/Result::message,
           },
-          // The PHY/backend card supplies the factory; no fake live mode.
-          /*create=*/nullptr,
+          /*create=*/create_meshtastic,
       },
   };
   return kRegistry;

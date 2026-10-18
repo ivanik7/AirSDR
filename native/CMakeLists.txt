@@ -39,6 +39,18 @@ target_include_directories(sdrcore_meshtastic PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR}/third_party)
 target_link_libraries(sdrcore_meshtastic PUBLIC sdrcore_meshtastic_pb)
 
+# dxlAPRS lorarx PHY runs inside the DSP worker. Only its push-IQ and JSON
+# callback branches are used; no executable, file or socket is opened.
+set(LORARX_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/third_party/lorarx)
+add_library(sdrcore_lorarx STATIC
+    ${LORARX_ROOT}/lorarx.c ${LORARX_ROOT}/loraprotocols.c
+    ${LORARX_ROOT}/aprsstr.c ${LORARX_ROOT}/upstream-os/osi.c
+    ${LORARX_ROOT}/upstream-os/osic.c ${LORARX_ROOT}/upstream-os/udp.c)
+set_target_properties(sdrcore_lorarx PROPERTIES POSITION_INDEPENDENT_CODE ON)
+target_compile_definitions(sdrcore_lorarx PRIVATE SDRCORE_LORARX_EMBED _GNU_SOURCE)
+target_compile_options(sdrcore_lorarx PRIVATE -O2 -w)
+target_include_directories(sdrcore_lorarx PRIVATE ${LORARX_ROOT} ${LORARX_ROOT}/upstream-os)
+
 # DMR channel front end (OpenWebRX+/digiham FmDemod -> DcBlock ->
 # WideRrcFilter -> GfskDemodulator). Framing/voice and decoder registration
 # are separate cards; only linked sources enter Android/Linux binaries.
@@ -97,6 +109,7 @@ add_library(sdrcore SHARED
     src/decoder/rtl433.cpp
     src/decoder/sstv.cpp
     src/decoder/adsb.cpp
+    src/decoder/meshtastic.cpp
     src/decoder/decoder_abi.cpp
 )
 if(ANDROID)
@@ -109,7 +122,7 @@ else()
 endif()
 target_compile_features(sdrcore PRIVATE cxx_std_17)
 find_package(Threads REQUIRED)
-target_link_libraries(sdrcore PRIVATE Threads::Threads sdrcore_rtlsdr sdrcore_hackrf sdrcore_rtl433 sdrcore_rds sdrcore_meshtastic sdrcore_csdr_sstv sdrcore_dump1090 sdrcore_dmr_framing)
+target_link_libraries(sdrcore PRIVATE Threads::Threads sdrcore_rtlsdr sdrcore_hackrf sdrcore_rtl433 sdrcore_rds sdrcore_meshtastic sdrcore_lorarx sdrcore_csdr_sstv sdrcore_dump1090 sdrcore_dmr_framing)
 target_link_libraries(sdrcore PRIVATE sdrcore_dmr_voice sdrcore_dmr_channel)
 if(NOT WIN32)
     target_link_libraries(sdrcore PRIVATE m)
@@ -142,6 +155,7 @@ set_target_properties(sdrcore PROPERTIES
     CXX_VISIBILITY_PRESET hidden
     VISIBILITY_INLINES_HIDDEN YES)
 target_include_directories(sdrcore PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_include_directories(sdrcore PRIVATE ${LORARX_ROOT})
 
 # Symbol-level DMR framing is independent of the signal-chain integration.
 if(NOT ANDROID AND PROJECT_IS_TOP_LEVEL)
@@ -246,11 +260,12 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND PROJECT_IS_TOP_LEVEL)
     add_executable(sdrcore_rtl433_engine_test tests/rtl433_engine_test.cpp)
     target_link_libraries(sdrcore_rtl433_engine_test PRIVATE sdrcore_rtl433)
     target_sources(sdrcore_rtl433_engine_test PRIVATE
-        src/decoder/rtl433.cpp src/decoder/sstv.cpp src/decoder/adsb.cpp src/decoder/registry.cpp)
-    target_link_libraries(sdrcore_rtl433_engine_test PRIVATE sdrcore_csdr_sstv sdrcore_dump1090)
+        src/decoder/rtl433.cpp src/decoder/sstv.cpp src/decoder/adsb.cpp
+        src/decoder/meshtastic.cpp src/decoder/registry.cpp)
+    target_link_libraries(sdrcore_rtl433_engine_test PRIVATE sdrcore_csdr_sstv sdrcore_dump1090 sdrcore_meshtastic sdrcore_lorarx)
     # third_party: the SSTV adapter linked in via registry.cpp uses the
     # vendored nlohmann/json.hpp (normally reached through sdrcore_redsea).
-    target_include_directories(sdrcore_rtl433_engine_test PRIVATE include third_party)
+    target_include_directories(sdrcore_rtl433_engine_test PRIVATE include third_party ${LORARX_ROOT})
     target_compile_features(sdrcore_rtl433_engine_test PRIVATE cxx_std_17)
     target_compile_options(sdrcore_rtl433_engine_test PRIVATE -UNDEBUG)
     target_link_options(sdrcore_rtl433_engine_test PRIVATE -Wl,--gc-sections)
@@ -258,11 +273,12 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND PROJECT_IS_TOP_LEVEL)
     add_test(NAME sdrcore_rtl433_engine COMMAND sdrcore_rtl433_engine_test)
     add_executable(sdrcore_rtl433_tap_oracle
         tests/rtl433_tap_oracle.cpp src/dsp/receiver.cpp
-        src/decoder/rtl433.cpp src/decoder/sstv.cpp src/decoder/adsb.cpp src/decoder/registry.cpp)
-    target_include_directories(sdrcore_rtl433_tap_oracle PRIVATE include)
+        src/decoder/rtl433.cpp src/decoder/sstv.cpp src/decoder/adsb.cpp
+        src/decoder/meshtastic.cpp src/decoder/registry.cpp)
+    target_include_directories(sdrcore_rtl433_tap_oracle PRIVATE include third_party ${LORARX_ROOT})
     target_compile_features(sdrcore_rtl433_tap_oracle PRIVATE cxx_std_17)
     target_compile_options(sdrcore_rtl433_tap_oracle PRIVATE -O2)
-    target_link_libraries(sdrcore_rtl433_tap_oracle PRIVATE sdrcore_rtl433 sdrcore_csdr_sstv sdrcore_dump1090 m)
+    target_link_libraries(sdrcore_rtl433_tap_oracle PRIVATE sdrcore_rtl433 sdrcore_csdr_sstv sdrcore_dump1090 sdrcore_meshtastic sdrcore_lorarx m)
     target_link_libraries(sdrcore_rtl433_tap_oracle PRIVATE sdrcore_rds)
     target_link_options(sdrcore_rtl433_tap_oracle PRIVATE -Wl,--gc-sections)
     add_executable(sdrcore_abi_test tests/abi_test.c)

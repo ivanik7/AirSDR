@@ -6,6 +6,9 @@
 #include "loraprotocols.h"
 #endif
 #define loraprotocols_C_
+#ifdef SDRCORE_LORARX_EMBED
+#include "lorarx_embed.h"
+#endif
 #include <math.h>
 #ifndef osi_H_
 #include "osi.h"
@@ -331,6 +334,9 @@ static void sendjson(loraprotocols_pJDESTS udps, uint32_t id, const char text[],
       aprsstr_Append(s, 1000ul, h, 1000ul);
    }
    aprsstr_Append(s, 1000ul, "\"}\012", 4ul);
+   #ifdef SDRCORE_LORARX_EMBED
+   lorarx_embed_emit(s, aprsstr_Length(s, 1000ul));
+   #else
    if (loraprotocols_jpipename[0UL]) {
       if (loraprotocols_jsonfd<0L) {
          loraprotocols_jsonfd = osi_OpenNONBLOCK(loraprotocols_jpipename, 1024ul);
@@ -344,6 +350,7 @@ static void sendjson(loraprotocols_pJDESTS udps, uint32_t id, const char text[],
       }
       else osi_WrStrLn("cannot write json-file", 23ul);
    }
+   #endif
    while (udps) {
       if (udps->judpport) {
          ret = udpsend(loraprotocols_udpsock, s, (int32_t)aprsstr_Length(s, 1000ul), udps->judpport, udps->jipnum);
