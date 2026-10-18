@@ -4,7 +4,8 @@ Flutter Android and Linux app. The production SDR USB driver, DSP, demodulation,
 and audio path run in C/C++; Dart/Flutter handles the UI and control. The Dart SDR
 receiver was removed after native acceptance on the Linux host. Preserve native
 receiver behavior and user data. Decoder backends are future work.
-Receiver/DSP/UI acceptance uses the USB-attached RTL-SDR Blog V4 on the Linux host.
+Receiver/DSP/UI acceptance runs on the Linux host from recorded or generated IQ files.
+Never listen to live over-the-air signals for testing (see Verification).
 Android behaviour is checked on the Android emulator. Never use a real phone.
 License: GPL-3.0. Keep chat replies to the user concise and in Russian.
 
@@ -49,13 +50,14 @@ state why in the task report; do not describe lead-authored code as subagent wor
 1. `flutter analyze` — no issues.
 2. `flutter test` — green; each fix gets a regression test (RED before GREEN).
 3. `flutter build apk --debug` succeeds (release: `--release --split-per-abi --target-platform android-arm,android-arm64,android-x64`).
-4. Check device-visible receiver/UI changes on the Linux host with the attached RTL-SDR (`xvfb-run`, screenshots, WAV); check Android-only behaviour on the Android emulator (`docs/android-emulator.md`). Say explicitly what stayed unverified.
+4. Check device-visible receiver/UI changes on the Linux host (`xvfb-run`, screenshots, WAV) fed from recorded or generated IQ; check Android-only behaviour on the Android emulator (`docs/android-emulator.md`). Say explicitly what stayed unverified.
 Never present a stub as finished. Label anything not tested as unverified.
 
 ## Verification
 - Verify with unit, widget, and e2e tests, by running the app on the computer (Linux host, `xvfb-run`), or on the Android emulator.
 - Never use a real phone: no `adb` to physical devices, no installs, screenshots, or USB permission dialogs on a phone.
 - Only the user can confirm audible sound; an audio sink reporting "started" is not proof.
+- **No live over-the-air reception for tests.** Do not tune the RTL-SDR (or any receiver) to real signals to test, verify, accept, or debug anything: no live captures, recordings from the antenna, band scans, or waiting for transmissions, and do not ask the user to transmit (remotes, radios, beacons). Use committed/recorded IQ files, generated IQ, and oracle comparisons instead. Anything that could only be shown on live air is reported as unverified; never block a task on it.
 
 ## Git
 - Each task uses its own worktree `.worktrees/<name>` on branch `feat/<name>`. Commit regularly.
