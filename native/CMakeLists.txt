@@ -42,6 +42,18 @@ target_link_libraries(sdrcore_meshtastic PUBLIC sdrcore_meshtastic_pb)
 # Meshtastic LoRa PHY: embedded OE5DXL lorarx (defines sdrcore_lorarx).
 include(third_party/lorarx.cmake)
 
+# MeshCore packet interpreter: firmware wire/crypto semantics on the same PHY.
+# OpenSSL is used by the host oracle test only; app links portable source.
+add_library(sdrcore_meshcore STATIC
+    src/meshcore/meshcore.cpp
+    third_party/meshcore/sha256.c
+    third_party/meshcore/monocypher/monocypher.c
+    third_party/meshcore/monocypher/monocypher-ed25519.c
+    third_party/crypto-algorithms/aes.c)
+set_target_properties(sdrcore_meshcore PROPERTIES POSITION_INDEPENDENT_CODE ON)
+target_compile_features(sdrcore_meshcore PUBLIC cxx_std_17)
+target_include_directories(sdrcore_meshcore PUBLIC src third_party)
+
 # DMR channel front end: OpenWebRX+ selector (csdr-plus FirDecimate ->
 # FractionalDecimator -> FFT Bandpass) -> FmDemod -> DcBlock ->
 # WideRrcFilter -> GfskDemodulator. Framing/voice and decoder registration
@@ -119,6 +131,8 @@ add_library(sdrcore SHARED
     src/decoder/sstv.cpp
     src/decoder/adsb.cpp
     src/decoder/meshtastic.cpp
+    src/decoder/meshcore.cpp
+    src/decoder/lorarx_session.cpp
     src/decoder/decoder_abi.cpp
 )
 if(ANDROID)
@@ -131,7 +145,7 @@ else()
 endif()
 target_compile_features(sdrcore PRIVATE cxx_std_17)
 find_package(Threads REQUIRED)
-target_link_libraries(sdrcore PRIVATE Threads::Threads sdrcore_rtlsdr sdrcore_hackrf sdrcore_rtl433 sdrcore_rds sdrcore_meshtastic sdrcore_lorarx sdrcore_csdr_sstv sdrcore_dump1090 sdrcore_dmr_framing)
+target_link_libraries(sdrcore PRIVATE Threads::Threads sdrcore_rtlsdr sdrcore_hackrf sdrcore_rtl433 sdrcore_rds sdrcore_meshtastic sdrcore_meshcore sdrcore_lorarx sdrcore_csdr_sstv sdrcore_dump1090 sdrcore_dmr_framing)
 target_link_libraries(sdrcore PRIVATE sdrcore_dmr_voice sdrcore_dmr_channel)
 if(NOT WIN32)
     target_link_libraries(sdrcore PRIVATE m)
@@ -253,6 +267,15 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND PROJECT_IS_TOP_LEVEL)
     target_compile_definitions(sdrcore_meshtastic_packet_test PRIVATE
         MESHTASTIC_VECTORS="${CMAKE_CURRENT_SOURCE_DIR}/tests/data/meshtastic_vectors.json")
     add_test(NAME sdrcore_meshtastic_packet COMMAND sdrcore_meshtastic_packet_test)
+    find_package(OpenSSL QUIET COMPONENTS Crypto)
+    if(OpenSSL_FOUND)
+        add_executable(sdrcore_meshcore_packet_test tests/meshcore_packet_test.cpp)
+        target_link_libraries(sdrcore_meshcore_packet_test PRIVATE sdrcore_meshcore OpenSSL::Crypto)
+        target_compile_options(sdrcore_meshcore_packet_test PRIVATE -UNDEBUG)
+        add_test(NAME sdrcore_meshcore_packet COMMAND sdrcore_meshcore_packet_test)
+    else()
+        message(WARNING "OpenSSL::Crypto missing: MeshCore independent packet oracle disabled")
+    endif()
     # Dart packet/node UI tests read real native events from this fixture.
     add_executable(sdrcore_meshtastic_ui_fixture tests/meshtastic_ui_fixture.cpp)
     target_link_libraries(sdrcore_meshtastic_ui_fixture PRIVATE sdrcore_meshtastic)
@@ -269,8 +292,9 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND PROJECT_IS_TOP_LEVEL)
     target_link_libraries(sdrcore_rtl433_engine_test PRIVATE sdrcore_rtl433)
     target_sources(sdrcore_rtl433_engine_test PRIVATE
         src/decoder/rtl433.cpp src/decoder/sstv.cpp src/decoder/adsb.cpp
-        src/decoder/meshtastic.cpp src/decoder/registry.cpp)
-    target_link_libraries(sdrcore_rtl433_engine_test PRIVATE sdrcore_csdr_sstv sdrcore_dump1090 sdrcore_meshtastic sdrcore_lorarx)
+        src/decoder/meshtastic.cpp src/decoder/meshcore.cpp
+        src/decoder/lorarx_session.cpp src/decoder/registry.cpp)
+    target_link_libraries(sdrcore_rtl433_engine_test PRIVATE sdrcore_csdr_sstv sdrcore_dump1090 sdrcore_meshtastic sdrcore_meshcore sdrcore_lorarx)
     # third_party: the SSTV adapter linked in via registry.cpp uses the
     # vendored nlohmann/json.hpp (normally reached through sdrcore_redsea).
     target_include_directories(sdrcore_rtl433_engine_test PRIVATE include third_party)
@@ -282,11 +306,12 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND PROJECT_IS_TOP_LEVEL)
     add_executable(sdrcore_rtl433_tap_oracle
         tests/rtl433_tap_oracle.cpp src/dsp/receiver.cpp
         src/decoder/rtl433.cpp src/decoder/sstv.cpp src/decoder/adsb.cpp
-        src/decoder/meshtastic.cpp src/decoder/registry.cpp)
+        src/decoder/meshtastic.cpp src/decoder/meshcore.cpp
+        src/decoder/lorarx_session.cpp src/decoder/registry.cpp)
     target_include_directories(sdrcore_rtl433_tap_oracle PRIVATE include third_party)
     target_compile_features(sdrcore_rtl433_tap_oracle PRIVATE cxx_std_17)
     target_compile_options(sdrcore_rtl433_tap_oracle PRIVATE -O2)
-    target_link_libraries(sdrcore_rtl433_tap_oracle PRIVATE sdrcore_rtl433 sdrcore_csdr_sstv sdrcore_dump1090 sdrcore_meshtastic sdrcore_lorarx m)
+    target_link_libraries(sdrcore_rtl433_tap_oracle PRIVATE sdrcore_rtl433 sdrcore_csdr_sstv sdrcore_dump1090 sdrcore_meshtastic sdrcore_meshcore sdrcore_lorarx m)
     target_link_libraries(sdrcore_rtl433_tap_oracle PRIVATE sdrcore_rds)
     target_link_options(sdrcore_rtl433_tap_oracle PRIVATE -Wl,--gc-sections)
     add_executable(sdrcore_abi_test tests/abi_test.c)

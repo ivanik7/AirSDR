@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import '../radio_controller.dart' show DemodMode;
 import 'meshtastic_keys.dart' show normalizeMeshtasticChannels;
+import 'meshcore_keys.dart' show normalizeMeshcoreChannels;
 
 /// Data decoder IDs are distinct from stable v3 demodulator choice IDs.
 enum DecoderInput { audio, mpx, baseband, rawIq }
@@ -171,20 +172,52 @@ final decoderCatalog = <DecoderDescriptor>[
     requiredRateHz: 1000000,
     result: DecoderResult.message,
     settings: const [
-      DecoderSetting('preset', 'LongFast', allowed: [
-        'LongFast', 'LongSlow', 'MediumSlow', 'MediumFast', 'ShortSlow',
-        'ShortFast', 'LongMod', 'ShortTurbo', 'LongTurbo', 'MediumTurbo',
-        'LiteFast', 'LiteSlow', 'NarrowFast', 'NarrowSlow', 'TinyFast',
-        'TinySlow',
-      ]),
-      DecoderSetting('region', 'EU_868', allowed: [
-        'US', 'EU_433', 'EU_868', 'EU_866', 'EU_N_868', 'CN', 'JP',
-        'ANZ', 'RU', 'KZ_433', 'KZ_863',
-      ]),
+      DecoderSetting(
+        'preset',
+        'LongFast',
+        allowed: [
+          'LongFast',
+          'LongSlow',
+          'MediumSlow',
+          'MediumFast',
+          'ShortSlow',
+          'ShortFast',
+          'LongMod',
+          'ShortTurbo',
+          'LongTurbo',
+          'MediumTurbo',
+          'LiteFast',
+          'LiteSlow',
+          'NarrowFast',
+          'NarrowSlow',
+          'TinyFast',
+          'TinySlow',
+        ],
+      ),
+      DecoderSetting(
+        'region',
+        'EU_868',
+        allowed: [
+          'US',
+          'EU_433',
+          'EU_868',
+          'EU_866',
+          'EU_N_868',
+          'CN',
+          'JP',
+          'ANZ',
+          'RU',
+          'KZ_433',
+          'KZ_863',
+        ],
+      ),
       // Ordered `{name, psk}` channel keys tried by the native packet layer
       // (docs/status/meshtastic.md). User data: never logged or displayed.
-      DecoderSetting('channels', <Object>[],
-          normalize: normalizeMeshtasticChannels),
+      DecoderSetting(
+        'channels',
+        <Object>[],
+        normalize: normalizeMeshtasticChannels,
+      ),
     ],
   ),
   DecoderDescriptor(
@@ -195,6 +228,23 @@ final decoderCatalog = <DecoderDescriptor>[
     requiredMode: null,
     requiredRateHz: 2400000,
     result: DecoderResult.aircraft,
+  ),
+  DecoderDescriptor(
+    id: 'meshcore',
+    label: 'MeshCore',
+    input: DecoderInput.baseband,
+    exclusiveReceiver: false,
+    requiredMode: null,
+    requiredRateHz: 1000000,
+    result: DecoderResult.message,
+    settings: const [
+      DecoderSetting('bandwidth', '6', allowed: ['6', '7', '8', '9']),
+      DecoderSetting(
+        'channels',
+        <Object>[],
+        normalize: normalizeMeshcoreChannels,
+      ),
+    ],
   ),
 ];
 

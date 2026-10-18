@@ -16,6 +16,7 @@
 // before it destroys the previous decoder) stays inert and emits nothing
 // instead of corrupting the new owner's state.
 #include "decoder.hpp"
+#include "lorarx_session.hpp"
 #include "lorarx_embed.h"
 #include "meshtastic/meshtastic.h"
 #include <nlohmann/json.hpp>
@@ -37,9 +38,7 @@ constexpr size_t kEvents = 256;
 constexpr uint32_t kRate = 1000000;
 
 class MeshtasticBackend;
-// Guards every lorarx call; lorarx_embed_emit() runs inside block() under it.
-std::mutex g_phy_mutex;
-MeshtasticBackend* g_owner = nullptr;
+using namespace lorarx_session;
 
 // OpenWebRX+ LoraBandwidthInput index for each supported preset bandwidth
 // (0:7.8 .. 6:62.5 7:125 8:250 9:500 kHz). SF12 (LongSlow) and the 15.6 kHz
@@ -108,10 +107,11 @@ void read_double(const nlohmann::json& row, const char* key, double& out) {
 class MeshtasticBackend final : public Decoder {
  public:
   ~MeshtasticBackend() override {
-    std::lock_guard<std::mutex> lock(g_phy_mutex);
-    if (g_owner == this) {
+    std::lock_guard<std::mutex> lock(mutex);
+    if (owner == this) {
       lorarx_embed_clear();
-      g_owner = nullptr;
+      owner = nullptr;
+      sink = nullptr;
     }
   }
 
@@ -155,8 +155,11 @@ class MeshtasticBackend final : public Decoder {
     if (!parser_.configure(config)) return false;
     bw_ = bw;
     {
-      std::lock_guard<std::mutex> lock(g_phy_mutex);
-      g_owner = this;
+      std::lock_guard<std::mutex> lock(mutex);
+      owner = this;
+      sink = [](void* context, const char* json, size_t length) {
+        static_cast<MeshtasticBackend*>(context)->emit(json, length);
+      };
     }
     reset();
     return ready_;
@@ -168,9 +171,9 @@ class MeshtasticBackend final : public Decoder {
     parser_.reset();
     frames_ = 0;
     pending_.clear();
-    std::lock_guard<std::mutex> lock(g_phy_mutex);
+    std::lock_guard<std::mutex> lock(mutex);
     ready_ = false;
-    if (g_owner != this || bw_ < 0) return;
+    if (owner != this || bw_ < 0) return;
     lorarx_embed_clear();
     const std::string bw = std::to_string(bw_);
     std::vector<std::string> args = {
@@ -193,8 +196,8 @@ class MeshtasticBackend final : public Decoder {
       buffer_[2 * frames_ + 1] = std::isfinite(im) ? im : 0.0f;
       if (++frames_ == kBlock) {
         frames_ = 0;
-        std::lock_guard<std::mutex> lock(g_phy_mutex);
-        if (g_owner != this || !lorarx_embed_block(buffer_.data(), kBlock)) {
+        std::lock_guard<std::mutex> lock(mutex);
+        if (owner != this || !lorarx_embed_block(buffer_.data(), kBlock)) {
           ready_ = false;
           return;
         }
@@ -269,9 +272,3 @@ std::unique_ptr<Decoder> create_meshtastic() {
   return std::make_unique<MeshtasticBackend>();
 }
 }  // namespace sdrcore::decoder
-
-// Called by lorarx only inside lorarx_embed_block(), i.e. with g_phy_mutex
-// held by the owning backend's process().
-extern "C" void lorarx_embed_emit(const char* json, size_t length) {
-  if (sdrcore::decoder::g_owner) sdrcore::decoder::g_owner->emit(json, length);
-}

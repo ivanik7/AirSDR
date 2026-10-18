@@ -51,11 +51,12 @@ add_custom_target(meshtastic_phy_capture ALL DEPENDS ${MESHTASTIC_PHY_CAPTURE})
 add_executable(sdrcore_meshtastic_phy_test
     tests/meshtastic_phy_test.cpp src/dsp/receiver.cpp
     src/decoder/rtl433.cpp src/decoder/sstv.cpp src/decoder/adsb.cpp
-    src/decoder/meshtastic.cpp src/decoder/registry.cpp)
+    src/decoder/meshtastic.cpp src/decoder/meshcore.cpp
+    src/decoder/lorarx_session.cpp src/decoder/registry.cpp)
 target_include_directories(sdrcore_meshtastic_phy_test PRIVATE include third_party)
 target_compile_features(sdrcore_meshtastic_phy_test PRIVATE cxx_std_17)
 target_link_libraries(sdrcore_meshtastic_phy_test PRIVATE
-    sdrcore_rtl433 sdrcore_csdr_sstv sdrcore_dump1090 sdrcore_meshtastic
+    sdrcore_rtl433 sdrcore_csdr_sstv sdrcore_dump1090 sdrcore_meshtastic sdrcore_meshcore
     sdrcore_lorarx sdrcore_rds m)
 target_link_options(sdrcore_meshtastic_phy_test PRIVATE -Wl,--gc-sections)
 add_dependencies(sdrcore_meshtastic_phy_test meshtastic_phy_capture)
@@ -65,10 +66,11 @@ add_test(NAME sdrcore_meshtastic_phy
 # Host-only exact-IQ replay for the external OpenWebRX+ parser comparison.
 add_executable(sdrcore_meshtastic_replay
     tests/meshtastic_replay.cpp src/decoder/rtl433.cpp src/decoder/sstv.cpp
-    src/decoder/adsb.cpp src/decoder/meshtastic.cpp src/decoder/registry.cpp)
+    src/decoder/adsb.cpp src/decoder/meshtastic.cpp src/decoder/meshcore.cpp
+    src/decoder/lorarx_session.cpp src/decoder/registry.cpp)
 target_include_directories(sdrcore_meshtastic_replay PRIVATE include third_party)
 target_compile_features(sdrcore_meshtastic_replay PRIVATE cxx_std_17)
 target_link_libraries(sdrcore_meshtastic_replay PRIVATE
-    sdrcore_rtl433 sdrcore_csdr_sstv sdrcore_dump1090 sdrcore_meshtastic
+    sdrcore_rtl433 sdrcore_csdr_sstv sdrcore_dump1090 sdrcore_meshtastic sdrcore_meshcore
     sdrcore_lorarx sdrcore_rds m)
 target_link_options(sdrcore_meshtastic_replay PRIVATE -Wl,--gc-sections)

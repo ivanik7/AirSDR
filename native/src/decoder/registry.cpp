@@ -9,6 +9,7 @@ std::unique_ptr<Decoder> create_rtl433();
 std::unique_ptr<Decoder> create_sstv();
 std::unique_ptr<Decoder> create_adsb();
 std::unique_ptr<Decoder> create_meshtastic();
+std::unique_ptr<Decoder> create_meshcore();
 
 const std::vector<Registration>& registry() {
   // Metadata mirrors the Dart decoder catalog.
@@ -58,6 +59,17 @@ const std::vector<Registration>& registry() {
               /*result=*/Result::message,
           },
           /*create=*/create_meshtastic,
+      },
+      Registration{
+          Descriptor{
+              /*id=*/"meshcore",
+              /*input=*/Input::baseband,
+              /*exclusive_receiver=*/false,
+              /*required_mode=*/0xFFFFFFFFu,
+              /*required_rate_hz=*/1000000,
+              /*result=*/Result::message,
+          },
+          /*create=*/create_meshcore,
       },
   };
   return kRegistry;
