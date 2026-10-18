@@ -82,6 +82,9 @@ Backend: `native/src/decoder/meshtastic.cpp`.
   libc/libm/setjmp plus the application sink.
 - CPU, Linux host only (Ryzen 7 5700G): the embedded PHY took 4.5 s for 61 s of
   1 MS/s IQ at 250 kHz (about 7% of one core), and 3.5 s at 62.5 kHz.
+- Same-IQ comparison of the full chain (lorarx + OpenWebRX+ parser vs the
+  registry backend) over every supported preset, AES keys and a CRC failure:
+  `docs/status/meshtastic-parity.md`.
 
 ## Gaps (unverified)
 
@@ -90,5 +93,5 @@ Backend: `native/src/decoder/meshtastic.cpp`.
 - Android CPU cost at 1 MS/s has not been measured.
 - Android and Windows builds were not linked in this change. The C sources
   were cross-compiled with the NDK, and llvm-mingw is left to CI.
-- The comparison is against the vendored author-site source, not a
-  sample-for-sample replay through a running OpenWebRX+ instance.
+- The comparison uses the vendored author-site lorarx and the real
+  OpenWebRX+ parser module, not a running OpenWebRX+ server.
