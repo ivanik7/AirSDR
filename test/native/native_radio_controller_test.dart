@@ -93,6 +93,24 @@ class FakeApi implements NativeRadioApi {
     calls.add('host:$b:$a:$s');
   }
 
+  String? rtlTcpHost;
+  int? rtlTcpPort;
+  int rtlTcpLinkValue = 0;
+
+  @override
+  void openRtlTcp(Pointer<SdrHandle> h, String host, int port) {
+    state = SdrState.open;
+    rtlTcpHost = host;
+    rtlTcpPort = port;
+    calls.add('rtlTcp:$host:$port');
+  }
+
+  @override
+  int rtlTcpLink(Pointer<SdrHandle> h) {
+    calls.add('rtlTcpLink');
+    return rtlTcpLinkValue;
+  }
+
   @override
   List<SdrHostUsbDevice> hostDevices() => [];
   @override

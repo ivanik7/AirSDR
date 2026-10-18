@@ -64,6 +64,11 @@ class _FileReplayApi implements NativeRadioApi {
   void openHostUsb(Pointer<SdrHandle> h, int bus, int address, int source) =>
       _inner.openHostUsb(h, bus, address, source);
   @override
+  void openRtlTcp(Pointer<SdrHandle> h, String host, int port) =>
+      _inner.openRtlTcp(h, host, port);
+  @override
+  int rtlTcpLink(Pointer<SdrHandle> h) => _inner.rtlTcpLink(h);
+  @override
   List<int> rtlTunerGains(Pointer<SdrHandle> h) => _inner.rtlTunerGains(h);
   @override
   List<SdrHostUsbDevice> hostDevices() => const [];

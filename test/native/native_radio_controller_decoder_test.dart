@@ -55,6 +55,11 @@ class _StubApi implements NativeRadioApi {
   void openHostUsb(Pointer<SdrHandle> h, int b, int a, int s) =>
       state = SdrState.open;
   @override
+  void openRtlTcp(Pointer<SdrHandle> h, String host, int port) =>
+      state = SdrState.open;
+  @override
+  int rtlTcpLink(Pointer<SdrHandle> h) => 1;
+  @override
   List<SdrHostUsbDevice> hostDevices() => [];
   @override
   List<int> rtlTunerGains(Pointer<SdrHandle> h) => [];

@@ -126,6 +126,8 @@ add_library(sdrcore SHARED
     src/dsp/receiver.cpp
     src/usb_rtlsdr_adapter.cpp
     src/usb_hackrf_adapter.cpp
+    src/rtl_tcp_adapter.cpp
+    third_party/sdrpp_rtl_tcp/rtl_tcp_source/src/rtl_tcp_client.cpp
     src/decoder/registry.cpp
     src/decoder/rtl433.cpp
     src/decoder/sstv.cpp
@@ -179,6 +181,8 @@ set_target_properties(sdrcore PROPERTIES
     CXX_VISIBILITY_PRESET hidden
     VISIBILITY_INLINES_HIDDEN YES)
 target_include_directories(sdrcore PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_include_directories(sdrcore PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party/sdrpp_rtl_tcp/rtl_tcp_source/src)
 
 # Symbol-level DMR framing is independent of the signal-chain integration.
 if(NOT ANDROID AND PROJECT_IS_TOP_LEVEL)
@@ -332,6 +336,24 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND PROJECT_IS_TOP_LEVEL)
     add_executable(sdrcore_stream_test tests/stream_test.cpp)
     target_link_libraries(sdrcore_stream_test PRIVATE sdrcore)
     add_test(NAME sdrcore_stream COMMAND sdrcore_stream_test)
+    add_executable(sdrcore_rtl_tcp_test tests/rtl_tcp_test.cpp)
+    target_link_libraries(sdrcore_rtl_tcp_test PRIVATE sdrcore Threads::Threads)
+    add_test(NAME sdrcore_rtl_tcp COMMAND sdrcore_rtl_tcp_test)
+    add_executable(sdrcore_rtltcp_original_trace
+        tests/rtltcp_original_trace.cpp
+        third_party/sdrpp_rtl_tcp/upstream/rtl_tcp_client.cpp)
+    target_include_directories(sdrcore_rtltcp_original_trace PRIVATE
+        third_party/sdrpp_rtl_tcp/upstream tests/rtltcp_oracle_shim)
+    target_link_libraries(sdrcore_rtltcp_original_trace PRIVATE Threads::Threads)
+    add_executable(sdrcore_rtltcp_port_trace
+        tests/rtltcp_port_trace.cpp
+        third_party/sdrpp_rtl_tcp/rtl_tcp_source/src/rtl_tcp_client.cpp)
+    target_include_directories(sdrcore_rtltcp_port_trace PRIVATE
+        third_party/sdrpp_rtl_tcp/rtl_tcp_source/src)
+    add_test(NAME sdrcore_rtltcp_oracle COMMAND ${CMAKE_COMMAND}
+        -DORIGINAL=$<TARGET_FILE:sdrcore_rtltcp_original_trace>
+        -DPORT=$<TARGET_FILE:sdrcore_rtltcp_port_trace>
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/rtltcp_trace_diff.cmake)
     add_executable(sdrcore_fd_lifecycle_test tests/fd_lifecycle_test.cpp)
     target_link_libraries(sdrcore_fd_lifecycle_test PRIVATE sdrcore Threads::Threads)
     add_test(NAME sdrcore_fd_lifecycle COMMAND sdrcore_fd_lifecycle_test)
@@ -471,6 +493,18 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND PROJECT_IS_TOP_LEVEL)
     include(tests/audio_tap_tests.cmake)
     include(tests/dmr_voice_tests.cmake)
     include(tests/lorarx_tests.cmake)
+    # White-box targets include sdrcore.cpp directly and need the same network
+    # source definitions when its open entry point is linked into their TU.
+    foreach(target IN ITEMS ring_boundary rtl_gain_list live_retune
+        retune_switch_gap baseband_tap_abi decoder_voice_abi)
+        if(TARGET sdrcore_${target}_test)
+            target_sources(sdrcore_${target}_test PRIVATE
+                src/rtl_tcp_adapter.cpp
+                third_party/sdrpp_rtl_tcp/rtl_tcp_source/src/rtl_tcp_client.cpp)
+            target_include_directories(sdrcore_${target}_test PRIVATE
+                third_party/sdrpp_rtl_tcp/rtl_tcp_source/src)
+        endif()
+    endforeach()
 endif()
 
 # Standalone macOS/Windows CTest: link the actual shared library and run the

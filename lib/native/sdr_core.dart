@@ -77,6 +77,15 @@ abstract final class SdrResult {
   static const ioError = -4;
   static const deviceGone = -5;
   static const internalError = -6;
+
+  /// rtl_tcp connect/handshake timed out (sdrcore_v3.h SDR_V3_TCP_TIMEOUT).
+  static const tcpTimeout = -8;
+
+  /// rtl_tcp connection refused (sdrcore_v3.h SDR_V3_TCP_REFUSED).
+  static const tcpRefused = -9;
+
+  /// rtl_tcp sent an invalid RTL0 header (sdrcore_v3.h SDR_V3_TCP_PROTOCOL).
+  static const tcpProtocol = -10;
   static const hostAccessDenied = -16;
   static const hostNotFound = -17;
   static const hostDriverUnsupported = -18;
@@ -95,6 +104,9 @@ abstract final class SdrState {
 abstract final class SdrSourceId {
   static const rtlsdr = 3;
   static const hackrf = 4;
+
+  /// Network rtl_tcp source (sdrcore.h SDR_RTL_TCP).
+  static const rtlTcp = 5;
 }
 
 /// One USB device listed by the desktop host layer (sdrcore_host.h).

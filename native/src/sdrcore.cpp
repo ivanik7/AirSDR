@@ -9,6 +9,7 @@
 #include "usb_adapter.h"
 #include "usb_hackrf_adapter.h"
 #include "usb_rtlsdr_adapter.h"
+#include "rtl_tcp_adapter.h"
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
@@ -242,7 +243,7 @@ struct SdrHandle {
   size_t stale_bytes = 0;
   uint64_t lo_retunes = 0;
   int fd = -1;  // exclusively owned duplicate; Java/FFI retains original
-  std::unique_ptr<UsbRxAdapter> usb_adapter;  // set only for SDR_RTLSDR/HACKRF
+  std::unique_ptr<UsbRxAdapter> usb_adapter;  // physical USB or network source
   bool owns_usb_claim = false;
   bool v3_active = false;
   bool v3_configured = false;
@@ -764,6 +765,35 @@ extern "C" int32_t sdr_v2_open_usb(SdrHandle* h, int32_t fd, uint32_t source) {
   });
 }
 
+extern "C" int32_t sdr_v3_open_rtl_tcp(SdrHandle* h, const char* host,
+                                         uint32_t host_bytes, uint16_t port) {
+  if (!h || !host || !port || !host_bytes || host_bytes > 255 ||
+      std::memchr(host, 0, host_bytes)) return SDR_INVALID_ARGUMENT;
+  try {
+    auto adapter = std::make_unique<RtlTcpAdapter>(std::string(host, host_bytes), port);
+    std::lock_guard<std::mutex> lock(h->mutex);
+    if (h->stats.state != SDR_IDLE) return SDR_INVALID_STATE;
+    h->usb_adapter = std::move(adapter);
+    h->stats = SdrStats{};
+    h->stats.size = sizeof(SdrStats);
+    h->stats.revision = 2;
+    h->stats.source = SDR_RTL_TCP;
+    h->stats.state = SDR_OPEN;
+    h->stats.checksum = kFnvOffset;
+    h->reset_v3_open();
+    return SDR_OK;
+  } catch (...) { return SDR_INTERNAL_ERROR; }
+}
+
+extern "C" int32_t sdr_v3_rtl_tcp_link(SdrHandle* h) {
+  if (!h) return SDR_INVALID_ARGUMENT;
+  std::lock_guard<std::mutex> lock(h->mutex);
+  if (h->stats.source != SDR_RTL_TCP ||
+      (h->stats.state != SDR_OPEN && h->stats.state != SDR_RUNNING))
+    return SDR_INVALID_STATE;
+  return static_cast<RtlTcpAdapter*>(h->usb_adapter.get())->connected() ? 1 : 0;
+}
+
 extern "C" int32_t sdr_v2_configure(SdrHandle* h, uint64_t frequency,
                                       uint32_t rate, int32_t gain) {
   if (!h || !valid_rate(rate) || frequency > 7250000000ULL ||
@@ -787,7 +817,8 @@ extern "C" int32_t sdr_v2_start(SdrHandle* h) {
   if (!h) return SDR_INVALID_ARGUMENT;
   {
     std::lock_guard<std::mutex> lock(h->mutex);
-    if (h->stats.state != SDR_OPEN || h->v3_active) return SDR_INVALID_STATE;
+    if (h->stats.state != SDR_OPEN || h->v3_active ||
+        h->stats.source == SDR_RTL_TCP) return SDR_INVALID_STATE;
     if (h->usb_adapter && h->stats.sample_rate == 0) return SDR_INVALID_STATE;
     h->head = h->tail = h->queued = 0;
     h->stale_bytes = 0;
@@ -864,7 +895,12 @@ extern "C" int32_t sdr_v3_set_controls(SdrHandle* h, const SdrV3Controls* in) {
     std::lock_guard<std::mutex> lock(h->mutex);
     if (h->stats.state != SDR_OPEN && h->stats.state != SDR_RUNNING) return SDR_INVALID_STATE;
     if (h->stats.state == SDR_RUNNING && !h->v3_active) return SDR_INVALID_STATE;
-    if (h->stats.source == SDR_RTLSDR && in->center_frequency_hz > UINT32_MAX)
+    if ((h->stats.source == SDR_RTLSDR || h->stats.source == SDR_RTL_TCP) &&
+        in->center_frequency_hz > UINT32_MAX)
+      return SDR_UNSUPPORTED;
+    if (h->stats.source == SDR_RTL_TCP &&
+        !((in->sample_rate >= 225001 && in->sample_rate <= 300000) ||
+          (in->sample_rate >= 900001 && in->sample_rate <= 3200000)))
       return SDR_UNSUPPORTED;
     if (h->decoder && h->decoder_input == sdrcore::decoder::Input::baseband &&
         (in->sample_rate < 200000 ||
@@ -1062,6 +1098,8 @@ extern "C" int32_t sdr_v3_start(SdrHandle* h) {
   {
     std::lock_guard<std::mutex> lock(h->mutex);
     if (h->stats.state != SDR_OPEN || !h->v3_configured) return SDR_INVALID_STATE;
+    if (h->stats.source == SDR_RTL_TCP)
+      static_cast<RtlTcpAdapter*>(h->usb_adapter.get())->prepare_start();
   }
   try {
     sdrcore::AudioSinkSpec parsed;

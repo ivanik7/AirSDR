@@ -197,3 +197,15 @@ The exact unified diffs applied are kept in `patches/` for audit/reproduction.
 - Desktop playback only (`native/src/audio/miniaudio_sink.cpp`): CoreAudio on
   macOS, WASAPI on Windows, PulseAudio/ALSA (dlopen'ed) or the null backend on
   Linux. Compiled with hidden visibility; not part of Android builds.
+
+## SDR++ rtl_tcp client — `sdrpp_rtl_tcp/`
+
+- Upstream: https://github.com/AlexandreRouma/SDRPlusPlus, commit
+  `8c9f5ee8fe405775bfcd62c8c8f8c0fc928a64af`,
+  `source_modules/rtl_tcp_source/src/rtl_tcp_client.{h,cpp}` and `main.cpp`.
+- License: **GPL-3.0**, compatible with this GPL-3.0-or-later app.
+- `upstream/` holds the reference client's source (formatting condensed);
+  `rtl_tcp_source/src/` builds the dependency-substituted port. The client
+  retains its opcode set, big-endian command packing and u8-IQ conversion.
+  See `sdrpp_rtl_tcp/PATCHES.md` for dependency substitutions, server-version
+  limitations and the original-vs-port command/IQ oracle.

@@ -17,10 +17,53 @@ import 'sdr_core.dart';
 import 'usb_device_catalog.dart';
 
 final class NativeDevice {
-  const NativeDevice(this.info, this.source, {this.bus, this.address, this.fd});
+  const NativeDevice(
+    this.info,
+    this.source, {
+    this.bus,
+    this.address,
+    this.fd,
+    this.host,
+    this.port,
+  });
   final SdrDeviceInfo info;
   final int source;
-  final int? bus, address, fd;
+  final int? bus, address, fd, port;
+
+  /// Non-null only for a network (rtl_tcp) device; see [isNetwork].
+  final String? host;
+
+  /// True for a network (rtl_tcp) device, selected via
+  /// [NativeRadioController.selectNetworkSource] rather than USB discovery.
+  bool get isNetwork => host != null;
+
+  /// Builds the network device info for `sdr_v3_open_rtl_tcp`. Sample rates
+  /// and gain range mirror the USB RTL-SDR table (ABI v3 has no
+  /// device-specific AGC; `hasAgc` is always false). The frequency range
+  /// matches the USB RTL-SDR range, clamped to the 32-bit center-frequency
+  /// limit accepted by `sdr_v3_open_rtl_tcp`/`sdr_v3_set_controls`.
+  factory NativeDevice.rtlTcp(String host, int port) {
+    final (lo, hi) = usbSdrFrequencyRange(UsbSdrKind.rtlSdr);
+    const maxCenterHz = 4294967295.0; // 2^32 - 1
+    final maxFrequency = hi > maxCenterHz ? maxCenterHz : hi;
+    final displayHost = host.contains(':') && !host.startsWith('[')
+        ? '[$host]'
+        : host;
+    return NativeDevice(
+      SdrDeviceInfo(
+        id: 'rtltcp:$host:$port',
+        name: 'rtl_tcp $displayHost:$port',
+        sampleRates: rtlSdrSampleRates,
+        gain: usbSdrGainRange(UsbSdrKind.rtlSdr),
+        hasAgc: false,
+        minFrequency: lo,
+        maxFrequency: maxFrequency,
+      ),
+      SdrSourceId.rtlTcp,
+      host: host,
+      port: port,
+    );
+  }
 }
 
 /// Provides the exclusive borrowed USB fd (Android), host address (desktop),
@@ -150,6 +193,7 @@ class NativeRadioController extends RadioController {
   bool _disposed = false, _running = false, _userStopped = false;
   String? _failedId;
   DeviceLinkState _link = DeviceLinkState.waiting;
+  bool _networkLinkEstablished = false;
   String? _lastError;
   List<NativeDevice> _known = [];
   NativeDevice? _selected, _opened;
@@ -245,10 +289,30 @@ class NativeRadioController extends RadioController {
     _notify();
   }
 
+  /// Readable mapping for the rtl_tcp-specific native error codes (see
+  /// native/include/sdrcore_v3.h); falls back to the generic message for
+  /// anything else.
+  static String _networkErrorMessage(int code) => switch (code) {
+    SdrResult.tcpTimeout => 'rtl_tcp connection timed out',
+    SdrResult.tcpRefused => 'rtl_tcp connection refused',
+    SdrResult.tcpProtocol => 'rtl_tcp server sent an invalid header',
+    SdrResult.deviceGone => 'rtl_tcp server disconnected',
+    _ => 'Native error $code',
+  };
+
   @override
   List<SdrDeviceInfo> get devices => [for (final d in _known) d.info];
   @override
   SdrDeviceInfo? get selectedDevice => _selected?.info;
+
+  /// The selected network (rtl_tcp) device, or null when a USB device (or
+  /// nothing) is selected.
+  NativeDevice? get networkSource => _selected?.isNetwork == true
+      ? _selected
+      : null;
+
+  /// True while a network (rtl_tcp) source is the active selection.
+  bool get networkSelected => networkSource != null;
   @override
   Future<void> refreshDevices() => _queue(() async {
     List<NativeDevice> devices;
@@ -262,20 +326,26 @@ class NativeRadioController extends RadioController {
     final next = devices.map((e) => e.info.id).toSet();
     final added = next.difference(old).isNotEmpty;
     _known = devices;
-    if (_opened != null && !next.contains(_opened!.info.id)) {
+    final networkSelected = _selected?.isNetwork == true;
+    if (_opened != null && !_opened!.isNetwork && !next.contains(_opened!.info.id)) {
       await _release();
       _failure('Device disconnected', disconnected: true);
     }
-    if (_selected != null && !next.contains(_selected!.info.id)) {
+    if (!networkSelected && _selected != null && !next.contains(_selected!.info.id)) {
       _selected = null;
     }
-    _selected ??= _known.firstOrNull;
+    if (!networkSelected) _selected ??= _known.firstOrNull;
     if (added) {
       _userStopped = false;
       _failedId = null;
     }
     if (_selected == null && _link == DeviceLinkState.waiting) _notify();
     _notify();
+    if (networkSelected) {
+      // Deliberate network selection never auto-starts and USB hotplug must
+      // never steal it; the user explicitly starts/retries a network device.
+      return;
+    }
     if (autoStart &&
         !_userStopped &&
         !_running &&
@@ -300,6 +370,50 @@ class NativeRadioController extends RadioController {
     _failedId = null;
     _notify();
   });
+
+  /// Selects a network (rtl_tcp) source. Validates synchronously (before
+  /// queueing) so a bad host/port throws immediately rather than silently
+  /// failing later. Releases any open handle (same policy as [selectDevice]:
+  /// selection is only meaningful while not running, so a running session is
+  /// stopped first) and does NOT auto-start; the caller must call [start] or
+  /// [retryDevice] to connect.
+  Future<void> selectNetworkSource(String host, int port) {
+    if (host.isEmpty) {
+      throw ArgumentError.value(host, 'host', 'Host must not be empty');
+    }
+    if (port < 1 || port > 65535) {
+      throw ArgumentError.value(port, 'port', 'Port must be 1..65535');
+    }
+    return _queue(() async {
+      await _release();
+      final device = NativeDevice.rtlTcp(host, port);
+      _selected = device;
+      if (!device.info.sampleRates.contains(_rate)) {
+        _rate = device.info.sampleRates.contains(2400000)
+            ? 2400000
+            : (device.info.sampleRates.firstOrNull ?? _rate);
+      }
+      _gain = _gain
+          .clamp(device.info.gain.min, device.info.gain.max)
+          .toDouble();
+      _agc = false;
+      _failedId = null;
+      _link = DeviceLinkState.idle;
+      _networkLinkEstablished = false;
+      _notify();
+    });
+  }
+
+  /// Clears a network selection and lets USB discovery pick a device again
+  /// (normal autostart logic then applies on the next [refreshDevices]).
+  Future<void> selectUsbSource() => _queue(() async {
+    if (_selected?.isNetwork != true) return;
+    await _release();
+    _selected = _known.firstOrNull;
+    _failedId = null;
+    _notify();
+  });
+
   @override
   Future<void> retryDevice() => start();
   @override
@@ -307,7 +421,15 @@ class NativeRadioController extends RadioController {
   @override
   String? get lastError => _lastError;
   @override
-  DeviceLinkState get linkState => _running ? DeviceLinkState.receiving : _link;
+  DeviceLinkState get linkState {
+    if (_running) {
+      if (_opened?.isNetwork == true && !_networkLinkEstablished) {
+        return DeviceLinkState.connecting;
+      }
+      return DeviceLinkState.receiving;
+    }
+    return _link;
+  }
   @override
   Future<void> start() => _queue(() async {
     _userStopped = false;
@@ -326,17 +448,24 @@ class NativeRadioController extends RadioController {
     final gainBeforeStart = _gain;
     var gainMigrationCommitted = false;
     _link = DeviceLinkState.connecting;
+    _networkLinkEstablished = false;
     _notify();
     try {
       // Cold start centers the single VFO, preserving the tuned frequency.
       _center += _offset;
       _offset = 0;
-      final opened = await source.open(selected);
+      // NativeDeviceSource is USB-only: a network device is never opened
+      // through it, it opens directly via sdr_v3_open_rtl_tcp below.
+      final opened = selected.isNetwork
+          ? selected
+          : await source.open(selected);
       _opened = opened;
       if (_disposed || _userStopped) throw StateError('Native start cancelled');
       final h = api.create();
       _handle = h;
-      if (opened.fd != null) {
+      if (opened.isNetwork) {
+        api.openRtlTcp(h, opened.host!, opened.port!);
+      } else if (opened.fd != null) {
         api.openUsb(h, opened.fd!, opened.source);
       } else if (opened.bus != null && opened.address != null) {
         api.openHostUsb(h, opened.bus!, opened.address!, opened.source);
@@ -346,7 +475,7 @@ class NativeRadioController extends RadioController {
       double? resolvedGain;
       final index = _legacyRtlGainIndex;
       final oldName = _legacyRtlDeviceName;
-      if (index != null && oldName != null) {
+      if (!opened.isNetwork && index != null && oldName != null) {
         // The old config is per dongle. Never apply its tuner index to an
         // unidentifiable or different RTL (nor reinterpret it as dB).
         final oldSerial = RegExp(r'\[([^\[\]]+)\]$')
@@ -401,6 +530,8 @@ class NativeRadioController extends RadioController {
       _lastErrorSequence = s.errorSequence;
       _lastRow = 0;
       _running = true;
+      // A network session is running but not necessarily linked yet; honest
+      // link state requires polling sdr_v3_rtl_tcp_link (see _pollSnapshot).
       _link = DeviceLinkState.receiving;
       _lastError = null;
       _failedId = null;
@@ -414,6 +545,7 @@ class NativeRadioController extends RadioController {
       _failure('Native start failed: $e');
     }
   }
+
 
   @override
   Future<void> stop() {
@@ -453,7 +585,9 @@ class NativeRadioController extends RadioController {
     }
     final opened = _opened;
     _opened = null;
-    if (opened != null) await source.close(opened);
+    // NativeDeviceSource is USB-only: a network device was never opened
+    // through it, so it must not be "closed" through it either.
+    if (opened != null && !opened.isNetwork) await source.close(opened);
     if (h != null) await afterStop?.call();
   }
 
@@ -468,27 +602,46 @@ class NativeRadioController extends RadioController {
     // Never queue every missed tick; this synchronous read cannot build backlog.
     final h = _handle;
     if (!_running || h == null) return;
+    final isNetwork = _opened?.isNetwork == true;
     try {
       final s = api.snapshot(h);
       if (s.errorSequence != _lastErrorSequence && s.lastError != 0) {
         _lastErrorSequence = s.errorSequence;
-        _lastError = 'Native error ${s.lastError}';
+        _lastError = isNetwork
+            ? _networkErrorMessage(s.lastError)
+            : 'Native error ${s.lastError}';
       }
       if (s.state == SdrState.error) {
+        // rtl_tcp disconnection after a successful link is reported as
+        // SDR_DEVICE_GONE too (see sdrcore_v3.h); treat it the same way as
+        // a USB unplug: disconnected link state, no automatic reconnect.
         final lost = s.lastError == SdrResult.deviceGone;
         _running = false;
         _failedId = _selected?.info.id;
         _snapshotTimer?.cancel();
         _fftTimer?.cancel();
+        final message = isNetwork
+            ? _networkErrorMessage(s.lastError)
+            : 'Native error ${s.lastError}';
         unawaited(
           _queue(() async {
             await _release();
-            _failure('Native error ${s.lastError}', disconnected: lost);
+            _failure(message, disconnected: lost);
           }),
         );
         return;
       }
       if (s.state != SdrState.running) return;
+      if (isNetwork && !_networkLinkEstablished) {
+        try {
+          if (api.rtlTcpLink(h) == 1) {
+            _networkLinkEstablished = true;
+          }
+        } catch (_) {
+          // Keep reporting connecting; the next snapshot/error tick will
+          // surface a definitive state.
+        }
+      }
       if (s.generation != _generation ||
           s.controlSequence != _controlSequence) {
         // Only a successful serialized control command may advance our
@@ -531,6 +684,8 @@ class NativeRadioController extends RadioController {
         'audioNonsilentFrames': s.audioNonsilentFrames,
         'fftOverwrites': s.fftOverwrites,
         'lastNativeError': s.lastError,
+        if (isNetwork)
+          'rtlTcpLink': _networkLinkEstablished ? 'linked' : 'connecting',
         if (_gainMigrationWarning != null)
           'gainMigration': _gainMigrationWarning,
       };

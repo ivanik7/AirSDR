@@ -98,6 +98,17 @@ abstract interface class NativeRadioApi {
   void openUsb(Pointer<SdrHandle> handle, int fd, int source);
   void openHostUsb(Pointer<SdrHandle> handle, int bus, int address, int source);
 
+  /// `sdr_v3_open_rtl_tcp`: IDLE->OPEN without network I/O. [host] is 1..255
+  /// UTF-8 bytes (no NUL), [port] is 1..65535. Connect and RTL0 header
+  /// validation happen asynchronously after `start`; failures surface later
+  /// in the snapshot's `lastError` (SdrResult.tcpTimeout/tcpRefused/tcpProtocol).
+  void openRtlTcp(Pointer<SdrHandle> handle, String host, int port);
+
+  /// `sdr_v3_rtl_tcp_link`: 0 = connecting/not linked, 1 = header validated
+  /// and IQ streaming. Throws [SdrCoreError] for a negative SdrResult (wrong
+  /// handle/state).
+  int rtlTcpLink(Pointer<SdrHandle> handle);
+
   /// Sorted RTL tuner gains in tenths of dB; requires an open RTL handle.
   List<int> rtlTunerGains(Pointer<SdrHandle> handle);
   List<SdrHostUsbDevice> hostDevices();
@@ -301,6 +312,8 @@ final class FfiNativeRadioApi implements NativeRadioApi {
       'sdr_v3_snapshot',
       'sdr_v3_read_fft',
       'sdr_v3_rtl_tuner_gains',
+      'sdr_v3_open_rtl_tcp',
+      'sdr_v3_rtl_tcp_link',
       if (!Platform.isAndroid) ...[
         'sdr_host_usb_list',
         if (_directHostUsb) 'sdr_host_open_usb_direct' else 'sdr_host_open_usb',
@@ -359,6 +372,16 @@ final class FfiNativeRadioApi implements NativeRadioApi {
         Int32 Function(Pointer<_HostDevice>, Uint32, Pointer<Uint32>),
         int Function(Pointer<_HostDevice>, int, Pointer<Uint32>)
       >('sdr_host_usb_list');
+  late final _openRtlTcp = _lib
+      .lookupFunction<
+        Int32 Function(Pointer<SdrHandle>, Pointer<Uint8>, Uint32, Uint16),
+        int Function(Pointer<SdrHandle>, Pointer<Uint8>, int, int)
+      >('sdr_v3_open_rtl_tcp');
+  late final _rtlTcpLink = _lib
+      .lookupFunction<
+        Int32 Function(Pointer<SdrHandle>),
+        int Function(Pointer<SdrHandle>)
+      >('sdr_v3_rtl_tcp_link');
   late final _rtlGains = _lib
       .lookupFunction<
         Int32 Function(
@@ -449,6 +472,30 @@ final class FfiNativeRadioApi implements NativeRadioApi {
   @override
   void openHostUsb(Pointer<SdrHandle> h, int bus, int address, int source) =>
       _check(_hostOpen(h, bus, address, source));
+  @override
+  void openRtlTcp(Pointer<SdrHandle> h, String host, int port) {
+    final bytes = utf8.encode(host);
+    if (bytes.isEmpty || bytes.length > 255 || bytes.contains(0)) {
+      throw ArgumentError.value(host, 'host', 'Invalid rtl_tcp host');
+    }
+    if (port < 1 || port > 65535) {
+      throw ArgumentError.value(port, 'port', 'Invalid rtl_tcp port');
+    }
+    final p = calloc<Uint8>(bytes.length);
+    try {
+      p.asTypedList(bytes.length).setAll(0, bytes);
+      _check(_openRtlTcp(h, p, bytes.length, port));
+    } finally {
+      calloc.free(p);
+    }
+  }
+
+  @override
+  int rtlTcpLink(Pointer<SdrHandle> h) {
+    final code = _rtlTcpLink(h);
+    if (code < 0) throw SdrCoreError(code);
+    return code;
+  }
   @override
   List<int> rtlTunerGains(Pointer<SdrHandle> h) {
     final count = calloc<Uint32>();

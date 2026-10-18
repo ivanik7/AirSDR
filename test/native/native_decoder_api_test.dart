@@ -48,6 +48,8 @@ void main() {
       'rtl_433',
       'adsb',
       'meshtastic',
+      'meshcore',
+      'dmr',
     ]);
     expect(descriptors[1].available, isTrue);
     expect(descriptors[1].input, 3);
