@@ -61,14 +61,16 @@ Never present a stub as finished. Label anything not tested as unverified.
 
 ## Git
 - Each task uses its own worktree `.worktrees/<name>` on branch `feat/<name>`. Commit regularly.
-- Never commit directly on `master` (no `git commit`, `git commit --amend`, `git cherry-pick`, or `git revert` while `master` is checked out). All work is committed on the task branch; `master` changes only by merging a finished `feat/<name>` branch as described below.
+- Never commit directly on `master` (no `git commit`, `git commit --amend`, `git cherry-pick`, or `git revert` while `master` is checked out). All work is committed on a task branch. Changes reach GitHub `master` only through a pull request; never merge locally and push `master` around a PR.
 - Feature branch names:
   - Format: `feat/<name>`, where `<name>` is lowercase ASCII kebab-case (`a-z`, `0-9`, `-`), 2–5 words, at most 40 characters.
   - Describe the change, not the agent or the date: `feat/rds-ps-decoder`, `feat/usb-reattach-fix`, `feat/docs-cleanup`. Avoid vague names such as `feat/fix`, `feat/tmp`, `feat/test`, `feat/claude-1`.
   - The worktree directory matches the branch suffix: branch `feat/<name>` lives in `.worktrees/<name>`.
   - One branch per task; do not reuse the name of an existing or already merged branch (add a distinguishing word instead).
-- When done: run gates in the worktree, merge `feat/<name>` into `master` only when the main checkout is clean, then rerun `flutter analyze && flutter test` on master and build the APK as applicable.
-- After every merge into `master` that passes those gates, run `git push origin master` (GitHub `ivanik7/AirSDR`). Fast-forward only: never force-push, never push `feat/*` branches. If the push is rejected, `git pull --ff-only` is not possible, or auth fails, report it in the task result instead of rewriting history.
-- In the final report, list changes, exact commands/results, master commit, verified behavior, and remaining gaps. If the user must decide or act, ask a precise question.
+- For every change destined for `master`, push the task branch and open a pull request against GitHub `ivanik7/AirSDR` before merging. Never bypass the PR by merging into local `master` and pushing it, even for smaller fixes. Do not force-push `master`.
+- For a large feature, the PR must deliver the **entire feature**, not a series of partial feature PRs. For example, a decoder PR includes its user interface, native implementation and integration, tests, and relevant documentation. Subagents may work on separate branches/worktrees, but integrate their work into the feature branch and open one complete PR.
+- If the task comes from a GitHub issue, use exactly one PR for that issue. Link the issue in the PR. If the issue is too large or poorly scoped for one complete PR, tell the user before implementation and propose splitting the issue; do not silently create multiple PRs for it.
+- Run the applicable quality gates on the feature branch, review the complete diff, and open the PR. Merge only after the feature is complete and checks pass. After merging through GitHub, verify the PR's merged state and update the local `master` with a fast-forward pull only if the main checkout is clean; do not overwrite unrelated local changes.
+- In the final report, list changes, exact commands/results, the PR URL and status, verified behavior, and remaining gaps. If the user must decide or act, ask a precise question.
 - Versions and releases: `version:` in `pubspec.yaml` is the only hand-written version; cut releases with `tool/release.sh X.Y.Z` (`docs/releasing.md`).
 - Put long reports in `docs/status/*.md`, not in chat. New report files must be in English.
