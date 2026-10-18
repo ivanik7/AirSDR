@@ -5,10 +5,12 @@
 // native_radio_controller_test.dart.
 import 'dart:async';
 import 'dart:ffi';
+import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sdr_flutter/native/native_radio_api.dart';
 import 'package:sdr_flutter/native/native_radio_controller.dart';
+import 'package:sdr_flutter/native/native_radio_settings.dart';
 import 'package:sdr_flutter/native/sdr_core.dart';
 import 'package:sdr_flutter/ui/radio_controller.dart';
 
@@ -243,6 +245,39 @@ void main() {
     expect(d.isNetwork, isTrue);
   });
 
+  test('saved network stays selected offline across restart and USB hotplug', () async {
+    final dir = Directory.systemTemp.createTempSync('rtltcp_persist_');
+    try {
+      final first = NativeRadioController(
+        api: api, source: source, autoStart: true, configDir: dir.path,
+        discoveryInterval: const Duration(seconds: 30),
+      );
+      radio = first;
+      await first.selectNetworkSource('localhost', 4567);
+      await first.stop();
+      first.dispose();
+      radio = null;
+      final second = NativeRadioController(
+        api: api, source: source, autoStart: true, configDir: dir.path,
+        discoveryInterval: const Duration(seconds: 30),
+      );
+      radio = second;
+      source.devices = [usbDevice];
+      await second.refreshDevices();
+      expect(second.networkSelected, isTrue);
+      expect(second.networkSource?.host, 'localhost');
+      expect(second.networkSource?.port, 4567);
+      expect(api.calls, isNot(contains('start')));
+      await second.selectUsbSource();
+      second.dispose();
+      radio = null;
+      expect(loadNativeRadioSettings(dir.path).networkSelected, isFalse);
+      expect(loadNativeRadioSettings(dir.path).networkHost, 'localhost');
+    } finally {
+      dir.deleteSync(recursive: true);
+    }
+  });
+
   test('NativeDevice.rtlTcp brackets an IPv6 host in the display name', () {
     final d = NativeDevice.rtlTcp('::1', 1234);
     expect(d.info.name, 'rtl_tcp [::1]:1234');
@@ -447,5 +482,17 @@ void main() {
     expect(r.sampleRate, before);
     r.setSampleRate(1920000); // in the rtl_tcp list
     expect(r.sampleRate, 1920000);
+  });
+
+  test('250 kS/s clamps WFM bandwidth to native Nyquist limit', () async {
+    final r = create(autoStart: false);
+    await r.selectNetworkSource('localhost', 1234);
+    r.setSampleRate(250000);
+    expect(r.bandwidth, lessThanOrEqualTo(125000));
+    r.setBandwidth(150000);
+    expect(r.bandwidth, lessThanOrEqualTo(125000));
+    r.setMode(DemodMode.am);
+    r.setMode(DemodMode.wfm);
+    expect(r.bandwidth, lessThanOrEqualTo(125000));
   });
 }

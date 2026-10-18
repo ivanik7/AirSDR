@@ -59,6 +59,9 @@ class NativeRadioSettings {
     required this.squelchLevelDb,
     required this.autoOffsetDb,
     this.stereo = false,
+    this.networkSelected = false,
+    this.networkHost = '127.0.0.1',
+    this.networkPort = 1234,
     this.legacyRtlGainIndex,
     this.legacyRtlDeviceName,
   });
@@ -97,6 +100,12 @@ class NativeRadioSettings {
   /// on every open.
   final bool stereo;
 
+  /// The transport choice is independent of USB enumeration. Keep the last
+  /// endpoint even when switching back to USB, including across restarts.
+  final bool networkSelected;
+  final String networkHost;
+  final int networkPort;
+
   /// Pending tuner-table index, retained until the same RTL device opens.
   final int? legacyRtlGainIndex;
   final String? legacyRtlDeviceName;
@@ -113,6 +122,9 @@ class NativeRadioSettings {
     double? squelchLevelDb,
     double? autoOffsetDb,
     bool? stereo,
+    bool? networkSelected,
+    String? networkHost,
+    int? networkPort,
     int? legacyRtlGainIndex,
     String? legacyRtlDeviceName,
   }) => NativeRadioSettings(
@@ -125,6 +137,9 @@ class NativeRadioSettings {
     squelchLevelDb: squelchLevelDb ?? this.squelchLevelDb,
     autoOffsetDb: autoOffsetDb ?? this.autoOffsetDb,
     stereo: stereo ?? this.stereo,
+    networkSelected: networkSelected ?? this.networkSelected,
+    networkHost: networkHost ?? this.networkHost,
+    networkPort: networkPort ?? this.networkPort,
     legacyRtlGainIndex: legacyRtlGainIndex ?? this.legacyRtlGainIndex,
     legacyRtlDeviceName: legacyRtlDeviceName ?? this.legacyRtlDeviceName,
   );
@@ -142,6 +157,9 @@ class NativeRadioSettings {
     'squelchLevelDb': squelchLevelDb,
     'autoOffsetDb': autoOffsetDb,
     'stereo': stereo,
+    'networkSelected': networkSelected,
+    'networkHost': networkHost,
+    'networkPort': networkPort,
     if (legacyRtlGainIndex != null) 'legacyRtlGainIndex': legacyRtlGainIndex,
     if (legacyRtlDeviceName != null) 'legacyRtlDeviceName': legacyRtlDeviceName,
   };
@@ -209,6 +227,25 @@ class NativeRadioSettings {
 
     final stereoRaw = data['stereo'];
     final stereo = stereoRaw is bool ? stereoRaw : defaults.stereo;
+    final hostRaw = data['networkHost'];
+    final host =
+        hostRaw is String &&
+            hostRaw.trim().isNotEmpty &&
+            utf8.encode(hostRaw.trim()).length <= 255
+        ? hostRaw.trim()
+        : defaults.networkHost;
+    final portRaw = data['networkPort'];
+    final port = portRaw is int && portRaw >= 1 && portRaw <= 65535
+        ? portRaw
+        : defaults.networkPort;
+    final networkSelected =
+        data['networkSelected'] == true &&
+        hostRaw is String &&
+        hostRaw.trim().isNotEmpty &&
+        utf8.encode(hostRaw.trim()).length <= 255 &&
+        portRaw is int &&
+        portRaw >= 1 &&
+        portRaw <= 65535;
 
     return NativeRadioSettings(
       tunedFrequencyHz: tuned,
@@ -220,6 +257,9 @@ class NativeRadioSettings {
       squelchLevelDb: squelchLevel,
       autoOffsetDb: autoOffset,
       stereo: stereo,
+      networkSelected: networkSelected,
+      networkHost: host,
+      networkPort: port,
       legacyRtlGainIndex: data['legacyRtlGainIndex'] is int
           ? data['legacyRtlGainIndex'] as int
           : null,

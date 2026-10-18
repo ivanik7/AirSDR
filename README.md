@@ -77,8 +77,7 @@ a lot of patience. AirSDR keeps that power and adds **a UX you can use with one 
 | --- | --- |
 | **RTL-SDR** (RTL2832U, including RTL-SDR Blog V4) | ✅ Supported |
 | **HackRF One** | ✅ Receive |
-| **rtl_tcp** | TODO |
-| **rtl_tcp** | TODO |
+| **rtl_tcp** (network RTL-SDR) | ✅ Classic rtl_tcp v1; Settings → SDR CONNECTION |
 
 | Platform | Status |
 | --- | --- |
