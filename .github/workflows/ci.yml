@@ -503,7 +503,13 @@ jobs:
   # "nightly" pre-release. Both carry version-free file names
   # (tool/stable-asset-names.sh) so README links point at fixed files. The
   # macOS and Windows builds are still experimental: when they fail, the
-  # release goes out without them.
+  # release goes out without them. A platform whose job succeeded must
+  # provide all its files (BUILD_RESULTS), or publishing fails.
+  #
+  # download-artifact unpacks any artifact that is a zip, including the
+  # Windows app zip uploaded with archive: false, so that one is downloaded
+  # separately with skip-decompress; the APKs, the DMG and the Linux package
+  # containers keep the default extraction.
   release:
     name: GitHub release
     if: >-
@@ -523,16 +529,26 @@ jobs:
       - name: Check tag against pubspec.yaml
         run: tool/version.sh | grep -x RELEASE=true
 
-      # AirSDR-* skips the intermediate sdrcore.dll artifact.
+      # The AirSDR- prefix skips the intermediate sdrcore.dll artifact.
       - uses: actions/download-artifact@v8
         with:
-          pattern: AirSDR-*
+          pattern: "AirSDR-*-{android-*,linux-*,macos.dmg}"
           path: dist
           merge-multiple: true
+
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: AirSDR-*-windows-x86_64.zip
+          path: dist
+          merge-multiple: true
+          skip-decompress: true
 
       - name: Create release
         env:
           GH_TOKEN: ${{ github.token }}
+          BUILD_RESULTS: >-
+            android=${{ needs.android.result }} linux=${{ needs.linux.result }}
+            macos=${{ needs.macos.result }} windows=${{ needs.windows.result }}
         run: |
           assets="$(mktemp -d "$RUNNER_TEMP/airsdr-release.XXXXXX")"
           tool/stable-asset-names.sh dist "$assets"
@@ -562,9 +578,16 @@ jobs:
 
       - uses: actions/download-artifact@v8
         with:
-          pattern: AirSDR-*
+          pattern: "AirSDR-*-{android-*,linux-*,macos.dmg}"
           path: dist
           merge-multiple: true
+
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: AirSDR-*-windows-x86_64.zip
+          path: dist
+          merge-multiple: true
+          skip-decompress: true
 
       # Publish available packages even when another platform build failed.
       # Recreated on every push: deleting the release and its tag, then
@@ -574,6 +597,9 @@ jobs:
       - name: Replace nightly pre-release
         env:
           GH_TOKEN: ${{ github.token }}
+          BUILD_RESULTS: >-
+            android=${{ needs.android.result }} linux=${{ needs.linux.result }}
+            macos=${{ needs.macos.result }} windows=${{ needs.windows.result }}
         run: |
           assets="$(mktemp -d "$RUNNER_TEMP/airsdr-release.XXXXXX")"
           tool/stable-asset-names.sh dist "$assets"
