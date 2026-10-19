@@ -342,7 +342,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND PROJECT_IS_TOP_LEVEL)
     add_test(NAME sdrcore_rtl_tcp COMMAND sdrcore_rtl_tcp_test)
     add_executable(sdrcore_record_writer_test
         tests/record_writer_test.cpp src/record/recorder.cpp)
-    target_include_directories(sdrcore_record_writer_test PRIVATE include src)
+    target_include_directories(sdrcore_record_writer_test PRIVATE include src third_party)
     target_link_libraries(sdrcore_record_writer_test PRIVATE Threads::Threads)
     add_test(NAME sdrcore_record_writer COMMAND sdrcore_record_writer_test)
     add_executable(sdrcore_record_abi_test tests/record_abi_test.cpp)

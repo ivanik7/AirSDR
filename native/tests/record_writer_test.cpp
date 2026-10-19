@@ -9,6 +9,7 @@
 #include <string>
 #include <thread>
 #include <vector>
+#include <nlohmann/json.hpp>
 #ifndef _WIN32
 #include <fcntl.h>
 #include <unistd.h>
@@ -266,6 +267,49 @@ int main() {
     assert(r.stop(SDR_RECORD_STOP_USER) == SDR_OK);
     assert(r.status().segments_completed == 1);
     assert(r.status().bytes_written == 44 + 6 * 2);
+  }
+  {
+    Recorder r;
+    auto c = config(SDR_RECORD_DECODER_LOG);
+    assert(r.start(c, "file:" + dir.string(), "rds,sstv,meshtastic") == SDR_OK);
+    assert(r.stop(SDR_RECORD_STOP_USER) == SDR_OK);
+    assert(r.status().files_created == 0 && r.status().bytes_written == 0);
+    assert(r.status().log_events_written == 0 && r.status().stop_reason == SDR_RECORD_STOP_USER);
+    assert(r.start(c, "file:" + dir.string(), "rds,sstv,meshtastic") == SDR_OK);
+    const std::string rds = R"({"source":"rds","event":"state","fields":{"ps":"A\"B\nC"},"psk":"secret"})";
+    r.offer_log("rds", 1, 9, 102300000, rds);
+    const std::string image = R"({"source":"sstv","frame_id":"5","vis":44,"row":"AQID"})";
+    r.offer_log("sstv", 2, 9, 102300000, image);
+    const std::string mesh = R"({"mode":"Meshtastic","src":1234,"message":"private","channel":"secret","phy":{"snr":4.5},"length":16})";
+    r.offer_log("meshtastic", 1, 10, 103000000, mesh);
+    r.offer_log("adsb", 4, 10, 103000000, R"({"source":"adsb"})");
+    r.offer_log("sstv", 2, 10, 103000000, "not-json");
+    assert(r.stop(SDR_RECORD_STOP_USER) == SDR_OK);
+    auto s = r.status();
+    assert(s.log_events_written == 3 && s.log_dropped_events == 1);
+    assert(s.files_created == 3);
+    uint64_t sizes = 0;
+    for (const auto& path : files(dir, ".jsonl")) {
+      const auto content = slurp(path);
+      sizes += content.size();
+      assert(content.back() == '\n');
+      auto row = nlohmann::json::parse(content);
+      assert(row["timestamp_utc"].get<std::string>().back() == 'Z');
+      assert(row["stream_generation"] == (path.string().find("meshtastic") != std::string::npos ? 10 : 9));
+      if (path.string().find("rds") != std::string::npos) {
+        assert(row["payload"]["fields"]["ps"] == "A\"B\nC");
+        assert(!row["payload"].contains("psk"));
+      } else if (path.string().find("sstv") != std::string::npos) {
+        assert(row["payload"]["row"] == "AQID");
+      } else {
+        assert(row["payload"]["phy"]["snr"] == 4.5);
+        assert(row["payload"]["length"] == 16);
+        assert(!row["payload"].contains("message"));
+        assert(!row["payload"].contains("src"));
+        assert(content.find("private") == std::string::npos);
+      }
+    }
+    assert(s.bytes_written == sizes);
   }
   fs::remove_all(dir);
 }
