@@ -123,6 +123,7 @@ endif()
 
 add_library(sdrcore SHARED
     src/sdrcore.cpp
+    src/record/recorder.cpp
     src/dsp/receiver.cpp
     src/usb_rtlsdr_adapter.cpp
     src/usb_hackrf_adapter.cpp
@@ -339,6 +340,14 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND PROJECT_IS_TOP_LEVEL)
     add_executable(sdrcore_rtl_tcp_test tests/rtl_tcp_test.cpp)
     target_link_libraries(sdrcore_rtl_tcp_test PRIVATE sdrcore Threads::Threads)
     add_test(NAME sdrcore_rtl_tcp COMMAND sdrcore_rtl_tcp_test)
+    add_executable(sdrcore_record_writer_test
+        tests/record_writer_test.cpp src/record/recorder.cpp)
+    target_include_directories(sdrcore_record_writer_test PRIVATE include src)
+    target_link_libraries(sdrcore_record_writer_test PRIVATE Threads::Threads)
+    add_test(NAME sdrcore_record_writer COMMAND sdrcore_record_writer_test)
+    add_executable(sdrcore_record_abi_test tests/record_abi_test.cpp)
+    target_link_libraries(sdrcore_record_abi_test PRIVATE sdrcore Threads::Threads)
+    add_test(NAME sdrcore_record_abi COMMAND sdrcore_record_abi_test)
     add_executable(sdrcore_rtltcp_original_trace
         tests/rtltcp_original_trace.cpp
         third_party/sdrpp_rtl_tcp/upstream/rtl_tcp_client.cpp)
@@ -455,6 +464,11 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND PROJECT_IS_TOP_LEVEL)
     target_compile_features(sdrcore_wfm_stereo_dsp_test PRIVATE cxx_std_17)
     add_test(NAME sdrcore_wfm_stereo_dsp COMMAND sdrcore_wfm_stereo_dsp_test)
     target_link_libraries(sdrcore_wfm_stereo_dsp_test PRIVATE sdrcore_rds)
+    add_executable(sdrcore_record_dsp_test tests/record_dsp_test.cpp src/dsp/receiver.cpp)
+    target_include_directories(sdrcore_record_dsp_test PRIVATE include)
+    target_link_libraries(sdrcore_record_dsp_test PRIVATE sdrcore_rds)
+    target_compile_options(sdrcore_record_dsp_test PRIVATE -O2 -UNDEBUG)
+    add_test(NAME sdrcore_record_dsp COMMAND sdrcore_record_dsp_test)
     # DSP-only: audio stays continuous across VFO drags and LO retunes.
     add_executable(sdrcore_retune_audio_continuity_test
         tests/retune_audio_continuity_test.cpp
@@ -499,6 +513,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND PROJECT_IS_TOP_LEVEL)
         retune_switch_gap baseband_tap_abi decoder_voice_abi)
         if(TARGET sdrcore_${target}_test)
             target_sources(sdrcore_${target}_test PRIVATE
+                src/record/recorder.cpp
                 src/rtl_tcp_adapter.cpp
                 third_party/sdrpp_rtl_tcp/rtl_tcp_source/src/rtl_tcp_client.cpp)
             target_include_directories(sdrcore_${target}_test PRIVATE
