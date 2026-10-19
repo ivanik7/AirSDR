@@ -30,7 +30,8 @@ int main() {
   assert(sdr_record_version() == SDR_RECORD_REVISION);
   assert(sdr_record_capabilities(&streams, &formats) == SDR_OK);
   assert((streams & 7) == 7 && !(streams & SDR_RECORD_DECODER_LOG));
-  assert(formats == (1u << SDR_RECORD_WAV));
+  assert(formats == ((1u << SDR_RECORD_WAV) | (1u << SDR_RECORD_FLAC) |
+                     (1u << SDR_RECORD_MP3) | (1u << SDR_RECORD_OPUS)));
   auto dir = fs::temp_directory_path() / "airsdr-record-abi-test";
   fs::remove_all(dir); fs::create_directories(dir);
   auto folder = std::string("file:") + dir.string();
@@ -54,7 +55,16 @@ int main() {
   const std::string relative_folder = "file:relative";
   assert(sdr_record_start(h, &c, relative_folder.data(), relative_folder.size(), nullptr, 0) == SDR_INVALID_ARGUMENT);
   c.audio_format = SDR_RECORD_MP3;
-  assert(sdr_record_start(h, &c, folder.data(), folder.size(), nullptr, 0) == SDR_UNSUPPORTED);
+  assert(sdr_record_start(h, &c, folder.data(), folder.size(), nullptr, 0) == SDR_INVALID_ARGUMENT);
+  c.audio_bitrate_kbps = 123;
+  assert(sdr_record_start(h, &c, folder.data(), folder.size(), nullptr, 0) == SDR_INVALID_ARGUMENT);
+  c.audio_bitrate_kbps = 128;
+  fs::create_directory(dir / "codec");
+  const auto codec_folder = std::string("file:") + (dir / "codec").string();
+  assert(sdr_record_start(h, &c, codec_folder.data(), codec_folder.size(), nullptr, 0) == SDR_OK);
+  std::this_thread::sleep_for(std::chrono::milliseconds(70));
+  assert(sdr_record_stop(h) == SDR_OK);
+  c.audio_bitrate_kbps = 0;
   c.audio_format = SDR_RECORD_WAV;
   assert(sdr_record_start(h, &c, folder.data(), folder.size(), nullptr, 0) == SDR_OK);
   assert(sdr_record_start(h, &c, folder.data(), folder.size(), nullptr, 0) == SDR_INVALID_STATE);
@@ -71,6 +81,7 @@ int main() {
   bool data = false, meta = false, continuous = false, segment = false;
   uint64_t lengths = 0;
   for (const auto& entry : fs::directory_iterator(dir)) {
+    if (entry.is_directory()) continue;
     auto name = entry.path().filename().string();
     lengths += entry.file_size();
     if (name.find(".sigmf-data") != std::string::npos) {

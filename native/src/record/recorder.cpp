@@ -196,8 +196,20 @@ int32_t Recorder::start(const SdrRecordConfig& c, const std::string& folder,
                         const std::string& log_ids) {
   if (c.size != sizeof(c) || c.revision != SDR_RECORD_REVISION ||
       !c.streams || (c.streams & ~uint32_t(SDR_RECORD_IQ | SDR_RECORD_AUDIO | SDR_RECORD_SQUELCH_AUDIO)) ||
-      c.audio_format != ((c.streams & (SDR_RECORD_AUDIO | SDR_RECORD_SQUELCH_AUDIO)) ? SDR_RECORD_WAV : SDR_RECORD_FORMAT_NONE) ||
-      c.audio_bitrate_kbps || c.utc_offset_minutes < -840 || c.utc_offset_minutes > 840 ||
+      ((c.streams & (SDR_RECORD_AUDIO | SDR_RECORD_SQUELCH_AUDIO))
+           ? (c.audio_format < SDR_RECORD_WAV || c.audio_format > SDR_RECORD_OPUS)
+           : (c.audio_format != SDR_RECORD_FORMAT_NONE || c.audio_bitrate_kbps)) ||
+      ((c.audio_format == SDR_RECORD_WAV || c.audio_format == SDR_RECORD_FLAC) && c.audio_bitrate_kbps) ||
+      (c.audio_format == SDR_RECORD_MP3 &&
+       !(c.audio_bitrate_kbps == 32 || c.audio_bitrate_kbps == 40 ||
+         c.audio_bitrate_kbps == 48 || c.audio_bitrate_kbps == 56 ||
+         c.audio_bitrate_kbps == 64 || c.audio_bitrate_kbps == 80 ||
+         c.audio_bitrate_kbps == 96 || c.audio_bitrate_kbps == 112 ||
+         c.audio_bitrate_kbps == 128 || c.audio_bitrate_kbps == 160 ||
+         c.audio_bitrate_kbps == 192 || c.audio_bitrate_kbps == 224 ||
+         c.audio_bitrate_kbps == 256 || c.audio_bitrate_kbps == 320)) ||
+      (c.audio_format == SDR_RECORD_OPUS && (c.audio_bitrate_kbps < 6 || c.audio_bitrate_kbps > 256)) ||
+      c.utc_offset_minutes < -840 || c.utc_offset_minutes > 840 ||
       c.start_unix_ms <= 0 || !log_ids.empty()) return SDR_UNSUPPORTED;
   for (uint32_t n : c.reserved) if (n) return SDR_INVALID_ARGUMENT;
   if (folder.empty() || folder.size() > SDR_RECORD_MAX_FOLDER_BYTES ||
@@ -212,7 +224,7 @@ int32_t Recorder::start(const SdrRecordConfig& c, const std::string& folder,
   config_ = c; folder_ = folder; started_ = std::chrono::steady_clock::now();
   stopping_ = false; overflow_ = false; overflow_stream_ = 0;
   iq_queued_ = audio_queued_ = 0; queue_.clear();
-  segment_open_ = false; segment_number_ = 0;
+  segment_open_ = false; segment_initialized_ = false; segment_number_ = 0;
   try {
     worker_ = std::thread(&Recorder::run, this);
   } catch (...) {
@@ -277,7 +289,7 @@ void Recorder::offer_iq(const uint8_t* bytes, size_t size, uint32_t rate,
 }
 void Recorder::offer_audio(const float* pcm, size_t frames, uint32_t channels,
                            const std::vector<Edge>& edges, uint64_t frequency,
-                           const std::string& mode) {
+                           const std::string& mode, bool squelch_open) {
   if (!pcm || !frames || (channels != 1 && channels != 2) ||
       frames > SIZE_MAX / (channels * sizeof(float))) return;
   std::lock_guard<std::mutex> lock(mutex_);
@@ -292,6 +304,14 @@ void Recorder::offer_audio(const float* pcm, size_t frames, uint32_t channels,
   Item item{};
   item.kind = Kind::audio; item.pcm.assign(pcm, pcm + frames * channels);
   item.edges = edges; item.frames = frames; item.rate = 48000;
+  if (!segment_initialized_ && (status_.streams & SDR_RECORD_SQUELCH_AUDIO)) {
+    // A new recording can begin while the detector was already open. Its
+    // transition list then contains no opening edge in this session.
+    const bool initially_open = edges.empty() ? squelch_open :
+                                edges.front().frame_offset > 0 && !edges.front().open;
+    if (initially_open) item.edges.insert(item.edges.begin(), {0, true});
+    segment_initialized_ = true;
+  }
   item.channels = channels; item.frequency = frequency; item.mode = mode;
   item.captured_unix_ms = wall_ms();
   audio_queued_ += size; queue_.push_back(std::move(item)); cv_.notify_one();
@@ -316,11 +336,15 @@ int32_t Recorder::create(File& file, const std::string& name, const char* mime,
 bool Recorder::write(File& file, const void* bytes, size_t size, uint32_t stream) {
   auto p = static_cast<const uint8_t*>(bytes);
   while (size) {
+    const int64_t position = seek_fd(file.fd, 0, SEEK_CUR);
+    if (position < 0) { fail(error_code(errno), stream); return false; }
     int n = write_fd(file.fd, p, size);
     if (n < 0 && errno == EINTR) continue;
     if (n <= 0) { fail(n < 0 ? error_code(errno) : SDR_IO_ERROR, stream); return false; }
-    file.length += static_cast<size_t>(n);
-    { std::lock_guard<std::mutex> lock(mutex_); status_.bytes_written += static_cast<size_t>(n); }
+    const uint64_t end = static_cast<uint64_t>(position) + static_cast<size_t>(n);
+    const uint64_t growth = end > file.length ? end - file.length : 0;
+    file.length += growth;
+    { std::lock_guard<std::mutex> lock(mutex_); status_.bytes_written += growth; }
     p += n; size -= static_cast<size_t>(n);
   }
   return true;
@@ -397,21 +421,49 @@ void Recorder::close_iq() {
 }
 bool Recorder::open_audio(const Item& item, bool segment) {
   std::string base = stem(item.frequency, item.mode, segment);
+  const char* extension = ".wav";
+  const char* mime = "audio/wav";
+  if (config_.audio_format == SDR_RECORD_FLAC) { extension = ".flac"; mime = "audio/flac"; }
+  if (config_.audio_format == SDR_RECORD_MP3) { extension = ".mp3"; mime = "audio/mpeg"; }
+  if (config_.audio_format == SDR_RECORD_OPUS) { extension = ".opus"; mime = "audio/ogg"; }
   for (int suffix = 1; suffix <= 99; ++suffix) {
     std::string candidate = base + (suffix == 1 ? "" : "_" + std::to_string(suffix));
     File f;
-    int32_t result = create(f, candidate + ".wav", "audio/wav",
+    int32_t result = create(f, candidate + extension, mime,
                             segment ? SDR_RECORD_SQUELCH_AUDIO : SDR_RECORD_AUDIO);
     if (result == SDR_RECORD_EXISTS) continue;
     if (result != SDR_OK) return false;
-    f.stem = candidate; f.channels = item.channels; f.rate = 48000;
+    f.stem = candidate; f.channels = item.channels; f.rate = item.rate;
     f.frequency = item.frequency; f.mode = item.mode;
     audio_file_ = std::move(f);
-    auto header = wav_header(item.channels, 0);
-    if (!write(audio_file_, header.data(), header.size(),
-               segment ? SDR_RECORD_SQUELCH_AUDIO : SDR_RECORD_AUDIO)) return false;
+    if (config_.audio_format == SDR_RECORD_WAV) {
+      auto header = wav_header(item.channels, 0);
+      if (!write(audio_file_, header.data(), header.size(),
+                 segment ? SDR_RECORD_SQUELCH_AUDIO : SDR_RECORD_AUDIO)) return false;
+    } else {
+      const auto stream = segment ? SDR_RECORD_SQUELCH_AUDIO : SDR_RECORD_AUDIO;
+      audio_file_.encoder = std::make_unique<AudioEncoder>(config_.audio_format,
+          item.channels, config_.audio_bitrate_kbps,
+          [this, stream](const uint8_t* bytes, size_t n) {
+            return write(audio_file_, bytes, n, stream);
+          },
+          [this, stream](uint64_t position) {
+            if (position > static_cast<uint64_t>(INT64_MAX) ||
+                seek_fd(audio_file_.fd, static_cast<int64_t>(position), SEEK_SET) < 0) {
+              fail(SDR_RECORD_NOT_SEEKABLE, stream); return false;
+            }
+            return true;
+          },
+          [this, stream](uint64_t* position) {
+            const int64_t result = seek_fd(audio_file_.fd, 0, SEEK_CUR);
+            if (result < 0) { fail(SDR_RECORD_NOT_SEEKABLE, stream); return false; }
+            *position = static_cast<uint64_t>(result);
+            return true;
+          });
+      if (!audio_file_.encoder->begin()) { fail(SDR_IO_ERROR, stream); return false; }
+    }
     { std::lock_guard<std::mutex> lock(mutex_);
-      status_.audio_sample_rate = 48000; status_.audio_channels = item.channels;
+      status_.audio_sample_rate = item.rate; status_.audio_channels = item.channels;
       if (segment) status_.squelch_segment_open = 1;
     }
     return true;
@@ -421,9 +473,11 @@ bool Recorder::open_audio(const Item& item, bool segment) {
 }
 void Recorder::close_audio(bool segment) {
   if (audio_file_.fd < 0) return;
+  const uint32_t stream = segment ? SDR_RECORD_SQUELCH_AUDIO : SDR_RECORD_AUDIO;
+  if (audio_file_.encoder && !audio_file_.encoder->finish()) fail(SDR_IO_ERROR, stream);
   File f = std::move(audio_file_); audio_file_ = {};
-  if (seek_fd(f.fd, 0, SEEK_SET) < 0) fail(SDR_RECORD_NOT_SEEKABLE, segment ? SDR_RECORD_SQUELCH_AUDIO : SDR_RECORD_AUDIO);
-  else {
+  if (!f.encoder && seek_fd(f.fd, 0, SEEK_SET) < 0) fail(SDR_RECORD_NOT_SEEKABLE, stream);
+  else if (!f.encoder) {
     auto hdr = wav_header(f.channels, static_cast<uint32_t>(f.data));
     // Header rewrite does not change file length or bytes_written.
     size_t offset = 0;
@@ -453,23 +507,30 @@ void Recorder::write_audio(const Item& item, size_t first, size_t last, bool seg
   size_t pos = first;
   while (pos < last) {
     if (audio_file_.fd < 0 && !open_audio(item, segment)) return;
-    size_t count = std::min<uint64_t>(last - pos,
-        (kWavDataMax - audio_file_.data) / (2 * item.channels));
+    size_t count = config_.audio_format == SDR_RECORD_WAV
+        ? std::min<uint64_t>(last - pos, (kWavDataMax - audio_file_.data) / (2 * item.channels))
+        : std::min<size_t>(last - pos, 960);
     if (!count) {
       close_audio(segment);
       if (status().last_error) return;
       continue;
     }
-    std::vector<uint8_t> output(count * item.channels * 2);
-    for (size_t i = 0; i < count * item.channels; ++i) {
-      float v = item.pcm[(pos * item.channels) + i];
-      if (!std::isfinite(v)) v = 0;
-      int sample = static_cast<int>(std::lrint(std::clamp(v, -1.0f, 1.0f) * 32768.0f));
-      sample = std::clamp(sample, -32768, 32767);
-      put16(output.data() + i * 2, static_cast<uint16_t>(sample));
+    if (audio_file_.encoder) {
+      if (!audio_file_.encoder->append(item.pcm.data() + pos * item.channels, count)) {
+        fail(SDR_IO_ERROR, stream); return;
+      }
+    } else {
+      std::vector<uint8_t> output(count * item.channels * 2);
+      for (size_t i = 0; i < count * item.channels; ++i) {
+        float v = item.pcm[(pos * item.channels) + i];
+        if (!std::isfinite(v)) v = 0;
+        int sample = static_cast<int>(std::lrint(std::clamp(v, -1.0f, 1.0f) * 32768.0f));
+        sample = std::clamp(sample, -32768, 32767);
+        put16(output.data() + i * 2, static_cast<uint16_t>(sample));
+      }
+      if (!write(audio_file_, output.data(), output.size(), stream)) return;
+      audio_file_.data += output.size();
     }
-    if (!write(audio_file_, output.data(), output.size(), stream)) return;
-    audio_file_.data += output.size();
     if (!segment) {
       std::lock_guard<std::mutex> lock(mutex_);
       status_.audio_frames_written += count;

@@ -12,6 +12,7 @@ if(MSVC)
 endif()
 
 add_subdirectory(third_party)
+include(third_party/codecs.cmake)
 include(third_party/dmr_framing.cmake)
 include(third_party/rds.cmake)
 include(third_party/fftw.cmake)
@@ -124,6 +125,7 @@ endif()
 add_library(sdrcore SHARED
     src/sdrcore.cpp
     src/record/recorder.cpp
+    src/record/audio_encoder.cpp
     src/dsp/receiver.cpp
     src/usb_rtlsdr_adapter.cpp
     src/usb_hackrf_adapter.cpp
@@ -151,6 +153,7 @@ target_compile_features(sdrcore PRIVATE cxx_std_17)
 find_package(Threads REQUIRED)
 target_link_libraries(sdrcore PRIVATE Threads::Threads sdrcore_rtlsdr sdrcore_hackrf sdrcore_rtl433 sdrcore_rds sdrcore_meshtastic sdrcore_meshcore sdrcore_lorarx sdrcore_csdr_sstv sdrcore_dump1090 sdrcore_dmr_framing)
 target_link_libraries(sdrcore PRIVATE sdrcore_dmr_voice sdrcore_dmr_channel)
+target_link_libraries(sdrcore PRIVATE sdrcore_flac sdrcore_lame sdrcore_opus)
 if(NOT WIN32)
     target_link_libraries(sdrcore PRIVATE m)
 endif()
@@ -341,10 +344,19 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND PROJECT_IS_TOP_LEVEL)
     target_link_libraries(sdrcore_rtl_tcp_test PRIVATE sdrcore Threads::Threads)
     add_test(NAME sdrcore_rtl_tcp COMMAND sdrcore_rtl_tcp_test)
     add_executable(sdrcore_record_writer_test
-        tests/record_writer_test.cpp src/record/recorder.cpp)
+        tests/record_writer_test.cpp src/record/recorder.cpp src/record/audio_encoder.cpp)
     target_include_directories(sdrcore_record_writer_test PRIVATE include src)
-    target_link_libraries(sdrcore_record_writer_test PRIVATE Threads::Threads)
+    target_link_libraries(sdrcore_record_writer_test PRIVATE Threads::Threads sdrcore_flac sdrcore_lame sdrcore_opus)
     add_test(NAME sdrcore_record_writer COMMAND sdrcore_record_writer_test)
+    add_executable(sdrcore_record_codec_matrix_test
+        tests/record_codec_matrix.cpp src/record/recorder.cpp src/record/audio_encoder.cpp)
+    target_include_directories(sdrcore_record_codec_matrix_test PRIVATE include src)
+    target_link_libraries(sdrcore_record_codec_matrix_test PRIVATE
+        Threads::Threads sdrcore_flac sdrcore_lame sdrcore_opus)
+    find_package(Python3 COMPONENTS Interpreter REQUIRED)
+    add_test(NAME sdrcore_record_codec_matrix COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/record_codec_matrix.py
+        $<TARGET_FILE:sdrcore_record_codec_matrix_test>)
     add_executable(sdrcore_record_abi_test tests/record_abi_test.cpp)
     target_link_libraries(sdrcore_record_abi_test PRIVATE sdrcore Threads::Threads)
     add_test(NAME sdrcore_record_abi COMMAND sdrcore_record_abi_test)
@@ -514,10 +526,13 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND PROJECT_IS_TOP_LEVEL)
         if(TARGET sdrcore_${target}_test)
             target_sources(sdrcore_${target}_test PRIVATE
                 src/record/recorder.cpp
+                src/record/audio_encoder.cpp
                 src/rtl_tcp_adapter.cpp
                 third_party/sdrpp_rtl_tcp/rtl_tcp_source/src/rtl_tcp_client.cpp)
             target_include_directories(sdrcore_${target}_test PRIVATE
                 third_party/sdrpp_rtl_tcp/rtl_tcp_source/src)
+            target_link_libraries(sdrcore_${target}_test PRIVATE
+                sdrcore_flac sdrcore_lame sdrcore_opus)
         endif()
     endforeach()
 endif()

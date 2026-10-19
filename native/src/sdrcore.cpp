@@ -589,7 +589,8 @@ struct SdrHandle {
             edges.push_back({edge.frame_offset, edge.open});
           recorder.offer_audio(result.recording_pcm.data(),
               result.recording_pcm.size() / result.recording_channels,
-              result.recording_channels, edges, applied.center_frequency_hz, mode);
+              result.recording_channels, edges, applied.center_frequency_hz, mode,
+              result.squelch_open);
         }
         if (decoder && decoder_attached || dsp_controls.mode == SDR_V3_WFM) {
           std::lock_guard<std::mutex> state_lock(mutex);
@@ -1385,7 +1386,8 @@ extern "C" uint32_t sdr_record_version(void) { return SDR_RECORD_REVISION; }
 
 extern "C" int32_t sdr_record_capabilities(uint32_t* streams, uint32_t* formats) {
   if (streams) *streams = SDR_RECORD_IQ | SDR_RECORD_AUDIO | SDR_RECORD_SQUELCH_AUDIO;
-  if (formats) *formats = 1u << SDR_RECORD_WAV;
+  if (formats) *formats = (1u << SDR_RECORD_WAV) | (1u << SDR_RECORD_FLAC) |
+                          (1u << SDR_RECORD_MP3) | (1u << SDR_RECORD_OPUS);
   return SDR_OK;
 }
 
@@ -1438,13 +1440,24 @@ extern "C" int32_t sdr_record_start(SdrHandle* h,
     if ((!audio && (config->audio_format != SDR_RECORD_FORMAT_NONE || config->audio_bitrate_kbps)) ||
         (audio && config->audio_format == SDR_RECORD_FORMAT_NONE) ||
         config->audio_format > SDR_RECORD_OPUS ||
+        ((config->audio_format == SDR_RECORD_WAV || config->audio_format == SDR_RECORD_FLAC) &&
+         config->audio_bitrate_kbps) ||
+        (config->audio_format == SDR_RECORD_MP3 &&
+         !(config->audio_bitrate_kbps == 32 || config->audio_bitrate_kbps == 40 ||
+           config->audio_bitrate_kbps == 48 || config->audio_bitrate_kbps == 56 ||
+           config->audio_bitrate_kbps == 64 || config->audio_bitrate_kbps == 80 ||
+           config->audio_bitrate_kbps == 96 || config->audio_bitrate_kbps == 112 ||
+           config->audio_bitrate_kbps == 128 || config->audio_bitrate_kbps == 160 ||
+           config->audio_bitrate_kbps == 192 || config->audio_bitrate_kbps == 224 ||
+           config->audio_bitrate_kbps == 256 || config->audio_bitrate_kbps == 320)) ||
+        (config->audio_format == SDR_RECORD_OPUS &&
+         (config->audio_bitrate_kbps < 6 || config->audio_bitrate_kbps > 256)) ||
         ((config->streams & SDR_RECORD_DECODER_LOG) != 0 && log_ids_bytes == 0) ||
         ((config->streams & SDR_RECORD_DECODER_LOG) == 0 && log_ids_bytes != 0))
       return SDR_INVALID_ARGUMENT;
     std::lock_guard<std::mutex> lock(h->mutex);
     if (!h->v3_active || h->stats.state != SDR_RUNNING) return SDR_INVALID_STATE;
-    if (config->streams & SDR_RECORD_DECODER_LOG ||
-        (audio && (config->audio_format != SDR_RECORD_WAV || config->audio_bitrate_kbps)))
+    if (config->streams & SDR_RECORD_DECODER_LOG)
       return SDR_UNSUPPORTED;
     if (!sdrcore::record::supports_folder(locator)) return SDR_UNSUPPORTED;
     return h->recorder.start(*config, locator);
