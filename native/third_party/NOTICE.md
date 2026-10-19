@@ -1,9 +1,10 @@
-# Third-party SDR USB driver sources — provenance & licenses
+# Third-party sources — provenance & licenses
 
-All code in this directory is built from source by `native/third_party/CMakeLists.txt`.
-No prebuilt binaries are vendored or linked. Nothing here is part of the ABI 2
-contract in `native/include/sdrcore.h`; see `native/src/usb_adapter.h` for the
-internal interface that bridges these drivers into the engine.
+Vendored dependencies are built from source through `native/third_party/CMakeLists.txt`
+and the included `third_party/*.cmake` modules. No prebuilt binaries are
+vendored or linked. USB drivers are not part of the ABI 2 contract in
+`native/include/sdrcore.h`; see `native/src/usb_adapter.h` for their internal
+engine interface.
 
 ## libusb — `libusb/`
 
@@ -209,3 +210,33 @@ The exact unified diffs applied are kept in `patches/` for audit/reproduction.
   retains its opcode set, big-endian command packing and u8-IQ conversion.
   See `sdrpp_rtl_tcp/PATCHES.md` for dependency substitutions, server-version
   limitations and the original-vs-port command/IQ oracle.
+
+## Recording codecs — `codecs.cmake`
+
+Pinned release archives (verify a fresh download with `sha256sum`) are trimmed
+only to the library source, headers, source manifests, and relevant license
+files. The four static PIC targets are built from those checked-in files;
+there is no `find_package`, FetchContent, system codec library, or prebuilt
+binary. The parent CMake file must `include(third_party/codecs.cmake)` after
+`add_subdirectory(third_party)` and link the targets where recording needs them.
+
+| Directory / target | Upstream archive | SHA-256 | License |
+| --- | --- | --- | --- |
+| `flac/` / `sdrcore_flac` | https://downloads.xiph.org/releases/flac/flac-1.4.3.tar.xz | `6c58e69cd22348f441b861092b825e591d0b822e106de6eb0ee4d05d27205b70` | BSD-3-Clause (`flac/COPYING.Xiph`, libFLAC file headers) |
+| `lame/` / `sdrcore_lame` | https://downloads.sourceforge.net/project/lame/lame/3.100/lame-3.100.tar.gz | `ddfe36cab873794038ae2c1210557ad34857a4b6bdc515785d1da9e175b1da1e` | LGPL-2.0 (`lame/COPYING`, `lame/README`); optional decoder excluded |
+| `ogg/` / `sdrcore_ogg` | https://downloads.xiph.org/releases/ogg/libogg-1.3.5.tar.xz | `c4d91be36fc8e54deae7575241e03f4211eb102afb3fc0775fbbc1b740016705` | BSD-3-Clause (`ogg/COPYING`) |
+| `opus/` / `sdrcore_opus` | https://downloads.xiph.org/releases/opus/opus-1.5.2.tar.gz | `65c1d2f78b9f2fb20082c38cbe47c951ad5839345876e46941612ee87f9a7ce1` | BSD-3-Clause (`opus/COPYING`) |
+
+Only local added files inside the upstream trees are
+`ogg/include/ogg/config_types.h` and `lame/sdrcore_config/config.h`, portable
+replacements for upstream configure-generated headers. The sole upstream source
+edit adds `<inttypes.h>` to `flac/src/libFLAC/stream_decoder.c` for its
+`PRIu64` diagnostic on toolchains that do not include it transitively.
+libFLAC and Opus use portable scalar implementations;
+FLAC Ogg mapping is disabled, while the separate Opus target propagates
+`sdrcore_ogg` for writing Ogg Opus files. LAME's encoder is linked statically
+without mpglib decoder; preserving LGPL-2.0 terms includes providing source
+and the ability to relink with a modified library (e.g. replacement static
+objects). These permissive and LGPL components can be combined with this
+GPL-3.0 application; retain their upstream notices and source when distributing.
+MP3 patent constraints may differ by jurisdiction; this is not patent advice.

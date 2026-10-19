@@ -270,6 +270,7 @@ int main() {
   }
   {
     Recorder r;
+
     auto c = config(SDR_RECORD_DECODER_LOG);
     assert(r.start(c, "file:" + dir.string(), "rds,sstv,meshtastic") == SDR_OK);
     assert(r.stop(SDR_RECORD_STOP_USER) == SDR_OK);
@@ -310,6 +311,20 @@ int main() {
       }
     }
     assert(s.bytes_written == sizes);
+  }
+  {
+    Recorder r;
+    auto c = config(SDR_RECORD_SQUELCH_AUDIO);
+    assert(r.start(c, "file:" + dir.string()) == SDR_OK);
+    const float pcm[] = {0.25f, 0.5f, -0.5f};
+    // The detector may already be open when recording starts. There is no
+    // opening edge in that case, but all three initial frames belong to it.
+    r.offer_audio(pcm, 3, 1, {}, 98000000, "AM", true);
+    r.offer_audio(pcm, 3, 1, {{2, false}}, 98000000, "AM", false);
+    assert(r.stop(SDR_RECORD_STOP_USER) == SDR_OK);
+    assert(r.status().segments_completed == 1);
+    assert(r.status().bytes_written == 44 + 5 * 2);
+
   }
   fs::remove_all(dir);
 }
