@@ -350,7 +350,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND PROJECT_IS_TOP_LEVEL)
     add_test(NAME sdrcore_record_writer COMMAND sdrcore_record_writer_test)
     add_executable(sdrcore_record_codec_matrix_test
         tests/record_codec_matrix.cpp src/record/recorder.cpp src/record/audio_encoder.cpp)
-    target_include_directories(sdrcore_record_codec_matrix_test PRIVATE include src)
+    target_include_directories(sdrcore_record_codec_matrix_test PRIVATE include src third_party)
     target_link_libraries(sdrcore_record_codec_matrix_test PRIVATE
         Threads::Threads sdrcore_flac sdrcore_lame sdrcore_opus)
     find_package(Python3 COMPONENTS Interpreter REQUIRED)

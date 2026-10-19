@@ -113,6 +113,7 @@ struct SdrHandle {
     std::vector<uint8_t> payload;
   };
   std::unique_ptr<sdrcore::decoder::Decoder> decoder;
+  std::string selected_decoder_id;
   sdrcore::record::Recorder recorder;
   bool keep_recording_on_restart = false;
   sdrcore::decoder::Input decoder_input = sdrcore::decoder::Input::audio;
@@ -134,7 +135,7 @@ struct SdrHandle {
     return static_cast<uint64_t>(static_cast<int64_t>(controls.center_frequency_hz) +
                                  controls.vfo_offset_hz);
   }
-  void enqueue_decoder_event(sdrcore::decoder::Event event) {
+  void enqueue_decoder_event(sdrcore::decoder::Event event, const std::string& id) {
     if (event.payload.size() > SDR_DECODER_MAX_PAYLOAD) {
       ++decoder_dropped;
       return;
@@ -152,12 +153,16 @@ struct SdrHandle {
     queued_event.header.payload_bytes = static_cast<uint32_t>(event.payload.size());
     queued_event.header.dropped_events = decoder_dropped;
     queued_event.payload = std::move(event.payload);
+    recorder.offer_log(id, queued_event.header.kind,
+                       queued_event.header.stream_generation, tuned_frequency(),
+                       std::string(queued_event.payload.begin(), queued_event.payload.end()),
+                       record_mode(controls.mode));
     decoder_events.push_back(std::move(queued_event));
   }
   void enqueue_rds_json(const nlohmann::json& object) {
     const std::string text = object.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace);
     enqueue_decoder_event({sdrcore::decoder::Result::message,
-                           std::vector<uint8_t>(text.begin(), text.end())});
+                           std::vector<uint8_t>(text.begin(), text.end())}, "rds");
   }
   void reset_rds(const char* reason) {
     rds_fields = nlohmann::json::object();
@@ -216,7 +221,7 @@ struct SdrHandle {
     if (!decoder) return;
     sdrcore::decoder::Event event;
     for (size_t i = 0; i < SDR_DECODER_QUEUE_CAPACITY && decoder->take_event(event); ++i) {
-      enqueue_decoder_event(std::move(event));
+      enqueue_decoder_event(std::move(event), selected_decoder_id);
       event = {};
     }
     decoder_dropped += decoder->take_dropped_count();
@@ -1285,6 +1290,7 @@ extern "C" int32_t sdr_decoder_select(SdrHandle* h, const char* id,
       h->receiver->set_decoder(nullptr);
       h->decoder_attached = false;
       h->decoder.reset();
+      h->selected_decoder_id.clear();
       h->invalidate_decoder_events();
       h->decoder_dropped = 0;
       return SDR_OK;
@@ -1327,6 +1333,7 @@ extern "C" int32_t sdr_decoder_select(SdrHandle* h, const char* id,
       // control change; receiver owns a borrowed pointer under dsp_mutex.
       h->receiver->set_decoder(nullptr);
       h->decoder = std::move(candidate);
+      h->selected_decoder_id = requested;
       h->decoder_input = reg.descriptor.input;
       h->decoder_required_rate_hz = reg.descriptor.required_rate_hz;
       h->decoder_attached = true;
@@ -1385,7 +1392,7 @@ extern "C" int32_t sdr_v3_rtl_tuner_gains(SdrHandle* h, int32_t* gains,
 extern "C" uint32_t sdr_record_version(void) { return SDR_RECORD_REVISION; }
 
 extern "C" int32_t sdr_record_capabilities(uint32_t* streams, uint32_t* formats) {
-  if (streams) *streams = SDR_RECORD_IQ | SDR_RECORD_AUDIO | SDR_RECORD_SQUELCH_AUDIO;
+  if (streams) *streams = SDR_RECORD_STREAM_MASK;
   if (formats) *formats = (1u << SDR_RECORD_WAV) | (1u << SDR_RECORD_FLAC) |
                           (1u << SDR_RECORD_MP3) | (1u << SDR_RECORD_OPUS);
   return SDR_OK;
@@ -1436,6 +1443,22 @@ extern "C" int32_t sdr_record_start(SdrHandle* h,
     if (locator.compare(0, 5, "file:") == 0 &&
         !std::filesystem::u8path(locator.substr(5)).is_absolute())
       return SDR_INVALID_ARGUMENT;
+    std::string ids(log_ids ? log_ids : "", log_ids_bytes);
+    if (config->streams & SDR_RECORD_DECODER_LOG) {
+      std::set<std::string> available{"rds"};
+      for (const auto& reg : sdrcore::decoder::registry())
+        if (reg.create) available.insert(reg.descriptor.id);
+      size_t begin = 0, count = 0;
+      while (begin < ids.size()) {
+        const size_t end = ids.find(',', begin);
+        const auto id = ids.substr(begin, end == std::string::npos ? end : end - begin);
+        if (!available.erase(id) || ++count > SDR_RECORD_MAX_LOG_IDS)
+          return SDR_INVALID_ARGUMENT;
+        if (end == std::string::npos) break;
+        begin = end + 1;
+      }
+      if (ids.empty() || ids.back() == ',') return SDR_INVALID_ARGUMENT;
+    }
     const bool audio = config->streams & (SDR_RECORD_AUDIO | SDR_RECORD_SQUELCH_AUDIO);
     if ((!audio && (config->audio_format != SDR_RECORD_FORMAT_NONE || config->audio_bitrate_kbps)) ||
         (audio && config->audio_format == SDR_RECORD_FORMAT_NONE) ||
@@ -1457,10 +1480,8 @@ extern "C" int32_t sdr_record_start(SdrHandle* h,
       return SDR_INVALID_ARGUMENT;
     std::lock_guard<std::mutex> lock(h->mutex);
     if (!h->v3_active || h->stats.state != SDR_RUNNING) return SDR_INVALID_STATE;
-    if (config->streams & SDR_RECORD_DECODER_LOG)
-      return SDR_UNSUPPORTED;
     if (!sdrcore::record::supports_folder(locator)) return SDR_UNSUPPORTED;
-    return h->recorder.start(*config, locator);
+    return h->recorder.start(*config, locator, ids);
   } catch (...) { return SDR_INTERNAL_ERROR; }
 }
 

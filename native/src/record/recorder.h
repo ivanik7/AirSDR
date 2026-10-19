@@ -60,7 +60,8 @@ class Recorder {
                    const std::vector<Edge>& edges, uint64_t frequency_hz,
                    const std::string& mode, bool squelch_open = false);
   void offer_log(const std::string& id, uint32_t kind, uint64_t generation,
-                 uint64_t frequency_hz, const std::string& payload);
+                 uint64_t frequency_hz, const std::string& payload,
+                 const std::string& mode = "LOG");
 
  private:
   enum class Kind { iq, audio, log };

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "sdrcore_record_v1.h"
+#include "sdrcore_decoder_v1.h"
 #include <cassert>
 #include <chrono>
 #include <cstdlib>
@@ -29,7 +30,7 @@ int main() {
   uint32_t streams = 0, formats = 0;
   assert(sdr_record_version() == SDR_RECORD_REVISION);
   assert(sdr_record_capabilities(&streams, &formats) == SDR_OK);
-  assert((streams & 7) == 7 && !(streams & SDR_RECORD_DECODER_LOG));
+  assert(streams == SDR_RECORD_STREAM_MASK);
   assert(formats == ((1u << SDR_RECORD_WAV) | (1u << SDR_RECORD_FLAC) |
                      (1u << SDR_RECORD_MP3) | (1u << SDR_RECORD_OPUS)));
   auto dir = fs::temp_directory_path() / "airsdr-record-abi-test";
@@ -52,6 +53,33 @@ int main() {
   assert(sdr_v3_set_controls(h, &controls) == SDR_OK);
   assert(sdr_v3_set_wfm_stereo(h, 1) == SDR_OK);
   assert(sdr_v3_start(h) == SDR_OK);
+  auto logs = config(SDR_RECORD_DECODER_LOG);
+  const std::string rds_id = "rds";
+  const std::string bad_id = "rds,rds";
+  assert(sdr_record_start(h, &logs, folder.data(), folder.size(),
+                          bad_id.data(), bad_id.size()) == SDR_INVALID_ARGUMENT);
+  assert(sdr_record_start(h, &logs, folder.data(), folder.size(),
+                          rds_id.data(), rds_id.size()) == SDR_OK);
+  assert(sdr_rds_set_rbds(h, 1) == SDR_OK);
+  SdrDecoderEvent event{};
+  event.size = sizeof(event); event.revision = SDR_DECODER_REVISION;
+  uint8_t message[SDR_DECODER_MAX_PAYLOAD]{};
+  assert(sdr_decoder_poll(h, 0, &event, message, sizeof(message)) == SDR_OK);
+  std::string observed(reinterpret_cast<char*>(message), event.payload_bytes);
+  assert(observed.find("\"source\":\"rds\"") != std::string::npos);
+  assert(sdr_record_stop(h) == SDR_OK);
+  auto logged = status(h);
+  assert(logged.log_events_written == 1 && logged.files_created == 1);
+  bool found_log = false;
+  for (const auto& entry : fs::directory_iterator(dir)) {
+    if (entry.path().extension() != ".jsonl") continue;
+    std::ifstream input(entry.path());
+    std::string text((std::istreambuf_iterator<char>(input)), {});
+    assert(text.find("\"decoder_id\":\"rds\"") != std::string::npos);
+    assert(text.find("\"event\":\"reset\"") != std::string::npos);
+    found_log = true;
+  }
+  assert(found_log);
   const std::string relative_folder = "file:relative";
   assert(sdr_record_start(h, &c, relative_folder.data(), relative_folder.size(), nullptr, 0) == SDR_INVALID_ARGUMENT);
   c.audio_format = SDR_RECORD_MP3;
@@ -83,6 +111,7 @@ int main() {
   for (const auto& entry : fs::directory_iterator(dir)) {
     if (entry.is_directory()) continue;
     auto name = entry.path().filename().string();
+    if (entry.path().extension() == ".jsonl") continue;
     lengths += entry.file_size();
     if (name.find(".sigmf-data") != std::string::npos) {
       data = true;
