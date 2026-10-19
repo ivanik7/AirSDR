@@ -72,7 +72,7 @@ void main() {
             >.isolateLocal((Pointer<Void> context, Pointer<Void> status) {
               expect(context.address, 3);
               expect(status.address, isNot(0));
-              callbackStates.add(status.cast<Uint32>().elementAt(2).value);
+              callbackStates.add((status.cast<Uint32>() + 2).value);
               callbackCount++;
             });
         final provider =

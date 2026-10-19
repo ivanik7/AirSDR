@@ -366,6 +366,9 @@ jobs:
 
       - run: flutter pub get
 
+      - name: Folder picker and bookmark adapter tests
+        run: flutter test test/platform/record_folder_test.dart test/platform/mac_record_folder_test.dart
+
       - name: Build app
         run: >-
           flutter build macos --release
@@ -470,6 +473,9 @@ jobs:
           pub-cache: true
 
       - run: flutter pub get
+
+      - name: Folder picker adapter tests
+        run: flutter test test/platform/record_folder_test.dart
 
       # windows/CMakeLists.txt installs $SDRCORE_DLL beside the runner.
       - name: Build app
