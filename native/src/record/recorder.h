@@ -3,12 +3,14 @@
 #define SDRCORE_RECORD_RECORDER_H
 
 #include "sdrcore_record_v1.h"
+#include "audio_encoder.h"
 #include <chrono>
 #include <condition_variable>
 #include <cstddef>
 #include <cstdint>
 #include <deque>
 #include <mutex>
+#include <memory>
 #include <string>
 #include <thread>
 #include <vector>
@@ -35,7 +37,7 @@ class Recorder {
   Recorder& operator=(const Recorder&) = delete;
 
   // Caller validates handle state, format/log capabilities and folder syntax.
-  // Only IQ CU8, WAV PCM16 and their combination are implemented here.
+  // IQ CU8 and selectable WAV/FLAC/MP3/Ogg Opus audio share the worker.
   // The first provider call/file creation occurs on the worker, not start().
   int32_t start(const SdrRecordConfig& config, const std::string& folder,
                 const std::string& log_ids = {});
@@ -54,7 +56,7 @@ class Recorder {
                 uint64_t frequency_hz, const std::string& mode);
   void offer_audio(const float* pcm, size_t frames, uint32_t channels,
                    const std::vector<Edge>& edges, uint64_t frequency_hz,
-                   const std::string& mode);
+                   const std::string& mode, bool squelch_open = false);
 
  private:
   enum class Kind { iq, audio };
@@ -71,6 +73,7 @@ class Recorder {
   };
   struct File {
     int fd = -1;
+    std::unique_ptr<AudioEncoder> encoder;
     uint64_t length = 0, data = 0, frequency = 0;
     uint32_t rate = 0, channels = 0;
     int64_t captured_unix_ms = 0;
@@ -105,6 +108,7 @@ class Recorder {
   std::chrono::steady_clock::time_point started_;
   File iq_file_, iq_meta_file_, audio_file_, segment_file_;
   bool segment_open_ = false;
+  bool segment_initialized_ = false;
   uint64_t segment_number_ = 0;
   SdrRecordNotify notify_ = nullptr;
   void* notify_context_ = nullptr;

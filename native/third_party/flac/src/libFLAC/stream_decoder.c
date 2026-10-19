@@ -35,6 +35,7 @@
 #endif
 
 #include <stdio.h>
+#include <inttypes.h> /* PRIu64 in the decoder diagnostic path. */
 #include <stdlib.h> /* for malloc() */
 #include <string.h> /* for memset/memcpy() */
 #include <sys/types.h> /* for off_t */

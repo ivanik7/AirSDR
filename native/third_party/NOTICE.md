@@ -229,8 +229,10 @@ binary. The parent CMake file must `include(third_party/codecs.cmake)` after
 
 Only local added files inside the upstream trees are
 `ogg/include/ogg/config_types.h` and `lame/sdrcore_config/config.h`, portable
-replacements for upstream configure-generated headers. The codec source
-files are unmodified. libFLAC and Opus use portable scalar implementations;
+replacements for upstream configure-generated headers. The sole upstream source
+edit adds `<inttypes.h>` to `flac/src/libFLAC/stream_decoder.c` for its
+`PRIu64` diagnostic on toolchains that do not include it transitively.
+libFLAC and Opus use portable scalar implementations;
 FLAC Ogg mapping is disabled, while the separate Opus target propagates
 `sdrcore_ogg` for writing Ogg Opus files. LAME's encoder is linked statically
 without mpglib decoder; preserving LGPL-2.0 terms includes providing source
