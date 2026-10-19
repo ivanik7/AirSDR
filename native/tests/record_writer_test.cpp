@@ -9,6 +9,7 @@
 #include <string>
 #include <thread>
 #include <vector>
+#include <nlohmann/json.hpp>
 #ifndef _WIN32
 #include <fcntl.h>
 #include <unistd.h>
@@ -269,6 +270,81 @@ int main() {
   }
   {
     Recorder r;
+
+    auto c = config(SDR_RECORD_DECODER_LOG);
+    assert(r.start(c, "file:" + dir.string(), "rds,sstv,meshtastic") == SDR_OK);
+    assert(r.stop(SDR_RECORD_STOP_USER) == SDR_OK);
+    assert(r.status().files_created == 0 && r.status().bytes_written == 0);
+    assert(r.status().log_events_written == 0 && r.status().stop_reason == SDR_RECORD_STOP_USER);
+    assert(r.start(c, "file:" + dir.string(), "rds,sstv,meshtastic") == SDR_OK);
+    const std::string rds = R"({"source":"rds","event":"state","fields":{"ps":"A\"B\nC"},"psk":"secret"})";
+    r.offer_log("rds", 1, 9, 102300000, rds);
+    r.offer_log("rds", 1, 10, 103000000,
+                R"({"source":"rds","event":"reset","reason":"retune"})");
+    const std::string image = R"({"source":"sstv","frame_id":"5","vis":44,"row":"AQID"})";
+    r.offer_log("sstv", 2, 9, 102300000, image);
+    const std::string mesh = R"({"mode":"Meshtastic","src":1234,"message":"private","channel":"secret","phy":{"snr":4.5},"length":16})";
+    r.offer_log("meshtastic", 1, 10, 103000000, mesh);
+    r.offer_log("adsb", 4, 10, 103000000, R"({"source":"adsb"})");
+    r.offer_log("sstv", 2, 10, 103000000, "not-json");
+    assert(r.stop(SDR_RECORD_STOP_USER) == SDR_OK);
+    auto s = r.status();
+    assert(s.log_events_written == 4 && s.log_dropped_events == 1);
+    assert(s.files_created == 3);
+    uint64_t sizes = 0;
+    for (const auto& path : files(dir, ".jsonl")) {
+      const auto content = slurp(path);
+      sizes += content.size();
+      assert(content.back() == '\n');
+      auto first = content.substr(0, content.find('\n'));
+      auto row = nlohmann::json::parse(first);
+      assert(row["timestamp_utc"].get<std::string>().back() == 'Z');
+      assert(row["stream_generation"] == (path.string().find("meshtastic") != std::string::npos ? 10 : 9));
+      if (path.string().find("rds") != std::string::npos) {
+        auto second = nlohmann::json::parse(content.substr(content.find('\n') + 1));
+        assert(second["payload"]["event"] == "reset");
+        assert(second["stream_generation"] == 10);
+        assert(row["payload"]["fields"]["ps"] == "A\"B\nC");
+        assert(!row["payload"].contains("psk"));
+      } else if (path.string().find("sstv") != std::string::npos) {
+        assert(row["payload"]["row"] == "AQID");
+      } else {
+        assert(row["payload"]["phy"]["snr"] == 4.5);
+        assert(row["payload"]["length"] == 16);
+        assert(!row["payload"].contains("message"));
+        assert(!row["payload"].contains("src"));
+        assert(content.find("private") == std::string::npos);
+      }
+    }
+    assert(s.bytes_written == sizes);
+  }
+  {
+    Recorder r;
+    auto c = config(SDR_RECORD_IQ | SDR_RECORD_DECODER_LOG);
+    assert(r.start(c, "file:" + dir.string(), "rds") == SDR_OK);
+    const uint8_t iq[] = {1, 2, 3, 4};
+    r.offer_iq(iq, sizeof(iq), 300000, 100000000, "WFM");
+    r.offer_log("rds", 1, 1, 100000000,
+                R"({"source":"rds","event":"reset"})");
+    assert(r.stop(SDR_RECORD_STOP_USER) == SDR_OK);
+    assert(r.status().iq_samples_written == 2);
+    assert(r.status().log_events_written == 1);
+    assert(r.status().files_created == 3);
+  }
+  {
+    Recorder r;
+    auto c = config(SDR_RECORD_DECODER_LOG);
+    assert(r.start(c, "file:" + (dir / "removed").string(), "rds") == SDR_OK);
+    r.offer_log("rds", 1, 1, 100000000,
+                R"({"source":"rds","event":"reset"})");
+    assert(r.stop(SDR_RECORD_STOP_USER) == SDR_OK);
+    const auto s = r.status();
+    assert(s.stop_reason == SDR_RECORD_STOP_ERROR);
+    assert(s.error_stream == SDR_RECORD_DECODER_LOG);
+    assert(s.last_error == SDR_RECORD_FOLDER_UNAVAILABLE);
+  }
+  {
+    Recorder r;
     auto c = config(SDR_RECORD_SQUELCH_AUDIO);
     assert(r.start(c, "file:" + dir.string()) == SDR_OK);
     const float pcm[] = {0.25f, 0.5f, -0.5f};
@@ -279,6 +355,7 @@ int main() {
     assert(r.stop(SDR_RECORD_STOP_USER) == SDR_OK);
     assert(r.status().segments_completed == 1);
     assert(r.status().bytes_written == 44 + 5 * 2);
+
   }
   fs::remove_all(dir);
 }

@@ -10,6 +10,8 @@
 #include <cstdint>
 #include <deque>
 #include <mutex>
+#include <map>
+#include <set>
 #include <memory>
 #include <string>
 #include <thread>
@@ -37,7 +39,7 @@ class Recorder {
   Recorder& operator=(const Recorder&) = delete;
 
   // Caller validates handle state, format/log capabilities and folder syntax.
-  // IQ CU8 and selectable WAV/FLAC/MP3/Ogg Opus audio share the worker.
+  // IQ CU8, selected decoder JSONL and selectable audio share the worker.
   // The first provider call/file creation occurs on the worker, not start().
   int32_t start(const SdrRecordConfig& config, const std::string& folder,
                 const std::string& log_ids = {});
@@ -57,9 +59,12 @@ class Recorder {
   void offer_audio(const float* pcm, size_t frames, uint32_t channels,
                    const std::vector<Edge>& edges, uint64_t frequency_hz,
                    const std::string& mode, bool squelch_open = false);
+  void offer_log(const std::string& id, uint32_t kind, uint64_t generation,
+                 uint64_t frequency_hz, const std::string& payload,
+                 const std::string& mode = "LOG");
 
  private:
-  enum class Kind { iq, audio };
+  enum class Kind { iq, audio, log };
   struct Item {
     Kind kind;
     std::vector<uint8_t> iq;
@@ -70,6 +75,9 @@ class Recorder {
     uint64_t frequency = 0;
     int64_t captured_unix_ms = 0;
     std::string mode;
+    std::string id, payload;
+    uint32_t event_kind = 0;
+    uint64_t generation = 0;
   };
   struct File {
     int fd = -1;
@@ -93,12 +101,16 @@ class Recorder {
   std::string stem(uint64_t frequency, const std::string& mode, bool segment);
   void write_audio(const Item& item, size_t first, size_t last, bool segment);
   void notify_final(SdrRecordStatus snapshot);
+  bool open_log(const Item& item);
+  void write_log(const Item& item);
   static uint64_t elapsed(const std::chrono::steady_clock::time_point& start);
 
   mutable std::mutex mutex_;
   std::condition_variable cv_;
   std::deque<Item> queue_;
-  size_t iq_queued_ = 0, audio_queued_ = 0;
+  size_t iq_queued_ = 0, audio_queued_ = 0, log_queued_ = 0;
+  std::set<std::string> log_ids_;
+  std::map<std::string, File> log_files_;
   bool stopping_ = false, overflow_ = false;
   uint32_t overflow_stream_ = 0;
   std::thread worker_;

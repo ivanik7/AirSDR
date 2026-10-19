@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "recorder.h"
+#include "sdrcore_decoder_v1.h"
 #include <algorithm>
 #include <array>
 #include <cerrno>
@@ -12,6 +13,7 @@
 #include <map>
 #include <sstream>
 #include <utility>
+#include <nlohmann/json.hpp>
 #ifdef _WIN32
 #include <fcntl.h>
 #include <io.h>
@@ -26,6 +28,55 @@ namespace sdrcore::record {
 namespace {
 constexpr size_t kIqBudget = 8u * 1024 * 1024;
 constexpr size_t kAudioBudget = 2u * 1024 * 1024;
+constexpr size_t kLogBudget = 1024 * 1024;
+constexpr size_t kLogLineMax = 16 * 1024;
+// Persist only known metadata for packet decoders. Never serialize packet
+// bodies, addresses, channel names, keys or arbitrary future schema fields.
+nlohmann::json safe_payload(const std::string& id, const nlohmann::json& input) {
+  nlohmann::json result = nlohmann::json::object();
+  auto copy = [&](const nlohmann::json& source, nlohmann::json& target,
+                  std::initializer_list<const char*> names) {
+    for (const char* name : names) {
+      auto it = source.find(name);
+      if (it != source.end() && (it->is_string() || it->is_number() || it->is_boolean()))
+        target[name] = *it;
+    }
+  };
+  if (id == "meshtastic" || id == "meshcore") {
+    copy(input, result, {"mode", "schema", "protocol", "length", "timestamp_utc"});
+    auto phy = input.find("phy");
+    if (phy != input.end() && phy->is_object()) {
+      nlohmann::json fields = nlohmann::json::object();
+      copy(*phy, fields, {"snr", "snr_db", "level", "level_db", "bw", "bw_khz",
+                          "sf", "cr", "crc", "fec", "duration_ms", "frequency_hz"});
+      result["phy"] = std::move(fields);
+    }
+  } else if (id == "rds") {
+    copy(input, result, {"source", "version", "event", "frequency_hz", "rbds", "sync", "reason"});
+    auto fields = input.find("fields");
+    if (fields != input.end() && fields->is_object()) {
+      nlohmann::json safe = nlohmann::json::object();
+      copy(*fields, safe, {"pi", "ps", "pty", "pty_name", "rt", "radiotext", "tp", "ta"});
+      result["fields"] = std::move(safe);
+    }
+  } else if (id == "sstv") {
+    copy(input, result, {"source", "version", "frame_id", "vis", "sstv_mode", "width", "height",
+                         "timestamp_utc", "frequency_hz", "underlying", "row", "phase", "line",
+                         "pixels_bgr_base64", "padded", "received_lines", "padded_lines",
+                         "status", "reason"});
+  } else if (id == "adsb") {
+    copy(input, result, {"icao", "last_seen_ms", "messages", "rssi", "callsign", "squawk",
+                         "altitude_ft", "ground_speed_kt", "track_deg", "vertical_rate_fpm",
+                         "latitude", "longitude"});
+  } else if (id == "dmr") {
+    copy(input, result, {"schema", "protocol", "slot", "voice", "sync", "type", "color_code",
+                         "duration_ms"});
+  } else if (id == "rtl_433") {
+    copy(input, result, {"model", "type", "time", "temperature_C", "humidity", "battery_ok",
+                         "pressure_hPa", "wind_avg_km_h", "wind_dir_deg", "rain_mm"});
+  }
+  return result;
+}
 // Maximum even-sized data chunk while RIFF size (36 + data size) fits uint32.
 constexpr uint64_t kWavDataMax = UINT32_MAX - 36u - ((UINT32_MAX - 36u) % 4u);
 struct Provider { SdrRecordCreateFile fn; void* context; };
@@ -195,7 +246,7 @@ uint64_t Recorder::elapsed(const std::chrono::steady_clock::time_point& start) {
 int32_t Recorder::start(const SdrRecordConfig& c, const std::string& folder,
                         const std::string& log_ids) {
   if (c.size != sizeof(c) || c.revision != SDR_RECORD_REVISION ||
-      !c.streams || (c.streams & ~uint32_t(SDR_RECORD_IQ | SDR_RECORD_AUDIO | SDR_RECORD_SQUELCH_AUDIO)) ||
+      !c.streams || (c.streams & ~uint32_t(SDR_RECORD_STREAM_MASK)) ||
       ((c.streams & (SDR_RECORD_AUDIO | SDR_RECORD_SQUELCH_AUDIO))
            ? (c.audio_format < SDR_RECORD_WAV || c.audio_format > SDR_RECORD_OPUS)
            : (c.audio_format != SDR_RECORD_FORMAT_NONE || c.audio_bitrate_kbps)) ||
@@ -210,7 +261,24 @@ int32_t Recorder::start(const SdrRecordConfig& c, const std::string& folder,
          c.audio_bitrate_kbps == 256 || c.audio_bitrate_kbps == 320)) ||
       (c.audio_format == SDR_RECORD_OPUS && (c.audio_bitrate_kbps < 6 || c.audio_bitrate_kbps > 256)) ||
       c.utc_offset_minutes < -840 || c.utc_offset_minutes > 840 ||
-      c.start_unix_ms <= 0 || !log_ids.empty()) return SDR_UNSUPPORTED;
+      c.start_unix_ms <= 0) return SDR_UNSUPPORTED;
+  std::set<std::string> selected;
+  if (c.streams & SDR_RECORD_DECODER_LOG) {
+    if (log_ids.empty() || log_ids.size() > SDR_RECORD_MAX_LOG_IDS_BYTES) return SDR_INVALID_ARGUMENT;
+    size_t begin = 0;
+    while (begin < log_ids.size()) {
+      const size_t end = log_ids.find(',', begin);
+      const std::string id = log_ids.substr(begin, end == std::string::npos ? end : end - begin);
+      if (id.empty() || id.size() > 31 ||
+          !std::all_of(id.begin(), id.end(), [](char ch) {
+            return (ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9') || ch == '_';
+          }) || !selected.insert(id).second || selected.size() > SDR_RECORD_MAX_LOG_IDS)
+        return SDR_INVALID_ARGUMENT;
+      if (end == std::string::npos) break;
+      begin = end + 1;
+    }
+    if (log_ids.back() == ',') return SDR_INVALID_ARGUMENT;
+  } else if (!log_ids.empty()) return SDR_INVALID_ARGUMENT;
   for (uint32_t n : c.reserved) if (n) return SDR_INVALID_ARGUMENT;
   if (folder.empty() || folder.size() > SDR_RECORD_MAX_FOLDER_BYTES ||
       folder.find('\0') != std::string::npos || !supports_folder(folder)) return SDR_UNSUPPORTED;
@@ -223,7 +291,8 @@ int32_t Recorder::start(const SdrRecordConfig& c, const std::string& folder,
   status_.streams = c.streams; status_.audio_format = c.audio_format;
   config_ = c; folder_ = folder; started_ = std::chrono::steady_clock::now();
   stopping_ = false; overflow_ = false; overflow_stream_ = 0;
-  iq_queued_ = audio_queued_ = 0; queue_.clear();
+  iq_queued_ = audio_queued_ = log_queued_ = 0; queue_.clear();
+  log_ids_ = std::move(selected); log_files_.clear();
   segment_open_ = false; segment_initialized_ = false; segment_number_ = 0;
   try {
     worker_ = std::thread(&Recorder::run, this);
@@ -315,6 +384,26 @@ void Recorder::offer_audio(const float* pcm, size_t frames, uint32_t channels,
   item.channels = channels; item.frequency = frequency; item.mode = mode;
   item.captured_unix_ms = wall_ms();
   audio_queued_ += size; queue_.push_back(std::move(item)); cv_.notify_one();
+}
+void Recorder::offer_log(const std::string& id, uint32_t kind, uint64_t generation,
+                         uint64_t frequency, const std::string& payload,
+                         const std::string& mode) {
+  std::lock_guard<std::mutex> lock(mutex_);
+  if (status_.state != SDR_RECORD_ACTIVE || stopping_ || !log_ids_.count(id)) return;
+  if (payload.size() > SDR_DECODER_MAX_PAYLOAD || payload.size() > kLogBudget - log_queued_) {
+    ++status_.log_dropped_events;
+    // Oversized/invalid events are skipped; a full queue invalidates the
+    // session rather than producing a deceptively complete log.
+    if (payload.size() <= SDR_DECODER_MAX_PAYLOAD) {
+      overflow_ = true; overflow_stream_ = SDR_RECORD_DECODER_LOG; cv_.notify_one();
+    }
+    return;
+  }
+  Item item{};
+  item.kind = Kind::log; item.id = id; item.payload = payload;
+  item.event_kind = kind; item.generation = generation;
+  item.frequency = frequency; item.mode = mode; item.captured_unix_ms = wall_ms();
+  log_queued_ += payload.size(); queue_.push_back(std::move(item)); cv_.notify_one();
 }
 void Recorder::fail(int32_t error, uint32_t stream) {
   std::lock_guard<std::mutex> lock(mutex_);
@@ -538,8 +627,48 @@ void Recorder::write_audio(const Item& item, size_t first, size_t last, bool seg
     pos += count;
   }
 }
+bool Recorder::open_log(const Item& item) {
+  std::string base = stem(item.frequency, item.mode, false) + "_" + item.id;
+  for (int suffix = 1; suffix <= 99; ++suffix) {
+    std::string candidate = base + (suffix == 1 ? "" : "_" + std::to_string(suffix));
+    File file;
+    auto result = create(file, candidate + ".jsonl", "application/x-ndjson",
+                         SDR_RECORD_DECODER_LOG);
+    if (result == SDR_RECORD_EXISTS) continue;
+    if (result != SDR_OK) return false;
+    log_files_.emplace(item.id, std::move(file));
+    return true;
+  }
+  fail(SDR_RECORD_NAME_EXHAUSTED, SDR_RECORD_DECODER_LOG);
+  return false;
+}
+void Recorder::write_log(const Item& item) {
+  if (item.payload.size() > SDR_DECODER_MAX_PAYLOAD) {
+    std::lock_guard<std::mutex> lock(mutex_); ++status_.log_dropped_events; return;
+  }
+  auto payload = nlohmann::json::parse(item.payload, nullptr, false);
+  if (payload.is_discarded() || !payload.is_object()) {
+    std::lock_guard<std::mutex> lock(mutex_); ++status_.log_dropped_events; return;
+  }
+  nlohmann::json line = {{"timestamp_utc", iso_time(item.captured_unix_ms)},
+                         {"decoder_id", item.id}, {"kind", item.event_kind},
+                         {"stream_generation", item.generation},
+                         {"frequency_hz", item.frequency},
+                         {"payload", safe_payload(item.id, payload)}};
+  std::string encoded = line.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace);
+  if (encoded.size() + 1 > kLogLineMax) {
+    std::lock_guard<std::mutex> lock(mutex_); ++status_.log_dropped_events; return;
+  }
+  encoded.push_back('\n');
+  if (!log_files_.count(item.id) && !open_log(item)) return;
+  if (write(log_files_.at(item.id), encoded.data(), encoded.size(), SDR_RECORD_DECODER_LOG)) {
+    std::lock_guard<std::mutex> lock(mutex_); ++status_.log_events_written;
+  }
+}
 void Recorder::process(const Item& item) {
-  if (item.kind == Kind::iq) {
+  if (item.kind == Kind::log) {
+    write_log(item);
+  } else if (item.kind == Kind::iq) {
     if (iq_file_.fd >= 0 && (iq_file_.rate != item.rate || iq_file_.frequency != item.frequency ||
                              iq_file_.mode != item.mode)) close_iq();
     if (status().last_error) return;
@@ -587,13 +716,14 @@ void Recorder::run() {
         if (!status_.last_error) {
           status_.last_error = SDR_IO_ERROR; status_.error_stream = overflow_stream_;
         }
-        queue_.clear(); iq_queued_ = audio_queued_ = 0;
+        queue_.clear(); iq_queued_ = audio_queued_ = log_queued_ = 0;
         break;
       }
       if (queue_.empty()) { if (stopping_) break; continue; }
       item = std::move(queue_.front()); queue_.pop_front();
       if (item.kind == Kind::iq) iq_queued_ -= item.iq.size();
-      else audio_queued_ -= item.pcm.size() * sizeof(float);
+      else if (item.kind == Kind::audio) audio_queued_ -= item.pcm.size() * sizeof(float);
+      else log_queued_ -= item.payload.size();
     }
     process(item);
     { std::lock_guard<std::mutex> lock(mutex_); if (status_.last_error) break; }
@@ -603,6 +733,9 @@ void Recorder::run() {
   segment_file_ = {};
   close_audio(true);
   close_iq();
+  for (auto& [id, file] : log_files_)
+    if (close_fd(file.fd) != 0) fail(error_code(errno), SDR_RECORD_DECODER_LOG);
+  log_files_.clear();
   SdrRecordStatus snapshot;
   {
     std::lock_guard<std::mutex> lock(mutex_);
