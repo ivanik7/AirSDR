@@ -646,6 +646,7 @@ class ReceiverImpl final : public Receiver {
   }
 
   void reset() override {
+    recording_open_ = false;  // New stream: the first open frame gets an edge.
     if (rds_) rds_->reset();
     rds_suspended_ = false;
     decoder_decimator_.reset();
@@ -708,6 +709,11 @@ class ReceiverImpl final : public Receiver {
 
   void process(const uint8_t* cu8, size_t bytes, ProcessResult& result) override {
     result.audio.clear();
+    result.recording_pcm.clear();
+    result.recording_squelch_edges.clear();
+    const bool voice = decoder_ && decoder_->provides_audio();
+    result.recording_channels = voice ? 1u :
+        (controls_.mode == SDR_V3_WFM && stereo_enabled_ ? 2u : 1u);
     result.fft.clear();
     result.signal_db = -100;
     result.squelch_threshold_db = -100;
@@ -718,6 +724,7 @@ class ReceiverImpl final : public Receiver {
     // One allocation at most per call, never in the per-sample loop.
     const size_t estimate = static_cast<size_t>(std::ceil(pairs * 48000.0 / controls_.sample_rate)) + 4;
     result.audio.reserve(2 * estimate);
+    result.recording_pcm.reserve(result.recording_channels * estimate);
     if (rds_ && !rds_suspended_) {
       rds_mpx_.clear();
       rds_mpx_.reserve(pairs / std::max(1u, first_factor_ * second_factor_) + 2);
@@ -753,7 +760,7 @@ class ReceiverImpl final : public Receiver {
       Complex stage;
       if (first_.put(iq * oscillator_, stage)) {
         Complex filtered;
-        if (second_.put(stage, filtered)) process_if(filtered, result.audio);
+        if (second_.put(stage, filtered)) process_if(filtered, result, voice);
       }
       oscillator_ *= oscillator_step_;
       if (++oscillator_count_ == 4096) {
@@ -767,7 +774,7 @@ class ReceiverImpl final : public Receiver {
     if (audio_tap_active && !audio_tap_samples_.empty()) {
       decoder_->process(audio_tap_samples_.data(), audio_tap_samples_.size(), kAudioTapRateHz);
     }
-    if (decoder_ && decoder_->provides_audio()) replace_with_decoder_audio(result.audio);
+    if (voice) replace_with_decoder_audio(result);
     result.signal_db = controls_.squelch == SDR_V3_SQUELCH_AUTO &&
         controls_.mode == SDR_V3_NFM ? metric_db_ :
         static_cast<float>(10 * std::log10(std::max(power_smooth_, kFloor)));
@@ -783,13 +790,16 @@ class ReceiverImpl final : public Receiver {
   // undisturbed. Only the ordinary volume*volume / mute stage applies; the
   // squelch gate does not (OpenWebRX+ DMR: supportsSquelch() = False).
   // Underrun -> silence. No mixing with the analog demodulator output.
-  void replace_with_decoder_audio(std::vector<float>& audio) {
+  void replace_with_decoder_audio(ProcessResult& result) {
+    auto& audio = result.audio;
     const size_t frames = audio.size() / 2;
     decoder_audio_.assign(frames, 0.0f);
     const size_t got = frames ? std::min(frames, decoder_->read_audio(decoder_audio_.data(), frames)) : 0;
     const float gain = controls_.muted ? 0.0f : controls_.volume * controls_.volume;
     for (size_t i = 0; i < frames; ++i) {
-      const float pcm = i < got ? std::clamp(decoder_audio_[i] * gain, -1.0f, 1.0f) : 0.0f;
+      const float decoded = i < got ? decoder_audio_[i] : 0.0f;
+      result.recording_pcm[i] = std::clamp(decoded, -1.0f, 1.0f);
+      const float pcm = std::clamp(decoded * gain, -1.0f, 1.0f);
       audio[2 * i] = pcm;
       audio[2 * i + 1] = pcm;
     }
@@ -1178,7 +1188,8 @@ class ReceiverImpl final : public Receiver {
     squelch_open_ = wants_open;
     open_count_ = wants_open ? open_count_ + metric_interval_ : 0;
   }
-  void process_if(Complex sample, std::vector<float>& audio) {
+  void process_if(Complex sample, ProcessResult& result, bool voice) {
+    auto& audio = result.audio;
     const float power = std::norm(sample);
     float discriminator = 0;
     if (previous_valid_ && (controls_.mode == SDR_V3_NFM || controls_.mode == SDR_V3_WFM)) {
@@ -1310,6 +1321,16 @@ class ReceiverImpl final : public Receiver {
         agc_envelope_ += alpha * (std::abs(hp) - agc_envelope_);
         leveled *= std::clamp(kAgcSetPoint / std::max(agc_envelope_, 1.0e-5f), 0.01f, 1.0e4f);
       }
+      // The detector is evaluated at each emitted PCM frame, not at the end
+      // of the IQ block. A decoder voice stream bypasses the analog squelch.
+      const bool recording_open = voice || controls_.squelch == SDR_V3_SQUELCH_OFF || squelch_open_;
+      if (recording_open != recording_open_) {
+        result.recording_squelch_edges.push_back({audio.size() / 2, recording_open});
+        recording_open_ = recording_open;
+      }
+      result.recording_pcm.push_back(std::clamp(leveled, -1.0f, 1.0f));
+      if (result.recording_channels == 2)
+        result.recording_pcm.push_back(std::clamp(leveled_r, -1.0f, 1.0f));
       const float target = controls_.squelch == SDR_V3_SQUELCH_OFF || squelch_open_ ? 1.0f : 0.0f;
       gate_ += std::clamp(target - gate_, -1.0f / 240, 1.0f / 240);
       const float gain = controls_.muted ? 0.0f : controls_.volume * controls_.volume * gate_;
@@ -1405,6 +1426,7 @@ class ReceiverImpl final : public Receiver {
   float am_alpha_ = 0, deemphasis_alpha_ = 0;
   float metric_db_ = -100, threshold_db_ = -100, floor_db_ = -100, gate_ = 0;
   bool squelch_ready_ = false, squelch_open_ = false;
+  bool recording_open_ = false;  // Effective state at the last emitted PCM frame.
   std::array<float, 40> floor_segments_{};
   size_t floor_count_ = 0, floor_index_ = 0, settle_count_ = 0;
   size_t segment_count_ = 0, open_count_ = 0, hang_count_ = 0;
