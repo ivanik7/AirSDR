@@ -17,6 +17,7 @@ class SdrApplication : Application() {
         engine.plugins.add(UsbSdrPlugin())
         engine.plugins.add(ReceptionPlugin())
         engine.plugins.add(MediaStorePlugin())
+        engine.plugins.add(RecordFolderPlugin())
         radioEngine = engine
         engine.dartExecutor.executeDartEntrypoint(DartExecutor.DartEntrypoint.createDefault())
         return engine

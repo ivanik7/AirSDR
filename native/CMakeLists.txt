@@ -140,7 +140,7 @@ add_library(sdrcore SHARED
     src/decoder/decoder_abi.cpp
 )
 if(ANDROID)
-    target_sources(sdrcore PRIVATE src/sdr_jni.cpp)
+    target_sources(sdrcore PRIVATE src/sdr_jni.cpp src/record_android_provider.cpp)
 else()
     # Desktop host platform layer (Linux, macOS, Windows): libusb enumeration
     # and open by usbfs path (Linux) or by bus/address (every host).
