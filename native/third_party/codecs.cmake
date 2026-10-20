@@ -23,6 +23,12 @@ add_library(sdrcore_flac STATIC ${_flac_sources})
 target_include_directories(sdrcore_flac PUBLIC ${SDRCORE_CODEC_ROOT}/flac/include
     PRIVATE ${_flac_src}/include)
 target_compile_definitions(sdrcore_flac PRIVATE FLAC__NO_ASM HAVE_LROUND HAVE_STDINT_H FLAC__HAS_OGG=0 PACKAGE_VERSION="1.4.3" PUBLIC FLAC__NO_DLL)
+# llvm-mingw UCRT declares fseeko/ftello itself. Without HAVE_FSEEKO,
+# libFLAC aliases them before stdio.h is included and conflicts with its
+# native fseeko64/ftello64 declarations.
+if(MINGW)
+    target_compile_definitions(sdrcore_flac PRIVATE HAVE_FSEEKO)
+endif()
 set_target_properties(sdrcore_flac PROPERTIES POSITION_INDEPENDENT_CODE ON C_STANDARD 99)
 if(NOT WIN32)
     target_link_libraries(sdrcore_flac PUBLIC m)
