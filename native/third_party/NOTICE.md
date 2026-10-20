@@ -227,10 +227,14 @@ binary. The parent CMake file must `include(third_party/codecs.cmake)` after
 | `ogg/` / `sdrcore_ogg` | https://downloads.xiph.org/releases/ogg/libogg-1.3.5.tar.xz | `c4d91be36fc8e54deae7575241e03f4211eb102afb3fc0775fbbc1b740016705` | BSD-3-Clause (`ogg/COPYING`) |
 | `opus/` / `sdrcore_opus` | https://downloads.xiph.org/releases/opus/opus-1.5.2.tar.gz | `65c1d2f78b9f2fb20082c38cbe47c951ad5839345876e46941612ee87f9a7ce1` | BSD-3-Clause (`opus/COPYING`) |
 
-Only local added files inside the upstream trees are
+Local added files inside the upstream trees are
 `ogg/include/ogg/config_types.h` and `lame/sdrcore_config/config.h`, portable
-replacements for upstream configure-generated headers. The sole upstream source
-edit adds `<inttypes.h>` to `flac/src/libFLAC/stream_decoder.c` for its
+replacements for upstream configure-generated headers. The upstream FLAC 1.4.3
+`src/share/win_utf8_io/win_utf8_io.c` was restored from
+https://github.com/xiph/flac/blob/1.4.3/src/share/win_utf8_io/win_utf8_io.c
+for the Windows build (SHA-256
+`04fe4e8fc1764eaccea092a789476375e12e8ada09637d7ddd04b3e3e6a84794`).
+The sole upstream source edit adds `<inttypes.h>` to `flac/src/libFLAC/stream_decoder.c` for its
 `PRIu64` diagnostic on toolchains that do not include it transitively.
 libFLAC and Opus use portable scalar implementations;
 FLAC Ogg mapping is disabled, while the separate Opus target propagates
