@@ -255,6 +255,9 @@ jobs:
       - name: Check bundled libraries resolve
         run: |
           bundle=build/linux/x64/release/bundle
+          # Plugin RUNPATH points to the build tree; ldd on the plugin alone
+          # needs the executable's $ORIGIN/lib search path explicitly.
+          export LD_LIBRARY_PATH="$PWD/$bundle/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
           ldd "$bundle/sdr_flutter" "$bundle"/lib/*.so | tee /tmp/ldd.txt
           ! grep -q "not found" /tmp/ldd.txt
 
@@ -331,6 +334,7 @@ jobs:
           test -x /usr/bin/airsdr
           test -f /usr/lib/udev/rules.d/60-airsdr.rules
           test -f /usr/share/applications/net.ivanik.sdr_flutter.desktop
+          export LD_LIBRARY_PATH="/opt/airsdr/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
           ldd /opt/airsdr/sdr_flutter /opt/airsdr/lib/*.so | tee /tmp/ldd.txt
           ! grep -q "not found" /tmp/ldd.txt
 
