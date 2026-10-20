@@ -19,6 +19,12 @@ set(_flac_sources)
 foreach(_name IN LISTS _flac_files)
     list(APPEND _flac_sources ${_flac_src}/${_name}.c)
 endforeach()
+# libFLAC's Windows file helpers call fopen_utf8 even when only the stream
+# encoder is used. Include the matching upstream source with the Windows build.
+if(WIN32)
+    list(APPEND _flac_sources
+        ${SDRCORE_CODEC_ROOT}/flac/src/share/win_utf8_io/win_utf8_io.c)
+endif()
 add_library(sdrcore_flac STATIC ${_flac_sources})
 target_include_directories(sdrcore_flac PUBLIC ${SDRCORE_CODEC_ROOT}/flac/include
     PRIVATE ${_flac_src}/include)

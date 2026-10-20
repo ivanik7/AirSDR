@@ -20,6 +20,11 @@ The feature is **not fully accepted** until the gaps below are addressed.
   changes applying to the next session; these are mocked-controller checks.
 - `flutter build apk --debug --no-pub`: succeeded. `flutter build linux
   --debug --no-pub`: succeeded, including the source-built native codecs.
+- `LLVM_MINGW_ROOT=... cmake -S native -B build/native-windows -G Ninja
+  -DCMAKE_TOOLCHAIN_FILE=$PWD/native/cmake/llvm-mingw-x86_64.cmake
+  -DCMAKE_BUILD_TYPE=Release` followed by `cmake --build build/native-windows
+  --target sdrcore -j4`: Windows x86_64 `sdrcore.dll` cross-build succeeded
+  with llvm-mingw 20261006. This proves linking, not Windows runtime output.
 - `flutter test integration_test/recording_emulator_test.dart -d emulator-5554
   --no-pub --reporter expanded`: actual native synthetic receiver, JNI writer
   and SAF Documents tree; 4 combined-stream sessions produced 20 files in
@@ -56,9 +61,10 @@ The feature is **not fully accepted** until the gaps below are addressed.
 - Linux GTK folder picker interaction and desktop end-to-end UI file creation.
   The Linux build and temporary-directory adapter tests pass, but no native
   chooser interaction was exercised here.
-- macOS and Windows native builds, native pickers/bookmarks, and actual codec
-  output at runtime. PR CI can establish build and adapter-test results, not
-  interactive picker and recording behavior on those operating systems.
+- macOS native build, Windows application packaging, native pickers/bookmarks,
+  and actual codec output at runtime on both systems. The Windows DLL built
+  locally by cross-compilation, but was not run on Windows. PR CI can establish
+  build and adapter-test results, not interactive picker/recording behavior.
 - Audible playback or device-specific background lifecycle: only a listener
   can confirm sound; no real device or over-the-air test is permitted.
 
