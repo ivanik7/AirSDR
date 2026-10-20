@@ -61,6 +61,19 @@ struct CollisionContext {
   int calls = 0;
   std::string created_name;
 };
+struct MetadataContext {
+  fs::path dir;
+  std::string mime;
+};
+static int32_t metadata_provider(void* ptr, const char*, uint32_t,
+                                 const char* name, uint32_t length,
+                                 const char* mime, int32_t* fd) {
+  auto& ctx = *static_cast<MetadataContext*>(ptr);
+  const std::string filename(name, length);
+  if (fs::path(filename).extension() == ".sigmf-meta") ctx.mime = mime;
+  *fd = open((ctx.dir / filename).c_str(), O_CREAT | O_EXCL | O_RDWR, 0644);
+  return *fd < 0 ? SDR_IO_ERROR : SDR_OK;
+}
 static int32_t collision_provider(void* ptr, const char*, uint32_t,
                                   const char* name, uint32_t length,
                                   const char*, int32_t* fd) {
@@ -167,6 +180,21 @@ int main() {
     assert(r.status().files_created == 0);
   }
 #ifndef _WIN32
+  {
+    MetadataContext ctx{dir, {}};
+    assert(set_provider("metadata", 8, metadata_provider, &ctx) == SDR_OK);
+    Recorder r;
+    auto c = config(SDR_RECORD_IQ);
+    assert(r.start(c, "metadata:tree") == SDR_OK);
+    const uint8_t iq[] = {0, 1};
+    r.offer_iq(iq, sizeof(iq), 300000, 100000000, "WFM");
+    assert(r.stop(SDR_RECORD_STOP_USER) == SDR_OK);
+    assert(r.status().files_created == 2 && r.status().last_error == SDR_OK);
+    // Android's DocumentsProvider appends .json to application/json, which
+    // would break the exact SigMF data/metadata sibling-name contract.
+    assert(ctx.mime == "application/octet-stream");
+    assert(set_provider("metadata", 8, nullptr, nullptr) == SDR_OK);
+  }
   {
     CollisionContext ctx{dir, 0, {}};
     assert(set_provider("collide", 7, collision_provider, &ctx) == SDR_OK);

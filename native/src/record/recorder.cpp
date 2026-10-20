@@ -468,7 +468,9 @@ bool Recorder::open_iq(const Item& item) {
     if (result == SDR_RECORD_EXISTS) continue;
     if (result != SDR_OK) return false;
     File meta;
-    result = create(meta, candidate + ".sigmf-meta", "application/json", SDR_RECORD_IQ);
+    // DocumentsProvider may append ".json" to application/json, changing the
+    // requested SigMF sibling name. Keep the exact .sigmf-meta extension.
+    result = create(meta, candidate + ".sigmf-meta", "application/octet-stream", SDR_RECORD_IQ);
     if (result != SDR_OK) {
       if (close_fd(f.fd) != 0) fail(error_code(errno), SDR_RECORD_IQ);
       // The fd bridge cannot remove SAF documents. For file: remove the

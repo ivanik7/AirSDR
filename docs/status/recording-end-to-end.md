@@ -1,0 +1,65 @@
+# Recording integration QA (issue #1)
+
+This report covers the combined recording branch on a Linux host and Android API
+35 x86_64 emulator. No physical phone or live RF was used. A generated CU8 IQ
+source exercised the actual native receiver; audio and IQ never crossed Dart.
+The feature is **not fully accepted** until the gaps below are addressed.
+
+## Verified
+
+- `cmake --build build/native-host-tests -j4` and
+  `ctest --test-dir build/native-host-tests --output-on-failure -j4`:
+  55/55 passed. The recording codec matrix uses ffprobe/ffmpeg on 48 files from
+  24 channel/stream/format cases and eight short clips. Existing native ABI
+  fixtures cover generated source bytes, retune/mode/rate boundaries, receiver
+  shutdown, squelch slicing, missing folder, write errors and bounded queues.
+- `flutter analyze --no-pub`: no issues.
+  `SDRCORE_HOST_LIBRARY=$PWD/build/native-host-tests/libsdrcore.so flutter test
+  --no-pub --concurrency=1 --reporter compact`: 591 passed, 10 skipped.
+  UI tests exercise persisted stream, format and bitrate choices, and format
+  changes applying to the next session; these are mocked-controller checks.
+- `flutter build apk --debug --no-pub`: succeeded. `flutter build linux
+  --debug --no-pub`: succeeded, including the source-built native codecs.
+- `flutter test integration_test/recording_emulator_test.dart -d emulator-5554
+  --no-pub --reporter expanded`: actual native synthetic receiver, JNI writer
+  and SAF Documents tree; 4 combined-stream sessions produced 20 files in
+  WAV, FLAC, MP3 and Ogg Opus (continuous and per-squelch), CU8 SigMF data and
+  metadata, and selected real native RDS reset-event JSONL. Native status
+  reported ACTIVE, then IDLE/USER, with nonzero IQ/audio/log/byte counters;
+  receiver remained RUNNING across starts/stops. Mute was enabled and volume
+  zero; nonzero recorded audio proves the pre-mute PCM tap. A second run also
+  passed, but Flutter's integration harness reinstalled the app and reset its
+  saved folder, so it **does not** establish cold-process SAF grant persistence.
+  The final emulator regression revoked the selected tree, confirmed the
+  saved locator remained but became inaccessible, and observed native
+  FAILED/FOLDER_UNAVAILABLE on the next IQ write while reception stayed
+  RUNNING; Stop acknowledged the failed session.
+- `adb -s emulator-5554 pull /sdcard/Documents/AirSDR-Recording-QA
+  build/recording-qa` and `python3 tool/verify_recording_emulator.py
+  build/recording-qa/AirSDR-Recording-QA AirSDR_2026-10-20_17-18-2`:
+  20 actual SAF files verified. ffprobe found all four codecs at 48 kHz
+  stereo with durations 0.259–0.288 s; ffmpeg decoded nonzero PCM. Four SigMF
+  pairs had exact `.sigmf-data`/`.sigmf-meta` siblings, `cu8`, 300000 samples/s,
+  100000000 Hz, and the deterministic incrementing-byte source oracle.
+  Four JSONL files parsed and contained RDS reset events. The `.sigmf-meta`
+  MIME type is deliberately octet-stream: Android DocumentsProvider appended
+  `.json` to `application/json`, breaking the SigMF sibling name. A native
+  provider regression test checks this MIME contract.
+
+## Still unverified
+
+- A real cold-process restart retaining the same SAF tree grant (the Flutter
+  integration runner resets app data); revoke **during** an already-writing
+  session, and disk-full recovery on the emulator. A revoke before the next
+  session was exercised. The native host tests and platform adapter tests
+  cover related error cases but cannot prove the remaining Android behavior.
+- Linux GTK folder picker interaction and desktop end-to-end UI file creation.
+  The Linux build and temporary-directory adapter tests pass, but no native
+  chooser interaction was exercised here.
+- macOS and Windows native builds, native pickers/bookmarks, and actual codec
+  output at runtime. PR CI can establish build and adapter-test results, not
+  interactive picker and recording behavior on those operating systems.
+- Audible playback or device-specific background lifecycle: only a listener
+  can confirm sound; no real device or over-the-air test is permitted.
+
+Do not mark issue #1 acceptance complete solely from these checks.
