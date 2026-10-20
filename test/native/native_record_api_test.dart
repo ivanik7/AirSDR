@@ -20,8 +20,7 @@ void main() {
       if (!Platform.isLinux) {
         return; // C fixture uses host cc; CI for others later.
       }
-      final scratch = await Directory(Platform.environment['TMPDIR']!)
-          .createTemp('record_abi_');
+      final scratch = await Directory.systemTemp.createTemp('record_abi_');
       try {
         final output = '${scratch.path}/librecord_abi.so';
         final cc = await Process.run('cc', [
