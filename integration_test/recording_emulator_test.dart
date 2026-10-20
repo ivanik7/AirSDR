@@ -153,8 +153,8 @@ void main() {
       radio.close(handle);
       radio.destroy(handle);
     }
-    // The persisted grant must survive a new process; a separate cold launch
-    // verifies access without releasing it here.
+    // Revoking the grant does not erase the saved locator. Cold-process grant
+    // persistence requires a separate test that does not revoke it first.
     expect((await RecordFolderStore().load())?.locator, locator);
   });
 }
