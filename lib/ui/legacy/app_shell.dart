@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import 'package:flutter/material.dart';
 
+import '../../native/native_radio_controller.dart';
+import '../recording/recording_controller.dart';
+
 import '../bands/bands.dart';
 import '../channels/channel_controller.dart';
 import '../channels/channel_scanner.dart';
@@ -26,6 +29,7 @@ class LegacyAppShell extends StatefulWidget {
     this.bands,
     this.openReceive,
     this.decoderLabel,
+    this.recording,
   });
   final RadioController controller;
   final FavoritesRepository? favorites;
@@ -36,6 +40,7 @@ class LegacyAppShell extends StatefulWidget {
   /// Receives the label of the one selected decoder (for the background
   /// notification); the shell owns the DecoderSession it comes from.
   final ValueNotifier<String?>? decoderLabel;
+  final RecordingController? recording;
   @override
   State<LegacyAppShell> createState() => _LegacyAppShellState();
 }
@@ -54,6 +59,12 @@ class _LegacyAppShellState extends State<LegacyAppShell> {
   late ChannelScanner scanner;
   late SignalMeter meter;
   late DecoderSession decoderSession;
+  RecordingController? recording;
+  bool ownRecording = false;
+  RecordingSettingsTarget? recordingTarget;
+  int recordingRoute = 0;
+  String? shownRecordingError;
+  bool recordingRequestPending = false;
   bool ownFavorites = false;
   bool ownChannels = false;
   bool ownBands = false;
@@ -90,6 +101,16 @@ class _LegacyAppShellState extends State<LegacyAppShell> {
     scanner.addListener(_scannerChanged);
     meter = SignalMeter(widget.controller);
     decoderSession = DecoderSession(widget.controller, receiver: receiver);
+    recording = widget.recording;
+    ownRecording =
+        recording == null && widget.controller is NativeRadioController;
+    if (ownRecording) {
+      recording = RecordingController.forNative(
+        widget.controller as NativeRadioController,
+      );
+    }
+    recording?.addListener(_recordingChanged);
+    if (recording != null) recording!.load();
     decoderSession.addListener(_publishDecoderLabel);
     _publishDecoderLabel();
     final radio = widget.controller;
@@ -140,6 +161,40 @@ class _LegacyAppShellState extends State<LegacyAppShell> {
     if (mounted) setState(() {});
   }
 
+  Future<void> _toggleRecording() async {
+    final control = recording;
+    if (control == null) return;
+    recordingRequestPending = true;
+    try {
+      await control.toggle();
+    } finally {
+      recordingRequestPending = false;
+    }
+    if (!mounted) return;
+    if (control.settingsTarget == null) return;
+    setState(() {
+      recordingTarget = control.settingsTarget;
+      recordingRoute++;
+      tab = 3;
+    });
+  }
+
+  void _recordingChanged() {
+    final message = recording?.error;
+    if (message == shownRecordingError) return;
+    shownRecordingError = message;
+    if (message == null) return;
+    // Prerequisite errors navigate to the visible Settings control instead
+    // of covering the bottom navigation with a snackbar.
+    if (recordingRequestPending && recording?.settingsTarget != null) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && shownRecordingError == message) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(message)));
+      }
+    });
+  }
+
   @override
   void didUpdateWidget(LegacyAppShell oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -149,6 +204,7 @@ class _LegacyAppShellState extends State<LegacyAppShell> {
     }
     if (oldWidget.decoderLabel != widget.decoderLabel) _publishDecoderLabel();
     if (oldWidget.controller == widget.controller &&
+        oldWidget.recording == widget.recording &&
         oldWidget.favorites == widget.favorites &&
         oldWidget.channels == widget.channels &&
         oldWidget.bands == widget.bands) {
@@ -161,6 +217,8 @@ class _LegacyAppShellState extends State<LegacyAppShell> {
     spectrum.dispose();
     meter.dispose();
     decoderSession.dispose();
+    recording?.removeListener(_recordingChanged);
+    if (ownRecording) recording?.dispose();
     if (ownFavorites) favorites.dispose();
     if (ownChannels) channelSlots.dispose();
     if (ownBands) bands.dispose();
@@ -177,6 +235,8 @@ class _LegacyAppShellState extends State<LegacyAppShell> {
     spectrum.dispose();
     meter.dispose();
     decoderSession.dispose();
+    recording?.removeListener(_recordingChanged);
+    if (ownRecording) recording?.dispose();
     if (ownFavorites) favorites.dispose();
     if (ownChannels) channelSlots.dispose();
     if (ownBands) bands.dispose();
@@ -202,6 +262,8 @@ class _LegacyAppShellState extends State<LegacyAppShell> {
                   scanner: scanner,
                   meter: meter,
                   decoderSession: decoderSession,
+                  recording: recording,
+                  onRecordPressed: _toggleRecording,
                 ),
                 DecoderScreen(
                   controller: widget.controller,
@@ -221,6 +283,9 @@ class _LegacyAppShellState extends State<LegacyAppShell> {
                   receiver: receiver,
                   spectrum: spectrum,
                   bands: bands,
+                  recording: recording,
+                  recordingTarget: recordingTarget,
+                  recordingRoute: recordingRoute,
                 ),
               ],
             ),
