@@ -34,6 +34,10 @@ def nightly_runs(results, cancelled=False, event='push', ref='refs/heads/master'
 
 
 class ReleaseWorkflowTest(unittest.TestCase):
+    def test_tumbleweed_refreshes_rolling_package_index_before_install(self):
+        install = WORKFLOW.split('          - image: opensuse/tumbleweed\n', 1)[1].split('\n', 1)[0]
+        self.assertIn('zypper --non-interactive refresh &&', install)
+
     def test_each_platform_may_fail_without_blocking_nightly(self):
         for failed in ['android', 'linux', 'linux-install', 'macos', 'windows']:
             with self.subTest(failed=failed):

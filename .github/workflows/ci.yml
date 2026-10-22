@@ -315,7 +315,7 @@ jobs:
           - image: fedora:latest
             install: dnf install -y ./dist/*.rpm
           - image: opensuse/tumbleweed
-            install: zypper --non-interactive install --allow-unsigned-rpm ./dist/*.rpm
+            install: zypper --non-interactive refresh && zypper --non-interactive install --allow-unsigned-rpm ./dist/*.rpm
           - image: archlinux:latest
             install: pacman -Sy --noconfirm && pacman -U --noconfirm ./dist/*.pkg.tar.zst
     container: ${{ matrix.image }}
