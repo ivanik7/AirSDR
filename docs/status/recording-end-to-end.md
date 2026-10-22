@@ -60,10 +60,22 @@ The feature is **not fully accepted** until the gaps below are addressed.
   RUNNING. The second `flutter test` did reinstall the debug APK in place
   (`--no-uninstall` retained its data), so this establishes cold-process grant
   persistence **across an in-place APK reinstall**, not an untouched-package
-  launch. `adb pull` and `python3 tool/verify_recording_cold_saf.py
+  launch. `adb pull` and `python3 tool/verify_recording_iq.py
   build/recording-cold-qa AirSDR_2026-10-23_00-07-43
   AirSDR_2026-10-23_00-08-12` verified both distinct pairs' CU8 byte oracle,
   sample rate (300000/s), frequency (100000000 Hz), and metadata names.
+- `DISPLAY=:100 SDR_RECORD_QA_FOLDER=$PWD/build/recording-linux-qa
+  SDRCORE_HOST_LIBRARY=$PWD/build/native-host-tests/libsdrcore.so flutter test
+  integration_test/recording_linux_picker_test.dart -d linux --no-pub
+  --reporter expanded`: passed. Under Xvfb, the real GTK Choose Directory
+  window selected `build/recording-linux-qa`; the store validated its write
+  probe and restored the locator, and the native synthetic receiver wrote a
+  SigMF pair without stopping reception. `python3 tool/verify_recording_iq.py
+  build/recording-linux-qa AirSDR_2026-10-23_00-22-27` checked its generated
+  CU8 oracle and 300000/s, 100000000 Hz metadata. This is Linux desktop
+  interactive picker/file creation on Xvfb, not a mocked adapter. The GTK
+  directory chooser before selecting the `recording-linux-qa` row is captured
+  in [recording-linux-picker.png](recording-linux-picker.png).
 - PR #6 exact-head Actions run 39427862136 at `4c86888`: Analyze and test,
   Android APKs, Linux packages/install, macOS app and Windows DLL/app all
   succeeded. These are build/adapter results, not runtime picker checks.
@@ -75,13 +87,9 @@ The feature is **not fully accepted** until the gaps below are addressed.
   and disk-full recovery on the emulator. A revoke before the next session
   was exercised. Native host and adapter tests cover related error cases but
   cannot prove the remaining Android behavior.
-- Linux GTK folder picker interaction and desktop end-to-end UI file creation.
-  The Linux build and temporary-directory adapter tests pass, but no native
-  chooser interaction was exercised here.
-- macOS native build, Windows application packaging, native pickers/bookmarks,
-  and actual codec output at runtime on both systems. The Windows DLL built
-  locally by cross-compilation, but was not run on Windows. PR CI can establish
-  build and adapter-test results, not interactive picker/recording behavior.
+- macOS/Windows native pickers/bookmarks and actual codec output at runtime
+  on both systems. Both applications and the Windows DLL built in PR CI, but
+  CI exercised only adapter tests, not interactive picker/recording behavior.
 - Audible playback or device-specific background lifecycle: only a listener
   can confirm sound; no real device or over-the-air test is permitted.
 
