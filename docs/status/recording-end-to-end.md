@@ -50,14 +50,31 @@ The feature is **not fully accepted** until the gaps below are addressed.
   MIME type is deliberately octet-stream: Android DocumentsProvider appended
   `.json` to `application/json`, breaking the SigMF sibling name. A native
   provider regression test checks this MIME contract.
+- `flutter test integration_test/recording_persisted_saf_emulator_test.dart
+  -d emulator-5554 --no-pub --no-uninstall --reporter expanded` on the API
+  35 emulator: first run selected the Documents/AirSDR-Recording-QA SAF tree,
+  wrote an IQ SigMF pair (147456 CU8 bytes), and passed. After
+  `adb -s emulator-5554 shell am force-stop net.ivanik.sdr_flutter`, the same
+  test ran again without any picker: `previous=true`, grant validation passed,
+  and JNI/native recording created another pair while reception stayed
+  RUNNING. The second `flutter test` did reinstall the debug APK in place
+  (`--no-uninstall` retained its data), so this establishes cold-process grant
+  persistence **across an in-place APK reinstall**, not an untouched-package
+  launch. `adb pull` and `python3 tool/verify_recording_cold_saf.py
+  build/recording-cold-qa AirSDR_2026-10-23_00-07-43
+  AirSDR_2026-10-23_00-08-12` verified both distinct pairs' CU8 byte oracle,
+  sample rate (300000/s), frequency (100000000 Hz), and metadata names.
+- PR #6 exact-head Actions run 39427862136 at `4c86888`: Analyze and test,
+  Android APKs, Linux packages/install, macOS app and Windows DLL/app all
+  succeeded. These are build/adapter results, not runtime picker checks.
 
 ## Still unverified
 
-- A real cold-process restart retaining the same SAF tree grant (the Flutter
-  integration runner resets app data); revoke **during** an already-writing
-  session, and disk-full recovery on the emulator. A revoke before the next
-  session was exercised. The native host tests and platform adapter tests
-  cover related error cases but cannot prove the remaining Android behavior.
+- A pure cold-process restart without the in-place APK reinstall performed
+  by the Flutter test harness; revoke **during** an already-writing session,
+  and disk-full recovery on the emulator. A revoke before the next session
+  was exercised. Native host and adapter tests cover related error cases but
+  cannot prove the remaining Android behavior.
 - Linux GTK folder picker interaction and desktop end-to-end UI file creation.
   The Linux build and temporary-directory adapter tests pass, but no native
   chooser interaction was exercised here.
