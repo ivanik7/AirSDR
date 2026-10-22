@@ -81,8 +81,11 @@ The feature is **not fully accepted** until the gaps below are addressed.
   succeeded. These are build/adapter results, not runtime picker checks. On
   the later `8dc9d7a` run, openSUSE Tumbleweed's install job failed before
   installing AirSDR because stale rolling-repository package URLs returned
-  403/404. The CI command now refreshes its index before installation; the
-  resulting head needs a new exact-head check.
+  403/404. The CI command now refreshes its index before installation. Run
+  [39841428165](https://github.com/ivanik7/AirSDR/actions/runs/39841428165)
+  at `77c2129` succeeded: Analyze and test, Android APKs, Linux packages and
+  five clean-distribution installs (including openSUSE), macOS app, Windows
+  DLL and app. These still do not prove interactive macOS/Windows recording.
 
 ## Still unverified
 
