@@ -128,9 +128,42 @@ void main() {
         );
       }
       expect(radio.snapshot(handle).state, SdrState.running);
+      // Revoking a tree does not invalidate an already-open SAF file descriptor.
+      // The active writer must finish its existing files cleanly; a subsequent
+      // session must fail when it asks the provider to create new documents.
+      final activeConfig = SdrRecordConfig(
+        streams: SdrRecordStream.iq,
+        audioFormat: SdrRecordFormat.none,
+        startUnixMs: DateTime.now().millisecondsSinceEpoch,
+        utcOffsetMinutes: DateTime.now().timeZoneOffset.inMinutes,
+      );
+      expect(recorder.start(handle, activeConfig, locator, []), SdrResult.ok);
+      for (var attempt = 0; attempt < 40; attempt++) {
+        if (recorder.status(handle).iqSamplesWritten > 0) break;
+        await Future<void>.delayed(const Duration(milliseconds: 250));
+      }
+      final beforeRevoke = recorder.status(handle);
+      expect(beforeRevoke.state, SdrRecordState.active);
+      expect(beforeRevoke.filesCreated, 2);
       await AndroidRecordFolderPlatform().release(locator);
       expect(await folderStore.isAccessible(), isFalse);
       expect((await folderStore.load())?.locator, locator);
+      for (var attempt = 0; attempt < 40; attempt++) {
+        if (recorder.status(handle).iqSamplesWritten >
+            beforeRevoke.iqSamplesWritten) {
+          break;
+        }
+        await Future<void>.delayed(const Duration(milliseconds: 250));
+      }
+      final afterRevoke = recorder.status(handle);
+      expect(afterRevoke.state, SdrRecordState.active);
+      expect(
+        afterRevoke.iqSamplesWritten,
+        greaterThan(beforeRevoke.iqSamplesWritten),
+      );
+      expect(recorder.stop(handle), SdrResult.ok);
+      expect(recorder.status(handle).state, SdrRecordState.idle);
+      expect(radio.snapshot(handle).state, SdrState.running);
       final revoked = SdrRecordConfig(
         streams: SdrRecordStream.iq,
         audioFormat: SdrRecordFormat.none,

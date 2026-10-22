@@ -81,19 +81,42 @@ The feature is **not fully accepted** until the gaps below are addressed.
   succeeded. These are build/adapter results, not runtime picker checks. On
   the later `8dc9d7a` run, openSUSE Tumbleweed's install job failed before
   installing AirSDR because stale rolling-repository package URLs returned
-  403/404. The CI command now refreshes its index before installation. Run
-  [39841428165](https://github.com/ivanik7/AirSDR/actions/runs/39841428165)
+  403/404. The CI command now refreshes its index before installation.
+  [Run 39841428165](https://github.com/ivanik7/AirSDR/actions/runs/39841428165)
   at `77c2129` succeeded: Analyze and test, Android APKs, Linux packages and
   five clean-distribution installs (including openSUSE), macOS app, Windows
   DLL and app. These still do not prove interactive macOS/Windows recording.
+- PR #6 exact-head [run 39843460044](https://github.com/ivanik7/AirSDR/actions/runs/39843460044)
+  succeeded at `8920134` (before the additional emulator QA below).
+- `flutter test integration_test/recording_emulator_test.dart -d emulator-5554
+  --no-pub --no-uninstall --reporter expanded`: passed on Android API 35 with
+  the native synthetic source and real SAF Documents provider. After four
+  codec sessions, a fifth active IQ session wrote two SigMF files; releasing
+  its persisted tree grant during recording left already-open descriptors
+  writable (IQ sample count increased), then Stop closed cleanly and reception
+  remained RUNNING. The next session failed FOLDER_UNAVAILABLE on file creation
+  as expected. This checks in-app revocation during an active writer, not a
+  cross-process/system-settings permission removal. `flutter analyze --no-pub`
+  was clean after the test changes.
+- `flutter test integration_test/recording_persisted_saf_emulator_test.dart
+  -d emulator-5554 --no-pub --no-uninstall --reporter expanded`: passed after
+  reselecting the previously revoked tree (`previous=false`), writing two
+  SigMF files (155864 bytes, 77824 IQ samples). An `adb am force-stop` followed
+  by `adb am start` without reinstall launched the ordinary app, but did not
+  execute the integration test again; it cannot prove native recording after
+  a pure cold-process restart. The earlier in-place-reinstall test above
+  remains the strongest validated writer persistence check.
 
 ## Still unverified
 
-- A pure cold-process restart without the in-place APK reinstall performed
-  by the Flutter test harness; revoke **during** an already-writing session,
-  and disk-full recovery on the emulator. A revoke before the next session
-  was exercised. Native host and adapter tests cover related error cases but
-  cannot prove the remaining Android behavior.
+- A pure cold-process restart with no APK reinstall followed by native SAF
+  recording (the Flutter integration harness reinstalls even with
+  `--no-uninstall`); system-settings permission removal during active writing;
+  and disk-full recovery on the emulator. Filling the emulator's 5.8 GiB
+  shared `/data` filesystem would also grow its host image with less than
+  5 GiB free on the build host, risking host-wide ENOSPC; no destructive fill
+  was attempted. Native host and adapter tests cover related errors, not
+  Android DocumentsProvider exhaustion.
 - macOS/Windows native pickers/bookmarks and actual codec output at runtime
   on both systems. Both applications and the Windows DLL built in PR CI, but
   CI exercised only adapter tests, not interactive picker/recording behavior.

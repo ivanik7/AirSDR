@@ -20,7 +20,8 @@ void main() {
     if (!Platform.isAndroid) return;
     final store = RecordFolderStore();
     final previous = await store.load();
-    final folder = previous ?? await store.choose();
+    final hadGrant = previous != null && await store.isAccessible();
+    final folder = hadGrant ? previous : await store.choose();
     expect(folder, isNotNull, reason: 'Choose Documents on the first run');
     expect(await store.isAccessible(), isTrue);
 
@@ -71,7 +72,7 @@ void main() {
       radio.stop(handle);
       // ignore: avoid_print
       print(
-        'SAF cold-run previous=${previous != null} files=${stopped.filesCreated} '
+        'SAF cold-run previous=$hadGrant files=${stopped.filesCreated} '
         'bytes=${stopped.bytesWritten} iq=${stopped.iqSamplesWritten}',
       );
     } finally {
