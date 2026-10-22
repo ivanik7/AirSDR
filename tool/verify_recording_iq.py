@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Check pulled emulator IQ-only files from two cold-process SAF runs.
+"""Check generated-IQ SigMF pairs from desktop or pulled Android recordings.
 
-Usage: python3 tool/verify_recording_cold_saf.py DIR PREFIX_FIRST PREFIX_SECOND
+Usage: python3 tool/verify_recording_iq.py DIR PREFIX [PREFIX ...]
 Each prefix is a full session timestamp (AirSDR_YYYY-MM-DD_HH-MM-SS).
 """
 import json
@@ -26,8 +26,8 @@ def verify(folder: pathlib.Path, prefix: str) -> None:
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 4:
-        raise SystemExit("usage: verify_recording_cold_saf.py DIR PREFIX_FIRST PREFIX_SECOND")
+    if len(sys.argv) < 3:
+        raise SystemExit("usage: verify_recording_iq.py DIR PREFIX [PREFIX ...]")
     directory = pathlib.Path(sys.argv[1])
-    verify(directory, sys.argv[2])
-    verify(directory, sys.argv[3])
+    for prefix in sys.argv[2:]:
+        verify(directory, prefix)
