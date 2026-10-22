@@ -1,0 +1,126 @@
+# Recording integration QA (issue #1)
+
+This report covers the combined recording branch on a Linux host and Android API
+35 x86_64 emulator. No physical phone or live RF was used. A generated CU8 IQ
+source exercised the actual native receiver; audio and IQ never crossed Dart.
+The feature is **not fully accepted** until the gaps below are addressed.
+
+## Verified
+
+- `cmake --build build/native-host-tests -j4` and
+  `ctest --test-dir build/native-host-tests --output-on-failure -j4`:
+  55/55 passed. The recording codec matrix uses ffprobe/ffmpeg on 48 files from
+  24 channel/stream/format cases and eight short clips. Existing native ABI
+  fixtures cover generated source bytes, retune/mode/rate boundaries, receiver
+  shutdown, squelch slicing, missing folder, write errors and bounded queues.
+- `flutter analyze --no-pub`: no issues.
+  `SDRCORE_HOST_LIBRARY=$PWD/build/native-host-tests/libsdrcore.so flutter test
+  --no-pub --concurrency=1 --reporter compact`: 591 passed, 10 skipped.
+  UI tests exercise persisted stream, format and bitrate choices, and format
+  changes applying to the next session; these are mocked-controller checks.
+- `flutter build apk --debug --no-pub`: succeeded. `flutter build linux
+  --debug --no-pub`: succeeded, including the source-built native codecs.
+- `LLVM_MINGW_ROOT=... cmake -S native -B build/native-windows -G Ninja
+  -DCMAKE_TOOLCHAIN_FILE=$PWD/native/cmake/llvm-mingw-x86_64.cmake
+  -DCMAKE_BUILD_TYPE=Release` followed by `cmake --build build/native-windows
+  --target sdrcore -j4`: Windows x86_64 `sdrcore.dll` cross-build succeeded
+  with llvm-mingw 20261006. This proves linking, not Windows runtime output.
+- `flutter test integration_test/recording_emulator_test.dart -d emulator-5554
+  --no-pub --reporter expanded`: actual native synthetic receiver, JNI writer
+  and SAF Documents tree; 4 combined-stream sessions produced 20 files in
+  WAV, FLAC, MP3 and Ogg Opus (continuous and per-squelch), CU8 SigMF data and
+  metadata, and selected real native RDS reset-event JSONL. Native status
+  reported ACTIVE, then IDLE/USER, with nonzero IQ/audio/log/byte counters;
+  receiver remained RUNNING across starts/stops. Mute was enabled and volume
+  zero; nonzero recorded audio proves the pre-mute PCM tap. A second run also
+  passed, but Flutter's integration harness reinstalled the app and reset its
+  saved folder, so it **does not** establish cold-process SAF grant persistence.
+  The final emulator regression revoked the selected tree, confirmed the
+  saved locator remained but became inaccessible, and observed native
+  FAILED/FOLDER_UNAVAILABLE on the next IQ write while reception stayed
+  RUNNING; Stop acknowledged the failed session.
+- `adb -s emulator-5554 pull /sdcard/Documents/AirSDR-Recording-QA
+  build/recording-qa` and `python3 tool/verify_recording_emulator.py
+  build/recording-qa/AirSDR-Recording-QA AirSDR_2026-10-20_17-18-2`:
+  20 actual SAF files verified. ffprobe found all four codecs at 48 kHz
+  stereo with durations 0.259–0.288 s; ffmpeg decoded nonzero PCM. Four SigMF
+  pairs had exact `.sigmf-data`/`.sigmf-meta` siblings, `cu8`, 300000 samples/s,
+  100000000 Hz, and the deterministic incrementing-byte source oracle.
+  Four JSONL files parsed and contained RDS reset events. The `.sigmf-meta`
+  MIME type is deliberately octet-stream: Android DocumentsProvider appended
+  `.json` to `application/json`, breaking the SigMF sibling name. A native
+  provider regression test checks this MIME contract.
+- `flutter test integration_test/recording_persisted_saf_emulator_test.dart
+  -d emulator-5554 --no-pub --no-uninstall --reporter expanded` on the API
+  35 emulator: first run selected the Documents/AirSDR-Recording-QA SAF tree,
+  wrote an IQ SigMF pair (147456 CU8 bytes), and passed. After
+  `adb -s emulator-5554 shell am force-stop net.ivanik.sdr_flutter`, the same
+  test ran again without any picker: `previous=true`, grant validation passed,
+  and JNI/native recording created another pair while reception stayed
+  RUNNING. The second `flutter test` did reinstall the debug APK in place
+  (`--no-uninstall` retained its data), so this establishes cold-process grant
+  persistence **across an in-place APK reinstall**, not an untouched-package
+  launch. `adb pull` and `python3 tool/verify_recording_iq.py
+  build/recording-cold-qa AirSDR_2026-10-23_00-07-43
+  AirSDR_2026-10-23_00-08-12` verified both distinct pairs' CU8 byte oracle,
+  sample rate (300000/s), frequency (100000000 Hz), and metadata names.
+- `DISPLAY=:100 SDR_RECORD_QA_FOLDER=$PWD/build/recording-linux-qa
+  SDRCORE_HOST_LIBRARY=$PWD/build/native-host-tests/libsdrcore.so flutter test
+  integration_test/recording_linux_picker_test.dart -d linux --no-pub
+  --reporter expanded`: passed. Under Xvfb, the real GTK Choose Directory
+  window selected `build/recording-linux-qa`; the store validated its write
+  probe and restored the locator, and the native synthetic receiver wrote a
+  SigMF pair without stopping reception. `python3 tool/verify_recording_iq.py
+  build/recording-linux-qa AirSDR_2026-10-23_00-22-27` checked its generated
+  CU8 oracle and 300000/s, 100000000 Hz metadata. This is Linux desktop
+  interactive picker/file creation on Xvfb, not a mocked adapter. The GTK
+  directory chooser before selecting the `recording-linux-qa` row is captured
+  in [recording-linux-picker.png](recording-linux-picker.png).
+- PR #6 exact-head Actions run 39427862136 at `4c86888`: Analyze and test,
+  Android APKs, Linux packages/install, macOS app and Windows DLL/app all
+  succeeded. These are build/adapter results, not runtime picker checks. On
+  the later `8dc9d7a` run, openSUSE Tumbleweed's install job failed before
+  installing AirSDR because stale rolling-repository package URLs returned
+  403/404. The CI command now refreshes its index before installation.
+  [Run 39841428165](https://github.com/ivanik7/AirSDR/actions/runs/39841428165)
+  at `77c2129` succeeded: Analyze and test, Android APKs, Linux packages and
+  five clean-distribution installs (including openSUSE), macOS app, Windows
+  DLL and app. These still do not prove interactive macOS/Windows recording.
+- PR #6 exact-head [run 39843460044](https://github.com/ivanik7/AirSDR/actions/runs/39843460044)
+  succeeded at `8920134` (before the additional emulator QA below).
+- `flutter test integration_test/recording_emulator_test.dart -d emulator-5554
+  --no-pub --no-uninstall --reporter expanded`: passed on Android API 35 with
+  the native synthetic source and real SAF Documents provider. After four
+  codec sessions, a fifth active IQ session wrote two SigMF files; releasing
+  its persisted tree grant during recording left already-open descriptors
+  writable (IQ sample count increased), then Stop closed cleanly and reception
+  remained RUNNING. The next session failed FOLDER_UNAVAILABLE on file creation
+  as expected. This checks in-app revocation during an active writer, not a
+  cross-process/system-settings permission removal. `flutter analyze --no-pub`
+  was clean after the test changes.
+- `flutter test integration_test/recording_persisted_saf_emulator_test.dart
+  -d emulator-5554 --no-pub --no-uninstall --reporter expanded`: passed after
+  reselecting the previously revoked tree (`previous=false`), writing two
+  SigMF files (155864 bytes, 77824 IQ samples). An `adb am force-stop` followed
+  by `adb am start` without reinstall launched the ordinary app, but did not
+  execute the integration test again; it cannot prove native recording after
+  a pure cold-process restart. The earlier in-place-reinstall test above
+  remains the strongest validated writer persistence check.
+
+## Still unverified
+
+- A pure cold-process restart with no APK reinstall followed by native SAF
+  recording (the Flutter integration harness reinstalls even with
+  `--no-uninstall`); system-settings permission removal during active writing;
+  and disk-full recovery on the emulator. Filling the emulator's 5.8 GiB
+  shared `/data` filesystem would also grow its host image with less than
+  5 GiB free on the build host, risking host-wide ENOSPC; no destructive fill
+  was attempted. Native host and adapter tests cover related errors, not
+  Android DocumentsProvider exhaustion.
+- macOS/Windows native pickers/bookmarks and actual codec output at runtime
+  on both systems. Both applications and the Windows DLL built in PR CI, but
+  CI exercised only adapter tests, not interactive picker/recording behavior.
+- Audible playback or device-specific background lifecycle: only a listener
+  can confirm sound; no real device or over-the-air test is permitted.
+
+Do not mark issue #1 acceptance complete solely from these checks.

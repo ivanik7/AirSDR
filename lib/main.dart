@@ -14,6 +14,7 @@ import 'native/android_native_device_source.dart';
 import 'native/native_decoder_api.dart';
 import 'native/native_radio_api.dart';
 import 'native/native_radio_controller.dart';
+import 'native/native_record_api.dart';
 import 'native/native_service_lifecycle.dart';
 import 'native/sdr_core.dart';
 import 'platform/linux/native_required_radio_controller.dart';
@@ -69,6 +70,7 @@ Future<RadioController> createAndroidRadioController({
     controller = NativeRadioController(
       api: api,
       decoderApi: FfiNativeDecoderApi.tryOpen(library),
+      recordApi: FfiNativeRecordApi.tryOpen(library),
       source: AndroidNativeDeviceSource(),
       audioSink: 'aaudio',
       configDir: configDir,
@@ -116,6 +118,7 @@ RadioController createDesktopRadioController({String? configDir}) {
     return NativeRadioController(
       api: api,
       decoderApi: FfiNativeDecoderApi.tryOpen(library),
+      recordApi: FfiNativeRecordApi.tryOpen(library),
       source: HostNativeDeviceSource(api),
       audioSink: defaultDesktopAudioSink(
         Platform.operatingSystem,

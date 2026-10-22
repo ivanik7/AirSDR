@@ -9,6 +9,7 @@ import '../channels/signal_meter.dart';
 import '../decoders/decoder_session.dart';
 import '../favorites/favorites.dart';
 import '../radio_controller.dart';
+import '../recording/recording_controller.dart';
 import '../sdr_ui_state.dart';
 
 import '../spectrum_waterfall.dart';
@@ -29,6 +30,8 @@ class ReceiveScreen extends StatefulWidget {
     required this.scanner,
     required this.meter,
     this.decoderSession,
+    this.recording,
+    this.onRecordPressed,
   });
   final RadioController controller;
   final CenteredReceiver receiver;
@@ -45,6 +48,8 @@ class ReceiveScreen extends StatefulWidget {
   /// `rtl_433`, not the underlying WFM demod) and [ChannelsSection] uses it
   /// for the active tile and "save channel as preset".
   final DecoderSession? decoderSession;
+  final RecordingController? recording;
+  final VoidCallback? onRecordPressed;
   @override
   State<ReceiveScreen> createState() => _ReceiveScreenState();
 }
@@ -92,6 +97,7 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
       widget.controller,
       ?widget.bands,
       ?widget.decoderSession,
+      ?widget.recording,
     ]),
     builder: (context, _) {
       final r = widget.controller;
@@ -107,35 +113,61 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
           padding: const EdgeInsets.fromLTRB(12, 2, 8, 0),
           child: _FixedFrequencyRow(
             key: const ValueKey('legacyFrequencyField'),
+            trailingWidth: widget.recording == null ? 48 : 96,
             text: f.entry.isEmpty
                 ? formatMhz(widget.spectrum.heldFrequency ?? r.tunedFrequency)
                 : f.entry,
             entering: f.entry.isNotEmpty,
-            trailing: f.entry.isNotEmpty
-                ? IconButton(
-                    tooltip: 'Clear input',
-                    onPressed: () => key('CLR'),
-                    icon: const Icon(Icons.close, size: 17),
-                  )
-                : IconButton(
-                    // Real mute, independent of the fixed full app volume; starts muted.
-                    key: const ValueKey('legacyMute'),
-                    tooltip: widget.scanner.userMuted
-                        ? 'Unmute'
-                        : 'Mute',
-                    onPressed: () => widget.scanner.active
-                        ? widget.scanner.setUserMuted(!widget.scanner.userMuted)
-                        : r.setMuted(!r.muted),
-                    icon: Icon(
-                      widget.scanner.userMuted
-                          ? Icons.volume_off
-                          : Icons.volume_up,
-                      size: 18,
-                      color: widget.scanner.userMuted
-                          ? LegacyColors.danger
-                          : LegacyColors.primary,
+            trailing: Row(
+              children: [
+                Expanded(
+                  child: f.entry.isNotEmpty
+                      ? IconButton(
+                          tooltip: 'Clear input',
+                          onPressed: () => key('CLR'),
+                          icon: const Icon(Icons.close, size: 17),
+                        )
+                      : IconButton(
+                          // Mute affects playback only, never the native recording tap.
+                          key: const ValueKey('legacyMute'),
+                          tooltip: widget.scanner.userMuted ? 'Unmute' : 'Mute',
+                          onPressed: () => widget.scanner.active
+                              ? widget.scanner.setUserMuted(
+                                  !widget.scanner.userMuted,
+                                )
+                              : r.setMuted(!r.muted),
+                          icon: Icon(
+                            widget.scanner.userMuted
+                                ? Icons.volume_off
+                                : Icons.volume_up,
+                            size: 18,
+                            color: widget.scanner.userMuted
+                                ? LegacyColors.danger
+                                : LegacyColors.primary,
+                          ),
+                        ),
+                ),
+                if (widget.recording case final recording?)
+                  Expanded(
+                    child: IconButton(
+                      key: const ValueKey('recordToggle'),
+                      tooltip: recording.active ? 'Stop recording' : 'Record',
+                      onPressed: recording.busy || !recording.available
+                          ? null
+                          : widget.onRecordPressed,
+                      icon: Icon(
+                        recording.active
+                            ? Icons.stop_circle
+                            : Icons.fiber_manual_record,
+                        size: 20,
+                        color: recording.active
+                            ? LegacyColors.danger
+                            : LegacyColors.primary,
+                      ),
                     ),
                   ),
+              ],
+            ),
           ),
         ),
         // Status: never wider than the screen (cover display is ~344 dp).
@@ -149,7 +181,9 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
                 maxLines: 1,
                 style: plex(mono: true, size: 12, color: LegacyColors.accent),
               ),
-              if (band != null) ...[
+              if (band != null &&
+                  widget.recording?.active != true &&
+                  widget.recording?.error == null) ...[
                 const SizedBox(width: 8),
                 Flexible(
                   child: Text(
@@ -165,7 +199,18 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  r.running ? compactStatsLine(r) : linkStatusText(r.linkState),
+                  !r.running
+                      ? linkStatusText(r.linkState)
+                      : widget.recording?.error != null
+                      ? 'REC error · Settings'
+                      : widget.recording?.active == true
+                      ? 'REC ${formatRecordingElapsed(widget.recording!.status!.elapsedMs)} · '
+                            '${formatRecordingBytes(widget.recording!.status!.bytesWritten)}'
+                      : widget.recording != null
+                      ? 'REC off'
+                      : r.running
+                      ? compactStatsLine(r)
+                      : linkStatusText(r.linkState),
                   key: const ValueKey('legacyStats'),
                   maxLines: 1,
                   softWrap: false,
@@ -175,7 +220,9 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
                     mono: true,
                     size: 10,
                     color:
-                        !r.running && r.linkState != DeviceLinkState.connecting
+                        widget.recording?.error != null ||
+                            (!r.running &&
+                                r.linkState != DeviceLinkState.connecting)
                         ? LegacyColors.danger
                         : LegacyColors.muted,
                   ),
@@ -450,14 +497,15 @@ class _FixedFrequencyRow extends StatelessWidget {
     required this.text,
     required this.entering,
     required this.trailing,
+    this.trailingWidth = 48,
   });
   final String text;
   final bool entering;
   final Widget trailing;
+  final double trailingWidth;
 
   static const maxChars = 11;
   static const maxFontSize = 49.0;
-  static const trailingWidth = 48.0;
 
   @override
   Widget build(BuildContext context) {

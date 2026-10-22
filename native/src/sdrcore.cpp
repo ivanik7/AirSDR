@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "sdrcore_v3.h"
 #include "sdrcore_decoder_v1.h"
+#include "sdrcore_record_v1.h"
 #include "decoder.hpp"
 
 #include "audio/audio_sink.h"
@@ -10,6 +11,7 @@
 #include "usb_hackrf_adapter.h"
 #include "usb_rtlsdr_adapter.h"
 #include "rtl_tcp_adapter.h"
+#include "record/recorder.h"
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
@@ -20,6 +22,7 @@
 #include <condition_variable>
 #include <deque>
 #include <cstring>
+#include <filesystem>
 #include <cmath>
 #include <memory>
 #include <mutex>
@@ -59,6 +62,10 @@ constexpr size_t kBytes = 8192;
 constexpr uint64_t kFnvOffset = 14695981039346656037ULL;
 constexpr uint64_t kFnvPrime = 1099511628211ULL;
 bool valid_rate(uint32_t rate) { return rate >= 1000 && rate <= 20000000; }
+const char* record_mode(uint32_t mode) {
+  static constexpr const char* names[] = {"NFM", "WFM", "AM", "DSB", "USB", "CW", "LSB", "RAW"};
+  return mode < sizeof(names) / sizeof(names[0]) ? names[mode] : "UNKNOWN";
+}
 std::atomic<bool> g_native_usb_claim{false};
 bool valid_controls(const SdrV3Controls& c) {
   if (c.size != sizeof(c) || c.revision != SDR_V3_REVISION || c.reserved ||
@@ -106,6 +113,9 @@ struct SdrHandle {
     std::vector<uint8_t> payload;
   };
   std::unique_ptr<sdrcore::decoder::Decoder> decoder;
+  std::string selected_decoder_id;
+  sdrcore::record::Recorder recorder;
+  bool keep_recording_on_restart = false;
   sdrcore::decoder::Input decoder_input = sdrcore::decoder::Input::audio;
   uint32_t decoder_required_rate_hz = 0;
   std::deque<QueuedDecoderEvent> decoder_events;
@@ -125,7 +135,7 @@ struct SdrHandle {
     return static_cast<uint64_t>(static_cast<int64_t>(controls.center_frequency_hz) +
                                  controls.vfo_offset_hz);
   }
-  void enqueue_decoder_event(sdrcore::decoder::Event event) {
+  void enqueue_decoder_event(sdrcore::decoder::Event event, const std::string& id) {
     if (event.payload.size() > SDR_DECODER_MAX_PAYLOAD) {
       ++decoder_dropped;
       return;
@@ -143,12 +153,16 @@ struct SdrHandle {
     queued_event.header.payload_bytes = static_cast<uint32_t>(event.payload.size());
     queued_event.header.dropped_events = decoder_dropped;
     queued_event.payload = std::move(event.payload);
+    recorder.offer_log(id, queued_event.header.kind,
+                       queued_event.header.stream_generation, tuned_frequency(),
+                       std::string(queued_event.payload.begin(), queued_event.payload.end()),
+                       record_mode(controls.mode));
     decoder_events.push_back(std::move(queued_event));
   }
   void enqueue_rds_json(const nlohmann::json& object) {
     const std::string text = object.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace);
     enqueue_decoder_event({sdrcore::decoder::Result::message,
-                           std::vector<uint8_t>(text.begin(), text.end())});
+                           std::vector<uint8_t>(text.begin(), text.end())}, "rds");
   }
   void reset_rds(const char* reason) {
     rds_fields = nlohmann::json::object();
@@ -207,7 +221,7 @@ struct SdrHandle {
     if (!decoder) return;
     sdrcore::decoder::Event event;
     for (size_t i = 0; i < SDR_DECODER_QUEUE_CAPACITY && decoder->take_event(event); ++i) {
-      enqueue_decoder_event(std::move(event));
+      enqueue_decoder_event(std::move(event), selected_decoder_id);
       event = {};
     }
     decoder_dropped += decoder->take_dropped_count();
@@ -516,6 +530,7 @@ struct SdrHandle {
     std::array<uint8_t, kBytes> block{};
     sdrcore::dsp::ProcessResult result;
     uint64_t seen_retunes = 0;
+    bool recording_receiver_error_handled = false;
     {
       std::lock_guard<std::mutex> lock(mutex);
       seen_retunes = lo_retunes;
@@ -523,7 +538,12 @@ struct SdrHandle {
     for (;;) {
       std::unique_lock<std::mutex> lock(mutex);
       ready.wait(lock, [this] { return queued || producer_done; });
-      if (!queued && producer_done) return;
+      if (!queued && producer_done) {
+        lock.unlock();
+        if (!stopping.load())
+          recorder.stop(SDR_RECORD_STOP_RECEIVER);
+        return;
+      }
       const size_t length = lengths[head];
       const bool dsp = v3_active;
       // A row may only be published under the control epoch it was computed
@@ -554,6 +574,29 @@ struct SdrHandle {
         }
         receiver->set_rds_suspended(stale);
         receiver->process(block.data(), length, result);
+        const auto& applied = dsp_controls;
+        const std::string mode = record_mode(applied.mode);
+        bool record_current;
+        {
+          std::lock_guard<std::mutex> state_lock(mutex);
+          record_current = !stale && !tune_in_progress() &&
+              dequeued_sequence == snapshot.control_sequence &&
+              snapshot.state == SDR_RUNNING;
+        }
+        if (record_current) recorder.offer_iq(block.data(), length, applied.sample_rate,
+                                               applied.center_frequency_hz, mode);
+        if (record_current && !result.recording_pcm.empty() &&
+            !(decoder && decoder_input != sdrcore::decoder::Input::audio &&
+              !(decoder_attached && decoder->provides_audio()))) {
+          std::vector<sdrcore::record::Edge> edges;
+          edges.reserve(result.recording_squelch_edges.size());
+          for (const auto& edge : result.recording_squelch_edges)
+            edges.push_back({edge.frame_offset, edge.open});
+          recorder.offer_audio(result.recording_pcm.data(),
+              result.recording_pcm.size() / result.recording_channels,
+              result.recording_channels, edges, applied.center_frequency_hz, mode,
+              result.squelch_open);
+        }
         if (decoder && decoder_attached || dsp_controls.mode == SDR_V3_WFM) {
           std::lock_guard<std::mutex> state_lock(mutex);
           if (!stale && dequeued_sequence == snapshot.control_sequence &&
@@ -582,8 +625,8 @@ struct SdrHandle {
           audio_sink->write(result.audio.data(), result.audio.size() / 2);
         audio_stats = audio_sink->stats();
       } catch (...) {
-        std::lock_guard<std::mutex> failed(mutex);
-        async_error(SDR_INTERNAL_ERROR);
+        { std::lock_guard<std::mutex> failed(mutex); async_error(SDR_INTERNAL_ERROR); }
+        recorder.stop(SDR_RECORD_STOP_RECEIVER);
         return;
       }
       lock.lock();
@@ -620,6 +663,11 @@ struct SdrHandle {
         fft.width = static_cast<uint32_t>(fft_bins.size());
         fft_unread = true;
       }
+      if (snapshot.state == SDR_ERROR && !recording_receiver_error_handled) {
+        lock.unlock();
+        recorder.stop(SDR_RECORD_STOP_RECEIVER);
+        recording_receiver_error_handled = true;
+      }
     }
   }
 
@@ -632,6 +680,7 @@ struct SdrHandle {
     { std::lock_guard<std::mutex> lock(mutex); producer_done = true; }
     ready.notify_all();
     if (consumer.joinable()) consumer.join();
+    if (!keep_recording_on_restart) recorder.stop(SDR_RECORD_STOP_RECEIVER);
     if (audio_sink) {
       const auto final = audio_sink->stats();
       std::lock_guard<std::mutex> lock(mutex);
@@ -949,11 +998,28 @@ extern "C" int32_t sdr_v3_set_controls(SdrHandle* h, const SdrV3Controls* in) {
         h->stats.gain_tenths_db != in->gain_tenths_db ||
         h->stats.sample_rate != in->sample_rate;
     restart = h->stats.state == SDR_RUNNING && hardware;
+    if (restart) h->keep_recording_on_restart = true;
   }
   if (restart) {
     const int rc = sdr_v3_stop(h);
-    if (rc != SDR_OK) return rc;
+    if (rc != SDR_OK) {
+      h->keep_recording_on_restart = false;
+      h->recorder.stop(SDR_RECORD_STOP_RECEIVER);
+      return rc;
+    }
   }
+  // Every early error path after the receiver was stopped must end recording;
+  // only a successful replacement stream may keep the same session alive.
+  struct RestartGuard {
+    SdrHandle* handle;
+    bool armed;
+    ~RestartGuard() {
+      if (armed) {
+        handle->keep_recording_on_restart = false;
+        handle->recorder.stop(SDR_RECORD_STOP_RECEIVER);
+      }
+    }
+  } restart_guard{h, restart};
   int rc = SDR_OK;
   try {
     std::lock_guard<std::mutex> dsp_lock(h->dsp_mutex);
@@ -1020,7 +1086,11 @@ extern "C" int32_t sdr_v3_set_controls(SdrHandle* h, const SdrV3Controls* in) {
     h->async_error(SDR_INTERNAL_ERROR);
     return SDR_INTERNAL_ERROR;
   }
-  return restart ? sdr_v3_start(h) : SDR_OK;
+  if (!restart) return SDR_OK;
+  const int start_rc = sdr_v3_start(h);
+  h->keep_recording_on_restart = false;
+  if (start_rc == SDR_OK) restart_guard.armed = false;
+  return start_rc;
 }
 
 extern "C" int32_t sdr_v3_set_display(SdrHandle* h, const SdrV3Display* in) {
@@ -1220,6 +1290,7 @@ extern "C" int32_t sdr_decoder_select(SdrHandle* h, const char* id,
       h->receiver->set_decoder(nullptr);
       h->decoder_attached = false;
       h->decoder.reset();
+      h->selected_decoder_id.clear();
       h->invalidate_decoder_events();
       h->decoder_dropped = 0;
       return SDR_OK;
@@ -1262,6 +1333,7 @@ extern "C" int32_t sdr_decoder_select(SdrHandle* h, const char* id,
       // control change; receiver owns a borrowed pointer under dsp_mutex.
       h->receiver->set_decoder(nullptr);
       h->decoder = std::move(candidate);
+      h->selected_decoder_id = requested;
       h->decoder_input = reg.descriptor.input;
       h->decoder_required_rate_hz = reg.descriptor.required_rate_hz;
       h->decoder_attached = true;
@@ -1315,4 +1387,113 @@ extern "C" int32_t sdr_v3_rtl_tuner_gains(SdrHandle* h, int32_t* gains,
     return SDR_UNSUPPORTED;
   }
   return h->usb_adapter->get_tuner_gains(gains, capacity, count);
+}
+
+extern "C" uint32_t sdr_record_version(void) { return SDR_RECORD_REVISION; }
+
+extern "C" int32_t sdr_record_capabilities(uint32_t* streams, uint32_t* formats) {
+  if (streams) *streams = SDR_RECORD_STREAM_MASK;
+  if (formats) *formats = (1u << SDR_RECORD_WAV) | (1u << SDR_RECORD_FLAC) |
+                          (1u << SDR_RECORD_MP3) | (1u << SDR_RECORD_OPUS);
+  return SDR_OK;
+}
+
+extern "C" int32_t sdr_record_set_provider(const char* scheme,
+                                             uint32_t scheme_bytes,
+                                             SdrRecordCreateFile fn, void* context) {
+  try { return sdrcore::record::set_provider(scheme, scheme_bytes, fn, context); }
+  catch (...) { return SDR_INTERNAL_ERROR; }
+}
+
+extern "C" int32_t sdr_record_set_notify(SdrHandle* h,
+                                           SdrRecordNotify fn, void* context) {
+  if (!h) return SDR_INVALID_ARGUMENT;
+  h->recorder.set_notify(fn, context);
+  return SDR_OK;
+}
+
+extern "C" int32_t sdr_record_start(SdrHandle* h,
+                                      const SdrRecordConfig* config,
+                                      const char* folder, uint32_t folder_bytes,
+                                      const char* log_ids, uint32_t log_ids_bytes) {
+  if (!h || !config || config->size != sizeof(*config) ||
+      config->revision != SDR_RECORD_REVISION || !config->streams ||
+      (config->streams & ~SDR_RECORD_STREAM_MASK) ||
+      config->utc_offset_minutes < -840 || config->utc_offset_minutes > 840 ||
+      config->start_unix_ms <= 0 ||
+      !folder || !folder_bytes || folder_bytes > SDR_RECORD_MAX_FOLDER_BYTES ||
+      std::memchr(folder, 0, folder_bytes) ||
+      (log_ids_bytes && !log_ids) || log_ids_bytes > SDR_RECORD_MAX_LOG_IDS_BYTES ||
+      (log_ids && log_ids_bytes && std::memchr(log_ids, 0, log_ids_bytes)))
+    return SDR_INVALID_ARGUMENT;
+  for (uint32_t n : config->reserved) if (n) return SDR_INVALID_ARGUMENT;
+  // A malformed locator is an argument error, not an unavailable encoder or
+  // an unregistered provider. `file:` always names an absolute native path.
+  try {
+    const std::string locator(folder, folder_bytes);
+    const auto colon = locator.find(':');
+    if (colon == std::string::npos || colon == 0 || colon > 16 ||
+        colon + 1 == locator.size()) return SDR_INVALID_ARGUMENT;
+    for (size_t i = 0; i < colon; ++i) {
+      const char ch = locator[i];
+      if (i == 0 ? ch < 'a' || ch > 'z' :
+          !((ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9') ||
+            ch == '+' || ch == '.' || ch == '-')) return SDR_INVALID_ARGUMENT;
+    }
+    if (locator.compare(0, 5, "file:") == 0 &&
+        !std::filesystem::u8path(locator.substr(5)).is_absolute())
+      return SDR_INVALID_ARGUMENT;
+    std::string ids(log_ids ? log_ids : "", log_ids_bytes);
+    if (config->streams & SDR_RECORD_DECODER_LOG) {
+      std::set<std::string> available{"rds"};
+      for (const auto& reg : sdrcore::decoder::registry())
+        if (reg.create) available.insert(reg.descriptor.id);
+      size_t begin = 0, count = 0;
+      while (begin < ids.size()) {
+        const size_t end = ids.find(',', begin);
+        const auto id = ids.substr(begin, end == std::string::npos ? end : end - begin);
+        if (!available.erase(id) || ++count > SDR_RECORD_MAX_LOG_IDS)
+          return SDR_INVALID_ARGUMENT;
+        if (end == std::string::npos) break;
+        begin = end + 1;
+      }
+      if (ids.empty() || ids.back() == ',') return SDR_INVALID_ARGUMENT;
+    }
+    const bool audio = config->streams & (SDR_RECORD_AUDIO | SDR_RECORD_SQUELCH_AUDIO);
+    if ((!audio && (config->audio_format != SDR_RECORD_FORMAT_NONE || config->audio_bitrate_kbps)) ||
+        (audio && config->audio_format == SDR_RECORD_FORMAT_NONE) ||
+        config->audio_format > SDR_RECORD_OPUS ||
+        ((config->audio_format == SDR_RECORD_WAV || config->audio_format == SDR_RECORD_FLAC) &&
+         config->audio_bitrate_kbps) ||
+        (config->audio_format == SDR_RECORD_MP3 &&
+         !(config->audio_bitrate_kbps == 32 || config->audio_bitrate_kbps == 40 ||
+           config->audio_bitrate_kbps == 48 || config->audio_bitrate_kbps == 56 ||
+           config->audio_bitrate_kbps == 64 || config->audio_bitrate_kbps == 80 ||
+           config->audio_bitrate_kbps == 96 || config->audio_bitrate_kbps == 112 ||
+           config->audio_bitrate_kbps == 128 || config->audio_bitrate_kbps == 160 ||
+           config->audio_bitrate_kbps == 192 || config->audio_bitrate_kbps == 224 ||
+           config->audio_bitrate_kbps == 256 || config->audio_bitrate_kbps == 320)) ||
+        (config->audio_format == SDR_RECORD_OPUS &&
+         (config->audio_bitrate_kbps < 6 || config->audio_bitrate_kbps > 256)) ||
+        ((config->streams & SDR_RECORD_DECODER_LOG) != 0 && log_ids_bytes == 0) ||
+        ((config->streams & SDR_RECORD_DECODER_LOG) == 0 && log_ids_bytes != 0))
+      return SDR_INVALID_ARGUMENT;
+    std::lock_guard<std::mutex> lock(h->mutex);
+    if (!h->v3_active || h->stats.state != SDR_RUNNING) return SDR_INVALID_STATE;
+    if (!sdrcore::record::supports_folder(locator)) return SDR_UNSUPPORTED;
+    return h->recorder.start(*config, locator, ids);
+  } catch (...) { return SDR_INTERNAL_ERROR; }
+}
+
+extern "C" int32_t sdr_record_stop(SdrHandle* h) {
+  if (!h) return SDR_INVALID_ARGUMENT;
+  // Do not hold the receiver mutex across join/provider/notification calls.
+  return h->recorder.stop(SDR_RECORD_STOP_USER);
+}
+
+extern "C" int32_t sdr_record_status(SdrHandle* h, SdrRecordStatus* out) {
+  if (!h || !out || out->size != sizeof(*out) || out->revision != SDR_RECORD_REVISION)
+    return SDR_INVALID_ARGUMENT;
+  *out = h->recorder.status();
+  return SDR_OK;
 }

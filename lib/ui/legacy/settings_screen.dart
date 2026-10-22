@@ -10,7 +10,9 @@ import '../device_dropdown.dart';
 import '../radio_controller.dart';
 import '../sdr_ui_state.dart';
 import '../source_settings.dart';
+import '../recording/recording_controller.dart';
 import 'bands_screen.dart';
+import 'recording_settings.dart';
 import 'centered_receiver.dart';
 import 'step_grid.dart';
 import 'theme.dart';
@@ -22,6 +24,9 @@ class SettingsScreen extends StatefulWidget {
     required this.receiver,
     this.spectrum,
     this.bands,
+    this.recording,
+    this.recordingTarget,
+    this.recordingRoute = 0,
   });
   final RadioController controller;
   final CenteredReceiver receiver;
@@ -31,6 +36,9 @@ class SettingsScreen extends StatefulWidget {
 
   /// Frequency bands (Settings → Bands); the row is hidden without it.
   final BandsRepository? bands;
+  final RecordingController? recording;
+  final RecordingSettingsTarget? recordingTarget;
+  final int recordingRoute;
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -64,6 +72,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _host.dispose();
     _port.dispose();
     super.dispose();
+  }
+
+  @override
+  void didUpdateWidget(SettingsScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.recordingRoute != oldWidget.recordingRoute &&
+        widget.recordingTarget == RecordingSettingsTarget.streams &&
+        widget.recording != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) RecordingSettings.showChoices(context, widget.recording!);
+      });
+    }
   }
 
   Future<bool> _applyEndpoint(NativeRadioController native) async {
@@ -146,6 +166,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
             style: plex(size: 12, color: LegacyColors.muted),
           ),
           const SizedBox(height: 14),
+          if (widget.recording case final recording?)
+            RecordingSettings(
+              key: const ValueKey('recordSettingsSection'),
+              recording: recording,
+            ),
           _section('SDR CONNECTION'),
           if (native != null)
             Padding(

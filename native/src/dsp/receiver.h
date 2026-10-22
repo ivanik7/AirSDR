@@ -16,8 +16,21 @@ namespace dsp {
 // Internal, single-thread-owned DSP contract. CU8 IQ is centered at 127.5;
 // HackRF CS8 is normalized to CU8 by the native ingress ring. The caller
 // owns inputs and result; no IQ or PCM buffer is shared with Dart.
+struct RecordingSquelchEdge {
+  size_t frame_offset = 0;  // First 48 kHz PCM frame with this effective state.
+  bool open = false;
+};
+
 struct ProcessResult {
   std::vector<float> audio;  // Interleaved stereo 48 kHz, cleared per process.
+  // 48 kHz, before the analog squelch gate, volume and mute. Mono modes use
+  // one sample per frame; WFM stereo preference uses interleaved L/R even
+  // before pilot acquisition. Decoder voice replaces analog PCM at this tap.
+  std::vector<float> recording_pcm;
+  uint32_t recording_channels = 1;
+  // Ordered state changes relative to recording_pcm frames, including the
+  // initial open edge at frame 0 when squelch is OFF. No duplicate edges.
+  std::vector<RecordingSquelchEdge> recording_squelch_edges;
   std::vector<float> fft;    // Latest complete row, empty if no new row.
   float signal_db = -100.0f;
   float squelch_threshold_db = -100.0f;

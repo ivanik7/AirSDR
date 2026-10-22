@@ -14,6 +14,7 @@ import 'native_decoder_api.dart';
 import 'native_decoder_backend.dart';
 import 'native_radio_api.dart';
 import 'native_radio_settings.dart';
+import 'native_record_api.dart';
 import 'sdr_core.dart';
 import 'usb_device_catalog.dart';
 
@@ -133,6 +134,7 @@ class NativeRadioController extends RadioController {
     this.afterStop,
     this.configDir,
     NativeDecoderApi? decoderApi,
+    this.recordApi,
   }) {
     _decoderBackend = decoderApi == null
         ? const NoDecoderBackend()
@@ -181,6 +183,7 @@ class NativeRadioController extends RadioController {
 
   final NativeRadioApi api;
   final NativeDeviceSource source;
+  final NativeRecordApi? recordApi;
   final bool autoStart;
   final Duration pollInterval, fftInterval, discoveryInterval;
   final String audioSink;
@@ -208,6 +211,7 @@ class NativeRadioController extends RadioController {
   List<NativeDevice> _known = [];
   NativeDevice? _selected, _opened;
   Pointer<SdrHandle>? _handle;
+  SdrRecordStatus? _lastRecordStatus;
   int _generation = 0, _controlSequence = 0, _lastRow = 0;
   int _lastErrorSequence = 0;
   int _lastInput = 0;
@@ -611,6 +615,11 @@ class NativeRadioController extends RadioController {
       try {
         api.stop(h);
       } catch (_) {}
+      if (recordApi != null) {
+        try {
+          _lastRecordStatus = recordApi!.status(h);
+        } catch (_) {}
+      }
       try {
         api.close(h);
       } catch (_) {}
@@ -622,6 +631,46 @@ class NativeRadioController extends RadioController {
     // through it, so it must not be "closed" through it either.
     if (opened != null && !opened.isNetwork) await source.close(opened);
     if (h != null) await afterStop?.call();
+  }
+
+  /// Recording commands share serialized receiver handle ownership. Samples
+  /// and file I/O remain entirely native; these methods pass only controls.
+  Future<int> startRecording(
+    SdrRecordConfig config,
+    String folder,
+    List<String> logIds,
+  ) async {
+    var result = SdrResult.invalidState;
+    await _queue(() async {
+      final h = _handle;
+      if (_running && h != null && recordApi != null) {
+        result = recordApi!.start(h, config, folder, logIds);
+        _lastRecordStatus = recordApi!.status(h);
+      }
+    });
+    return result;
+  }
+
+  Future<int> stopRecording() async {
+    var result = SdrResult.invalidState;
+    await _queue(() async {
+      final h = _handle;
+      if (h != null && recordApi != null) {
+        result = recordApi!.stop(h);
+        _lastRecordStatus = recordApi!.status(h);
+      }
+    });
+    return result;
+  }
+
+  SdrRecordStatus? get recordingStatus {
+    final h = _handle;
+    if (h != null && recordApi != null) {
+      try {
+        return _lastRecordStatus = recordApi!.status(h);
+      } catch (_) {}
+    }
+    return _lastRecordStatus;
   }
 
   void _startPollers() {

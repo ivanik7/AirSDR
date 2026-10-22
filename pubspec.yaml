@@ -37,11 +37,14 @@ dependencies:
   ffi: ^2.2.0
   path_provider: ^2.1.6
   shared_preferences: ^2.5.3
+  file_selector: ^1.0.4
   # Pinned below 2.3: 2.3.x switched to package:jni (extra native lib + JNI glue) for no gain here.
   path_provider_android: ">=2.2.0 <2.3.0"
 
 dev_dependencies:
   flutter_test:
+    sdk: flutter
+  integration_test:
     sdk: flutter
 
   # The "flutter_lints" package below contains a set of recommended lints to
